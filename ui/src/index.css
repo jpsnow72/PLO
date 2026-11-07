@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Design tokens (mirror tailwind.config.ts) */
+  --plo-navy-950: #0a1628;
+  --plo-navy-900: #0e1e38;
+  --plo-navy-800: #13294b;
+  --plo-navy-700: #1b3a66;
+  --plo-green: #2e9e6b;
+  --plo-green-dark: #248457;
+  --plo-amber: #f5a623;
+  --plo-ink: #e8eef6;
+  --plo-ink-dim: #9fb2c8;
+  --plo-ink-faint: #647d99;
+
+  /* Four-colour deck */
+  --suit-spades: #dbe4f0;
+  --suit-hearts: #e5484d;
+  --suit-diamonds: #4c9be8;
+  --suit-clubs: #35b57f;
+
+  /* Action colours (strategy bars / grid) */
+  --action-check: #5b84b8;
+  --action-bet: #2e9e6b;
+  --action-call: #2aa198;
+  --action-raise: #f5a623;
+  --action-fold: #8a4b57;
+}
+
+html,
+body {
+  background-color: var(--plo-navy-950);
+  color: var(--plo-ink);
+}
+
+::selection {
+  background: rgba(46, 158, 107, 0.45);
+}
+
+/* Visible focus for keyboard users (WCAG AA practice) */
+:focus-visible {
+  outline: 2px solid var(--plo-amber);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Thin scrollbars for the dark panels */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--plo-navy-700) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--plo-navy-700);
+  border-radius: 4px;
+}

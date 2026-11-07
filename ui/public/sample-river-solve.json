@@ -1,0 +1,198 @@
+{
+  "board": "As Ks Qs 7d 2c",
+  "starting_pot": 100.000000,
+  "effective_stack": 100.000000,
+  "iterations": 21525,
+  "exploitability": {
+    "nash_distance_pct": 0.018890,
+    "nash_distance_chips": 0.018890,
+    "mean_exploitability_pct": 0.009445,
+    "mean_exploitability_chips": 0.009445,
+    "oop_exploitability_chips": 0.005397,
+    "ip_exploitability_chips": 0.013493,
+    "oop_br_ev": 51.122107,
+    "ip_br_ev": 48.896783,
+    "oop_strategy_ev": 51.116710,
+    "ip_strategy_ev": 48.883290
+  },
+  "oop_evs": [
+    {"combo": "Ts 9s 3c 4c", "weight": 1.000000, "ev": 150.001288},
+    {"combo": "Jd Td 8h 9h", "weight": 1.000000, "ev": 3.352669},
+    {"combo": "3d 4d 5c 6c", "weight": 1.000000, "ev": -0.003826}
+  ],
+  "ip_evs": [
+    {"combo": "8s 6s 3h 4h", "weight": 1.000000, "ev": 55.518014},
+    {"combo": "Jh Th 8d 9d", "weight": 1.000000, "ev": 38.931203},
+    {"combo": "3s 4s 5d 6d", "weight": 0.500000, "ev": 55.518014}
+  ],
+  "nodes": [
+    {
+      "decision_id": 0,
+      "node_id": 0,
+      "player": "OOP",
+      "history": "root",
+      "pot": 100.000000,
+      "to_call": 0.000000,
+      "actions": ["Check", "Bet(33)", "Bet(75)", "BetAllIn(100)"],
+      "strategy": {
+        "Ts 9s 3c 4c": [0.331386, 0.000000, 0.000368, 0.668245],
+        "Jd Td 8h 9h": [0.994120, 0.000000, 0.000090, 0.005791],
+        "3d 4d 5c 6c": [0.671518, 0.000000, 0.000125, 0.328357]
+      }
+    },
+    {
+      "decision_id": 1,
+      "node_id": 1,
+      "player": "IP",
+      "history": "X",
+      "pot": 100.000000,
+      "to_call": 0.000000,
+      "actions": ["Check", "Bet(33)", "Bet(75)", "BetAllIn(100)"],
+      "strategy": {
+        "8s 6s 3h 4h": [0.720669, 0.000995, 0.005526, 0.272810],
+        "Jh Th 8d 9d": [0.167922, 0.001044, 0.012481, 0.818553],
+        "3s 4s 5d 6d": [0.720669, 0.000995, 0.005526, 0.272810]
+      }
+    },
+    {
+      "decision_id": 2,
+      "node_id": 3,
+      "player": "OOP",
+      "history": "X/B(33)",
+      "pot": 133.000000,
+      "to_call": 33.000000,
+      "actions": ["Fold", "Call", "RaiseAllIn(100)"],
+      "strategy": {
+        "Ts 9s 3c 4c": [0.000000, 0.000000, 1.000000],
+        "Jd Td 8h 9h": [0.384745, 0.580776, 0.034479],
+        "3d 4d 5c 6c": [0.905008, 0.000000, 0.094992]
+      }
+    },
+    {
+      "decision_id": 3,
+      "node_id": 6,
+      "player": "IP",
+      "history": "X/B(33)/RAI(100)",
+      "pot": 233.000000,
+      "to_call": 67.000000,
+      "actions": ["Fold", "Call"],
+      "strategy": {
+        "8s 6s 3h 4h": [0.028328, 0.971672],
+        "Jh Th 8d 9d": [0.902044, 0.097956],
+        "3s 4s 5d 6d": [0.028328, 0.971672]
+      }
+    },
+    {
+      "decision_id": 4,
+      "node_id": 9,
+      "player": "OOP",
+      "history": "X/B(75)",
+      "pot": 175.000000,
+      "to_call": 75.000000,
+      "actions": ["Fold", "Call", "RaiseAllIn(100)"],
+      "strategy": {
+        "Ts 9s 3c 4c": [0.000000, 0.000000, 1.000000],
+        "Jd Td 8h 9h": [0.627503, 0.289335, 0.083162],
+        "3d 4d 5c 6c": [0.999922, 0.000000, 0.000078]
+      }
+    },
+    {
+      "decision_id": 5,
+      "node_id": 12,
+      "player": "IP",
+      "history": "X/B(75)/RAI(100)",
+      "pot": 275.000000,
+      "to_call": 25.000000,
+      "actions": ["Fold", "Call"],
+      "strategy": {
+        "8s 6s 3h 4h": [0.001726, 0.998274],
+        "Jh Th 8d 9d": [0.125398, 0.874602],
+        "3s 4s 5d 6d": [0.001726, 0.998274]
+      }
+    },
+    {
+      "decision_id": 6,
+      "node_id": 15,
+      "player": "OOP",
+      "history": "X/BAI(100)",
+      "pot": 200.000000,
+      "to_call": 100.000000,
+      "actions": ["Fold", "Call"],
+      "strategy": {
+        "Ts 9s 3c 4c": [0.000000, 1.000000],
+        "Jd Td 8h 9h": [0.666674, 0.333326],
+        "3d 4d 5c 6c": [1.000000, 0.000000]
+      }
+    },
+    {
+      "decision_id": 7,
+      "node_id": 18,
+      "player": "IP",
+      "history": "B(33)",
+      "pot": 133.000000,
+      "to_call": 33.000000,
+      "actions": ["Fold", "Call", "RaiseAllIn(100)"],
+      "strategy": {
+        "8s 6s 3h 4h": [0.013643, 0.860152, 0.126205],
+        "Jh Th 8d 9d": [0.018917, 0.797475, 0.183608],
+        "3s 4s 5d 6d": [0.013643, 0.860152, 0.126205]
+      }
+    },
+    {
+      "decision_id": 8,
+      "node_id": 21,
+      "player": "OOP",
+      "history": "B(33)/RAI(100)",
+      "pot": 233.000000,
+      "to_call": 67.000000,
+      "actions": ["Fold", "Call"],
+      "strategy": {
+        "Ts 9s 3c 4c": [0.000000, 1.000000],
+        "Jd Td 8h 9h": [0.375726, 0.624274],
+        "3d 4d 5c 6c": [0.999993, 0.000007]
+      }
+    },
+    {
+      "decision_id": 9,
+      "node_id": 24,
+      "player": "IP",
+      "history": "B(75)",
+      "pot": 175.000000,
+      "to_call": 75.000000,
+      "actions": ["Fold", "Call", "RaiseAllIn(100)"],
+      "strategy": {
+        "8s 6s 3h 4h": [0.052304, 0.941568, 0.006128],
+        "Jh Th 8d 9d": [0.877850, 0.082689, 0.039460],
+        "3s 4s 5d 6d": [0.052304, 0.941568, 0.006128]
+      }
+    },
+    {
+      "decision_id": 10,
+      "node_id": 27,
+      "player": "OOP",
+      "history": "B(75)/RAI(100)",
+      "pot": 275.000000,
+      "to_call": 25.000000,
+      "actions": ["Fold", "Call"],
+      "strategy": {
+        "Ts 9s 3c 4c": [0.000000, 1.000000],
+        "Jd Td 8h 9h": [0.000356, 0.999644],
+        "3d 4d 5c 6c": [1.000000, 0.000000]
+      }
+    },
+    {
+      "decision_id": 11,
+      "node_id": 30,
+      "player": "IP",
+      "history": "BAI(100)",
+      "pot": 200.000000,
+      "to_call": 100.000000,
+      "actions": ["Fold", "Call"],
+      "strategy": {
+        "8s 6s 3h 4h": [0.191033, 0.808967],
+        "Jh Th 8d 9d": [0.963368, 0.036632],
+        "3s 4s 5d 6d": [0.191033, 0.808967]
+      }
+    }
+  ]
+}
