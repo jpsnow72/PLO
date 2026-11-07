@@ -10,7 +10,7 @@ import {
   type PreflopIndex,
   type PreflopSetDoc,
 } from './preflop';
-import type { JobRecord, LibraryItem } from './types';
+import type { AuthState, JobRecord, LibraryItem } from './types';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -23,6 +23,9 @@ export class ApiError extends Error {
 async function requestJson(path: string, init?: RequestInit): Promise<unknown> {
   const res = await fetch(path, {
     ...init,
+    // Send the admin session cookie when the API is reached cross-origin
+    // (configured server-side via ALLOWED_ORIGIN); harmless same-origin.
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
   const text = await res.text();
@@ -123,4 +126,45 @@ export async function fetchSampleSolve(): Promise<unknown> {
   const res = await fetch('/sample-river-solve.json');
   if (!res.ok) throw new ApiError(res.status, 'Sample solve missing');
   return (await res.json()) as unknown;
+}
+
+// ---------- Admin auth ----------
+
+/**
+ * Probe the admin session. A 401 from the server is a normal answer
+ * ("not signed in"), not an error; network failures still throw so the
+ * caller can distinguish "offline" from "locked".
+ */
+export async function fetchAuthMe(): Promise<AuthState> {
+  try {
+    const body = await requestJson('/api/auth/me');
+    if (!isRecord(body) || typeof body.admin !== 'boolean') {
+      throw new ApiError(0, 'Malformed auth response');
+    }
+    return {
+      admin: body.admin,
+      authEnabled: typeof body.auth_enabled === 'boolean' ? body.auth_enabled : true,
+    };
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) {
+      return { admin: false, authEnabled: true };
+    }
+    throw err;
+  }
+}
+
+/** Log in with the admin password. Throws ApiError with the server's message on failure. */
+export async function login(password: string): Promise<void> {
+  const body = await requestJson('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+  });
+  if (!isRecord(body) || body.admin !== true) {
+    throw new ApiError(0, 'Malformed login response');
+  }
+}
+
+/** Log out (clears the session cookie server-side). */
+export async function logout(): Promise<void> {
+  await requestJson('/api/auth/logout', { method: 'POST', body: '{}' });
 }

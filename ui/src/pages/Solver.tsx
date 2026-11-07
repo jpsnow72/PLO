@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ApproximationBadge } from '../components/AccuracyBadge';
 import { pctText } from '../components/FrequencyBar';
 import {
@@ -323,6 +323,7 @@ export function SolverPage() {
   const [classByHand, setClassByHand] = useState<Map<string, PreflopClass> | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
   const [offline, setOffline] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
@@ -386,6 +387,7 @@ export function SolverPage() {
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setNotice(null);
+    setNeedsLogin(false);
     const built = buildSpot(form);
     if (!built.spot) {
       setErrors(built.errors);
@@ -400,7 +402,12 @@ export function SolverPage() {
       setActiveJobId(job.id);
       setNotice(`Solve queued (job ${job.id}). It runs on the engine host — this page updates automatically.`);
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof ApiError && err.status === 401) {
+        // The server is reachable but adding solves is admin-only.
+        setApiOnline(true);
+        setOffline(false);
+        setNeedsLogin(true);
+      } else if (err instanceof ApiError) {
         setApiOnline(true);
         setErrors([err.message]);
       } else {
@@ -617,6 +624,21 @@ export function SolverPage() {
           </div>
         ) : null}
         {notice ? <p className="text-sm text-table-light">{notice}</p> : null}
+        {needsLogin ? (
+          <div className="rounded-lg border border-accent/60 bg-navy-900 p-3 text-sm" role="alert">
+            <span className="font-semibold text-ink">Adding solves is admin-only.</span>{' '}
+            <span className="text-ink-dim">
+              Log in with the admin password and submit again — your spot stays filled in.
+            </span>{' '}
+            <Link
+              to="/login"
+              state={{ from: '/solver' }}
+              className="font-semibold text-table-light underline"
+            >
+              Log in to add solves
+            </Link>
+          </div>
+        ) : null}
 
         <div>
           <button

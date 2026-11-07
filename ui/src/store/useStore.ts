@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { fetchSampleSolve } from '../lib/api';
+import { fetchAuthMe, fetchSampleSolve } from '../lib/api';
 import {
   parseSolve,
   resolveStep,
@@ -26,6 +26,13 @@ interface AppState {
   // Engine connectivity (null = not probed yet).
   apiOnline: boolean | null;
   setApiOnline: (online: boolean) => void;
+
+  // Admin session (null = not probed yet). Probed once on app load;
+  // write endpoints require it when the server has auth enabled.
+  isAdmin: boolean | null;
+  authEnabled: boolean | null;
+  probeAdmin: () => Promise<void>;
+  setAdmin: (admin: boolean, authEnabled: boolean | null) => void;
 
   // Loaded solve + tree navigation.
   solve: SolveData | null;
@@ -71,6 +78,20 @@ export const useStore = create<AppState>((set, get) => ({
 
   apiOnline: null,
   setApiOnline: (online) => set({ apiOnline: online }),
+
+  isAdmin: null,
+  authEnabled: null,
+  probeAdmin: async () => {
+    if (get().isAdmin !== null) return; // probe once per app load
+    try {
+      const state = await fetchAuthMe();
+      set({ isAdmin: state.admin, authEnabled: state.authEnabled });
+    } catch {
+      // API unreachable (sample mode): not admin, auth state unknown.
+      set({ isAdmin: false, authEnabled: null });
+    }
+  },
+  setAdmin: (admin, authEnabled) => set({ isAdmin: admin, authEnabled }),
 
   solve: null,
   solveName: '',

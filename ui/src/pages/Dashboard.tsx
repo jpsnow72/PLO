@@ -16,6 +16,13 @@ export function DashboardPage() {
   const [jobs, setJobs] = useState<JobRecord[]>([]);
   const [offline, setOffline] = useState(false);
   const [sampleCard, setSampleCard] = useState<{ board: string; nash: number } | null>(null);
+  // The bundled sample has its own lifecycle: it is only fetched after the
+  // API probe fails, so without an explicit state the Library slot used to
+  // flash "Sample unavailable" for the whole fetch window (and forever,
+  // silently, if the fetch failed) even though the same file loads fine in
+  // the Explorer. Track loading/ready/error honestly instead.
+  const [sampleState, setSampleState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [sampleError, setSampleError] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -32,17 +39,25 @@ export function DashboardPage() {
         setOffline(true);
         setApiOnline(false);
         // Fixture fallback: describe the bundled sample from its real JSON.
+        setSampleState('loading');
         try {
           const raw = await fetchSampleSolve();
           const parsed = parseSolve(raw);
-          if (parsed && !cancelled) {
+          if (cancelled) return;
+          if (parsed) {
             setSampleCard({
               board: parsed.raw.board,
               nash: parsed.raw.exploitability.nash_distance_pct,
             });
+            setSampleState('ready');
+          } else {
+            setSampleError('the bundled sample file did not parse as a solve');
+            setSampleState('error');
           }
-        } catch {
-          // Sample missing too; the Explorer page surfaces its own error.
+        } catch (err) {
+          if (cancelled) return;
+          setSampleError(err instanceof Error ? err.message : 'sample fetch failed');
+          setSampleState('error');
         }
       }
     })();
@@ -157,7 +172,7 @@ export function DashboardPage() {
         >
           <h2 className="text-sm font-semibold text-ink">Library</h2>
           {offline ? (
-            sampleCard ? (
+            sampleState === 'ready' && sampleCard ? (
               <button
                 type="button"
                 onClick={() => navigate('/explorer')}
@@ -169,8 +184,14 @@ export function DashboardPage() {
                   <AccuracyBadge nashPct={sampleCard.nash} />
                 </span>
               </button>
+            ) : sampleState === 'error' ? (
+              <p className="mt-2 text-sm text-ink-dim">
+                The bundled sample could not be loaded
+                {sampleError ? ` (${sampleError})` : ''}. The Explorer loads it on demand and
+                will report there if it fails too.
+              </p>
             ) : (
-              <p className="mt-2 text-sm text-ink-dim">Sample unavailable.</p>
+              <p className="mt-2 text-sm text-ink-dim">Loading the bundled sample…</p>
             )
           ) : library === null ? (
             <p className="mt-2 text-sm text-ink-dim">Loading…</p>

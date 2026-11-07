@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { NavLink, Route, Routes } from 'react-router-dom';
+import { AdminPage } from './pages/Admin';
 import { DashboardPage } from './pages/Dashboard';
 import { ExplorerPage } from './pages/Explorer';
 import { LoginPage } from './pages/Login';
@@ -28,6 +30,13 @@ const NAV: { to: string; label: string; end?: boolean }[] = [
 export function App() {
   const user = useStore((s) => s.user);
   const apiOnline = useStore((s) => s.apiOnline);
+  const isAdmin = useStore((s) => s.isAdmin);
+  const probeAdmin = useStore((s) => s.probeAdmin);
+
+  // One-shot admin-session probe: decides whether the Admin nav item shows.
+  useEffect(() => {
+    void probeAdmin();
+  }, [probeAdmin]);
 
   return (
     <div className="flex min-h-screen bg-navy-950 font-sans text-ink">
@@ -56,6 +65,20 @@ export function App() {
               {item.label}
             </NavLink>
           ))}
+          {isAdmin ? (
+            <NavLink
+              to="/admin"
+              className={({ isActive }) =>
+                `rounded-md px-3 py-2 text-sm transition-colors ${
+                  isActive
+                    ? 'bg-navy-800 font-semibold text-ink ring-1 ring-table'
+                    : 'text-ink-dim hover:bg-navy-800 hover:text-ink'
+                }`
+              }
+            >
+              Admin
+            </NavLink>
+          ) : null}
         </nav>
         <div className="border-t border-navy-700 p-3 text-xs">
           <p className="flex items-center gap-2 text-ink-dim">
@@ -72,7 +95,7 @@ export function App() {
                 : 'Engine: offline (sample mode)'}
           </p>
           <NavLink to="/login" className="mt-2 block text-ink-dim underline hover:text-ink">
-            {user ? `Account · ${user}` : 'Sign in (local)'}
+            {isAdmin ? 'Admin · signed in' : user ? `Account · ${user}` : 'Sign in'}
           </NavLink>
         </div>
       </aside>
@@ -91,6 +114,7 @@ export function App() {
             <Route path="/heuristics" element={<HeuristicsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/admin" element={<AdminPage />} />
           </Routes>
         </div>
       </main>

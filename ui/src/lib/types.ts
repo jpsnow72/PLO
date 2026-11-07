@@ -88,3 +88,15 @@ export interface LibraryItem {
   finished_at: string | null;
   size_bytes: number;
 }
+
+/** Admin session state, from GET /api/auth/me. */
+export interface AuthState {
+  /** True when this browser holds an admin session (or auth is disabled server-side). */
+  admin: boolean;
+  /**
+   * Whether the server has auth enabled at all. False means
+   * ADMIN_PASSWORD_HASH is unset on the server and write endpoints are
+   * open (local dev mode) — the UI surfaces that loudly in Admin.
+   */
+  authEnabled: boolean;
+}
