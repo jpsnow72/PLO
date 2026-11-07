@@ -1,6 +1,27 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ApiError, fetchJob, fetchJobResult, submitSolve } from '../lib/api';
+import { ApproximationBadge } from '../components/AccuracyBadge';
+import { pctText } from '../components/FrequencyBar';
+import {
+  ApiError,
+  fetchJob,
+  fetchJobResult,
+  fetchPreflopClassTable,
+  fetchPreflopIndex,
+  fetchPreflopSet,
+  submitSolve,
+} from '../lib/api';
+import {
+  actionTotals,
+  combosInAction,
+  isSolveCompatible,
+  setLabel,
+  solveActionForContext,
+  type PreflopClass,
+  type PreflopIndex,
+  type PreflopSetDoc,
+  type PreflopSetIndexEntry,
+} from '../lib/preflop';
 import {
   buildSpot,
   defaultWizardForm,
@@ -115,6 +136,159 @@ function StreetEditor({
   );
 }
 
+/** Stats for a chosen preflop set, computed from the set document itself. */
+function SetModeStats({
+  setId,
+  entry,
+  classByHand,
+}: {
+  setId: string;
+  entry: PreflopSetIndexEntry;
+  classByHand: Map<string, PreflopClass> | null;
+}) {
+  const [doc, setDoc] = useState<PreflopSetDoc | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDoc(null);
+    setFailed(false);
+    void (async () => {
+      try {
+        const loaded = await fetchPreflopSet(setId);
+        if (!cancelled) setDoc(loaded);
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [setId]);
+
+  const action = solveActionForContext(entry.context);
+  const stats = useMemo(() => {
+    if (!doc || !action) return null;
+    const totals = actionTotals(doc, classByHand);
+    return {
+      total: totals[action] ?? 0,
+      combos: combosInAction(doc, action, classByHand),
+    };
+  }, [doc, action, classByHand]);
+
+  return (
+    <div className="mt-1 flex flex-col gap-1">
+      <p className="flex flex-wrap items-center gap-2 text-sm text-ink">
+        {setLabel(entry)}
+        <ApproximationBadge label="CONSTRUCTED" />
+      </p>
+      {failed ? (
+        <p className="text-xs text-red-300">Could not load that set's details from the job service.</p>
+      ) : !doc || !stats || !action ? (
+        <p className="text-xs text-ink-faint">Loading set details…</p>
+      ) : (
+        <p className="text-xs text-ink-dim">
+          {action === 'raise' ? 'Raise' : 'Call'} range: {pctText(stats.total)} of all combos ·{' '}
+          {stats.combos.toLocaleString()} concrete combos. The set is a constructed range (not
+          solver output); the API expands it to per-combo entries when the solve is submitted.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One side's range input: either the manual textarea or "set mode" fed by
+ * the preflop library. Only solve-compatible sets are offered (RFI sets and
+ * vs-RFI call sets — the same rule the API enforces).
+ */
+function RangeField({
+  label,
+  placeholder,
+  text,
+  setId,
+  sets,
+  classByHand,
+  onText,
+  onSet,
+}: {
+  label: string;
+  placeholder: string;
+  text: string;
+  setId: string | null;
+  sets: PreflopSetIndexEntry[];
+  classByHand: Map<string, PreflopClass> | null;
+  onText: (value: string) => void;
+  onSet: (id: string | null) => void;
+}) {
+  const entry = setId ? (sets.find((s) => s.id === setId) ?? null) : null;
+  return (
+    <div className="mt-2 first:mt-0">
+      <span className="text-xs text-ink-dim">{label}</span>
+      {setId ? (
+        <div className="mt-1 rounded-md border border-accent/50 bg-navy-850 px-3 py-2">
+          {entry ? (
+            <SetModeStats setId={setId} entry={entry} classByHand={classByHand} />
+          ) : (
+            <p className="text-sm text-ink">{setId}</p>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <select
+              value={setId}
+              onChange={(e) => onSet(e.target.value)}
+              className="rounded-md border border-navy-700 bg-navy-900 px-2 py-1 text-xs text-ink"
+              aria-label={`${label} — choose a different preflop set`}
+            >
+              {sets.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {setLabel(s)} ({s.context === 'rfi' ? 'raise range' : 'call range'})
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => onSet(null)}
+              className="rounded-md bg-navy-800 px-2.5 py-1 text-xs text-ink-dim hover:text-ink"
+            >
+              Switch back to manual
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <textarea
+            value={text}
+            onChange={(e) => onText(e.target.value)}
+            rows={3}
+            className="mt-1 w-full rounded-md border border-navy-700 bg-navy-850 px-2 py-2 font-mono text-xs text-ink"
+            placeholder={placeholder}
+          />
+          {sets.length > 0 ? (
+            <label className="mt-1 block text-xs text-ink-faint">
+              …or load from the preflop library
+              <select
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) onSet(e.target.value);
+                }}
+                className="ml-2 rounded-md border border-navy-700 bg-navy-850 px-2 py-1 text-xs text-ink"
+                aria-label={`${label} — load from preflop library`}
+              >
+                <option value="">Choose a set…</option>
+                {sets.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {setLabel(s)} ({s.context === 'rfi' ? 'raise range' : 'call range'})
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
 const BOARD_SHORTCUTS: { label: string; board: string }[] = [
   { label: 'Monotone river', board: 'As Ks Qs 7d 2c' },
   { label: 'Paired river', board: 'Kh Kd 9s 8s 3c' },
@@ -145,6 +319,8 @@ export function SolverPage() {
   const loadSample = useStore((s) => s.loadSample);
 
   const [form, setForm] = useState<WizardForm>(defaultWizardForm);
+  const [preflopIndex, setPreflopIndex] = useState<PreflopIndex | null>(null);
+  const [classByHand, setClassByHand] = useState<Map<string, PreflopClass> | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
@@ -152,6 +328,34 @@ export function SolverPage() {
   const [opening, setOpening] = useState(false);
 
   const activeJob = sessionJobs.find((j) => j.id === activeJobId) ?? null;
+
+  // Preflop library for the range pickers. Soft-fail: without the index
+  // the wizard is manual-only, exactly as before.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const idx = await fetchPreflopIndex();
+        if (!cancelled) setPreflopIndex(idx);
+      } catch {
+        // Manual mode remains available.
+      }
+      try {
+        const table = await fetchPreflopClassTable();
+        if (!cancelled) setClassByHand(new Map(table.classes.map((c) => [c.hand, c])));
+      } catch {
+        // Stats fall back to computing multiplicities from the class keys.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const compatibleSets = useMemo(
+    () => (preflopIndex ? preflopIndex.rangesets.filter(isSolveCompatible) : []),
+    [preflopIndex],
+  );
 
   // Poll the active job until it finishes.
   useEffect(() => {
@@ -353,36 +557,40 @@ export function SolverPage() {
                 <button
                   key={p.label}
                   type="button"
-                  onClick={() => patch({ oopRange: p.oop, ipRange: p.ip })}
+                  onClick={() =>
+                    patch({ oopRange: p.oop, ipRange: p.ip, oopRangeSet: null, ipRangeSet: null })
+                  }
                   className="rounded-full bg-navy-800 px-2 py-1 text-xs text-ink-dim hover:text-ink"
                 >
                   {p.label}
                 </button>
               ))}
             </div>
-            <label className="text-xs text-ink-dim">
-              OOP range (out of position)
-              <textarea
-                value={form.oopRange}
-                onChange={(e) => patch({ oopRange: e.target.value })}
-                rows={3}
-                className="mt-1 w-full rounded-md border border-navy-700 bg-navy-850 px-2 py-2 font-mono text-xs text-ink"
-                placeholder="Ts 9s 3c 4c, Jd Td 8h 9h:0.5, ..."
-              />
-            </label>
-            <label className="mt-2 block text-xs text-ink-dim">
-              IP range (in position)
-              <textarea
-                value={form.ipRange}
-                onChange={(e) => patch({ ipRange: e.target.value })}
-                rows={3}
-                className="mt-1 w-full rounded-md border border-navy-700 bg-navy-850 px-2 py-2 font-mono text-xs text-ink"
-                placeholder="8s 6s 3h 4h, Jh Th 8d 9d, ..."
-              />
-            </label>
+            <RangeField
+              label="OOP range (out of position)"
+              placeholder="Ts 9s 3c 4c, Jd Td 8h 9h:0.5, ..."
+              text={form.oopRange}
+              setId={form.oopRangeSet}
+              sets={compatibleSets}
+              classByHand={classByHand}
+              onText={(oopRange) => patch({ oopRange })}
+              onSet={(oopRangeSet) => patch({ oopRangeSet })}
+            />
+            <RangeField
+              label="IP range (in position)"
+              placeholder="8s 6s 3h 4h, Jh Th 8d 9d, ..."
+              text={form.ipRange}
+              setId={form.ipRangeSet}
+              sets={compatibleSets}
+              classByHand={classByHand}
+              onText={(ipRange) => patch({ ipRange })}
+              onSet={(ipRangeSet) => patch({ ipRangeSet })}
+            />
             <p className="mt-1 text-xs text-ink-faint">
-              One combo per entry, comma or newline separated; add <span className="font-mono">:weight</span> to
-              weight a combo (default 1).
+              Manual ranges: one combo per entry, comma or newline separated; add{' '}
+              <span className="font-mono">:weight</span> to weight a combo (default 1). Library
+              sets are constructed preflop ranges — RFI sets load their raise range, vs-RFI sets
+              load their call range.
             </p>
           </fieldset>
         </div>
@@ -443,6 +651,12 @@ export function SolverPage() {
                   {job.status}
                   {job.id === activeJobId ? '…' : ''}
                 </span>
+                {job.oop_range_set ? (
+                  <span className="text-xs text-ink-faint">OOP set: {job.oop_range_set}</span>
+                ) : null}
+                {job.ip_range_set ? (
+                  <span className="text-xs text-ink-faint">IP set: {job.ip_range_set}</span>
+                ) : null}
                 {job.status === 'done' && job.nash_distance_pct !== null ? (
                   <span className="font-mono text-xs text-ink-dim">
                     Nash {job.nash_distance_pct.toFixed(3)}% pot

@@ -36,20 +36,6 @@ function StubShell({
   );
 }
 
-export function PreflopPage() {
-  return (
-    <StubShell
-      title="Preflop Ranges"
-      blurb="Starting ranges for 6-max and 9-max, with the 6-max vs 9-max comparison strip from the design."
-      bullets={[
-        'Ships first on licence-checked published charts (Layer A of the preflop plan).',
-        'Our own abstracted preflop solve (Layer B) replaces charts when it lands.',
-        'Ranges here feed the Solver wizard as starting ranges for postflop solves.',
-      ]}
-    />
-  );
-}
-
 export function QuickReviewPage() {
   return (
     <StubShell

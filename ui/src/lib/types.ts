@@ -66,6 +66,9 @@ export interface JobRecord {
   status: JobStatus;
   kind: 'river' | 'turn' | 'flop';
   board: string;
+  /** Preflop range-set ids loaded for this solve, when set-mode was used. */
+  oop_range_set?: string | null;
+  ip_range_set?: string | null;
   created_at: string;
   finished_at: string | null;
   nash_distance_pct: number | null;
@@ -78,6 +81,8 @@ export interface LibraryItem {
   name: string;
   kind: 'river' | 'turn' | 'flop';
   board: string;
+  oop_range_set?: string | null;
+  ip_range_set?: string | null;
   nash_distance_pct: number;
   iterations: number;
   finished_at: string | null;

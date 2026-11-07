@@ -2,6 +2,14 @@
 // falls back to the bundled sample solve and shows an "engine offline"
 // notice when the service is unreachable.
 
+import {
+  isPreflopClassTable,
+  isPreflopIndex,
+  isPreflopSetDoc,
+  type PreflopClassTable,
+  type PreflopIndex,
+  type PreflopSetDoc,
+} from './preflop';
 import type { JobRecord, LibraryItem } from './types';
 
 export class ApiError extends Error {
@@ -83,6 +91,31 @@ export async function fetchJobResult(id: string): Promise<unknown> {
 /** Fetch a library item's solve JSON. */
 export async function fetchLibrarySolve(id: string): Promise<unknown> {
   return requestJson(`/api/library/${encodeURIComponent(id)}`);
+}
+
+/** The preflop range-set index (all sets, with provenance summaries). */
+export async function fetchPreflopIndex(): Promise<PreflopIndex> {
+  const body = await requestJson('/api/preflop/index');
+  if (!isPreflopIndex(body)) throw new ApiError(0, 'Malformed preflop index response');
+  return body;
+}
+
+/** One preflop range set document (all 16,432 classes with frequencies). */
+export async function fetchPreflopSet(id: string): Promise<PreflopSetDoc> {
+  const body = await requestJson(`/api/preflop/sets/${encodeURIComponent(id)}`);
+  if (!isPreflopSetDoc(body)) throw new ApiError(0, 'Malformed preflop set response');
+  return body;
+}
+
+/**
+ * The per-class feature/equity table. Throws ApiError(404) until the
+ * engine's build-ranges tool has generated it on a host — callers treat
+ * that as "features unavailable", not as a hard failure.
+ */
+export async function fetchPreflopClassTable(): Promise<PreflopClassTable> {
+  const body = await requestJson('/api/preflop/class-table');
+  if (!isPreflopClassTable(body)) throw new ApiError(0, 'Malformed class table response');
+  return body;
 }
 
 /** Load the bundled sample river solve (always available, no API needed). */

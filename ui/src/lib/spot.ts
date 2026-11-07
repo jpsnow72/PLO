@@ -3,6 +3,8 @@
 // Engine spot format (see plo-solve json.rs):
 //   board: "As Ks Qs 7d" (turn) or "As Ks Qs 7d 2c" (river)
 //   oop_range / ip_range: ["Ts 9s 3c 4c:1.0", ...] (":weight" optional)
+//   ...or oop_range_set / ip_range_set: a preflop set id the API expands
+//   server-side (RFI sets -> raise range, vs-RFI sets -> call range)
 //   pot, stacks: numbers
 //   river spots: bet_sizes / raise_sizes / max_raises
 //   turn spots:  turn_bet_sizes / river_bet_sizes / *_raise_sizes /
@@ -43,6 +45,13 @@ export interface WizardForm {
   board: string;
   oopRange: string;
   ipRange: string;
+  /**
+   * Preflop range-set loading: when a side carries a set id, the side is
+   * in "set mode" — buildSpot emits `<side>_range_set` and the API expands
+   * the set server-side; the manual textarea text is kept but ignored.
+   */
+  oopRangeSet: string | null;
+  ipRangeSet: string | null;
   pot: number;
   stacks: number;
   flop: StreetSizes;
@@ -61,6 +70,8 @@ export function defaultWizardForm(): WizardForm {
     board: 'As Ks Qs 7d 2c',
     oopRange: 'Ts 9s 3c 4c, Jd Td 8h 9h, 3d 4d 5c 6c',
     ipRange: '8s 6s 3h 4h, Jh Th 8d 9d, 3s 4s 5d 6d:0.5',
+    oopRangeSet: null,
+    ipRangeSet: null,
     pot: 100,
     stacks: 100,
     flop: emptyStreetSizes([0.5, 0.75]),
@@ -131,8 +142,12 @@ export function buildSpot(form: WizardForm): SpotBuild {
   const boardSet = new Set(boardCards.map((c) => c.label));
   if (boardSet.size !== boardCards.length) errors.push('Board has duplicate cards');
 
-  const oop = parseRangeText(form.oopRange);
-  const ip = parseRangeText(form.ipRange);
+  // A side in set mode skips manual parsing entirely: the API expands the
+  // named preflop set server-side (and validates board conflicts itself
+  // through the engine's card removal).
+  const emptyRange: { entries: RangeEntry[]; errors: string[] } = { entries: [], errors: [] };
+  const oop = form.oopRangeSet ? emptyRange : parseRangeText(form.oopRange);
+  const ip = form.ipRangeSet ? emptyRange : parseRangeText(form.ipRange);
   errors.push(...oop.errors.map((e) => `OOP range: ${e}`));
   errors.push(...ip.errors.map((e) => `IP range: ${e}`));
   for (const entry of [...oop.entries, ...ip.entries]) {
@@ -150,13 +165,21 @@ export function buildSpot(form: WizardForm): SpotBuild {
 
   const base: Record<string, unknown> = {
     board: boardCards.map((c) => c.label).join(' '),
-    oop_range: oop.entries.map((e) => `${e.combo}:${e.weight}`),
-    ip_range: ip.entries.map((e) => `${e.combo}:${e.weight}`),
     pot: form.pot,
     stacks: form.stacks,
     max_iterations: form.maxIterations,
     target_exploitability_pct: TIER_TARGET_PCT[form.tier],
   };
+  if (form.oopRangeSet) {
+    base.oop_range_set = form.oopRangeSet;
+  } else {
+    base.oop_range = oop.entries.map((e) => `${e.combo}:${e.weight}`);
+  }
+  if (form.ipRangeSet) {
+    base.ip_range_set = form.ipRangeSet;
+  } else {
+    base.ip_range = ip.entries.map((e) => `${e.combo}:${e.weight}`);
+  }
 
   if (street === 'river') {
     base.bet_sizes = form.river.betSizes;

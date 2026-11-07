@@ -2,11 +2,11 @@ import { NavLink, Route, Routes } from 'react-router-dom';
 import { DashboardPage } from './pages/Dashboard';
 import { ExplorerPage } from './pages/Explorer';
 import { LoginPage } from './pages/Login';
+import { PreflopPage } from './pages/Preflop';
 import { SolverPage } from './pages/Solver';
 import { SpotPickerPage } from './pages/SpotPicker';
 import {
   HeuristicsPage,
-  PreflopPage,
   QuickReviewPage,
   QuizPage,
   SettingsPage,
