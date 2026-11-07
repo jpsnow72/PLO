@@ -15,3 +15,7 @@ path = "src/bin/solve-turn.rs"
 [dependencies]
 plo-cards = { path = "../plo-cards" }
 plo-eval = { path = "../plo-eval" }
+
+[[bin]]
+name = "measure-flop"
+path = "src/bin/measure-flop.rs"
