@@ -27,6 +27,13 @@ Configuration (environment variables):
 | `ADMIN_PASSWORD_HASH` | *(unset — auth DISABLED, see below)*      | scrypt hash of the admin password, from `node hash-password.mjs` |
 | `ALLOWED_ORIGIN`      | *(unset)*                                 | Exact origin allowed to make credentialed cross-origin calls (e.g. the Pages site origin) |
 | `INGEST_MAX_MB`       | `512`                                     | Max body size for `POST /api/library/ingest` (flop trees are big) |
+| `CATALOG_PATH`        | `../data/library/spot-catalog.json`       | Spot catalog for `GET /api/catalog` and the queue                 |
+| `QUEUE_ENABLED`       | *(unset — queue worker off)*              | `1` starts the catalog queue worker + upload retries              |
+| `QUEUE_RANGE_MODE`    | `top`                                     | Catalog range-cap mode: `top` or `sample`                         |
+| `QUEUE_RANGE_SEED`    | *(unset)*                                 | Optional salt for per-spot sampling seeds                         |
+| `QUEUE_MAX_ITERATIONS`| `2000000`                                 | Iteration ceiling for catalog solves                              |
+| `QUEUE_SMOKE_MAX_ITERATIONS` | *(unset)*                          | Smoke override for the above (coordinator verification)           |
+| `QUEUE_UPLOAD_RETRY_MIN` | `15`                                   | Minutes between upload retries for done-but-not-uploaded items (`0` disables the timer; startup retry still runs) |
 
 ## Endpoints
 
@@ -42,6 +49,10 @@ Configuration (environment variables):
 | GET    | `/api/preflop/index`    | The preflop range-set index (`data/preflop/index.json`), verbatim.        |
 | GET    | `/api/preflop/sets/:id` | One range set file, verbatim. The id must match an index entry (the served path comes from the index, never from the request), so there is no path traversal. |
 | GET    | `/api/preflop/class-table` | The per-class feature/equity table (`data/preflop/class-table.json`), verbatim. `404` with an explanatory error until `build-ranges` has generated it on a host. |
+| GET    | `/api/catalog`          | The spot catalog, each entry annotated with `library_status` (`present`/`absent` in the local library, by spot id) and `queue_status` / `queue_upload_status`. |
+| GET    | `/api/queue`            | `{ items, concurrency, paused, enabled }` — the persistent catalog queue. |
+| POST   | `/api/queue`            | **[admin]** Body = `{ spot_ids: [...] }`. Unknown ids → `400` listing them. New spots are appended; already queued/running/done ids are reported in `skipped`, not duplicated; re-adding a `failed` spot resets it to `queued` (the retry path). |
+| POST   | `/api/queue/control`    | **[admin]** Body = `{ action: "pause" \| "resume" \| "remove", spot_id? }` or `{ action: "set_concurrency", value: 1..8 }`. Removing a `running` item is refused (`409`). |
 | POST   | `/api/auth/login`       | Body = `{ password }`. On success: `200 { admin: true }` + `plo_admin` session cookie. Wrong password: generic `401` after a small constant delay. |
 | POST   | `/api/auth/logout`      | Deletes the session (if any) and clears the cookie. Always `200`.          |
 | GET    | `/api/auth/me`          | `200 { admin: true, auth_enabled }` with a valid session (or when auth is disabled), else `401`. |
@@ -78,10 +89,33 @@ continuing range is well-defined are supported:
 Any other context (`sb_play`, `three_bet`, …) is rejected with `422` and a
 message explaining the restriction. An unknown set id is a `400`.
 
-Jobs run **one at a time** (solves are CPU-bound). A finished job's result
-is copied into the library, so the library survives restarts; the job
-registry itself is in-memory (plus a `job.json` audit file per job under
-`DATA_DIR/jobs/<id>/`).
+**Capped expansion (RUN-1):** adding any of `<side>_range_cap` (positive
+integer), `<side>_range_mode` (`top` | `sample`), `<side>_range_seed`,
+`<side>_range_action`, `<side>_range_base_set` or
+`<side>_range_base_action` switches that side to the capped expander
+(`api/ranges-expand.mjs`):
+
+- `top` keeps the highest-weight combos (deterministic tie-break);
+  `sample` draws a deterministic seeded weighted sample **without
+  replacement** across the full weighted combo list — the same
+  spot/mode/seed yields the same range on any machine.
+- `<side>_range_action` names the set slice explicitly, which is how
+  `sb_play` (raise), `vs_rfi` three_bet slices and `vs_three_bet` (call)
+  sides are loaded deliberately instead of by the v1 context rule.
+- `<side>_range_base_set` (with `<side>_range_base_action`, default
+  `raise`) makes combo weights the **product** base-freq × action-freq —
+  required for the v1.1 continuation sets, whose frequencies are
+  conditional on opening.
+- When a cap removes combos, the kept weights are renormalised to the
+  full action mass (relative frequencies unchanged); the job record's
+  `range_expansion` summary stores kept/total combos and the exact
+  `coverage_pct` (kept weight ÷ total weight, the catalog's formula).
+
+Jobs run through a small internal scheduler: **one at a time** normally
+(solves are CPU-bound), or up to the queue's `concurrency` at once when
+`QUEUE_ENABLED=1`. A finished job's result is copied into the library, so
+the library survives restarts; the job registry itself is in-memory
+(plus a `job.json` audit file per job under `DATA_DIR/jobs/<id>/`).
 
 Spot JSON format is the engine's own — see `engine/crates/plo-solve/examples/sample_spot.json`
 and `engine/crates/plo-solve/src/json.rs` (`parse_spot_json` / `parse_turn_spot_json` /
@@ -174,6 +208,54 @@ same-site is a separate deployment step; until then the deployed page
 runs in its public read/sample mode. The local runner is unaffected: it
 logs in against the API it pushes to (its local API, or the VPS API over
 the private network) where the cookie is same-site/first-party.
+
+## Local runner queue
+
+The runner is this same service, started on Justin's PC with
+`QUEUE_ENABLED=1`. It works the persistent queue of catalog spots:
+
+```bash
+QUEUE_ENABLED=1 node server.mjs
+```
+
+- **Picking work:** `POST /api/queue { spot_ids }` (admin) appends spots
+  from `GET /api/catalog`. The worker translates each catalog entry into
+  an engine spot (ranges capped per the entry, sizes from its menu, tier
+  → target Nash %) and submits it through the same job path as
+  `POST /api/solves`. Up to `concurrency` spots (1–8, default 1) solve at
+  once; `POST /api/queue/control` pauses/resumes/removes and sets it.
+- **Persistence:** every queue transition is written to
+  `DATA_DIR/queue.json` (temp file + rename, so a crash mid-write cannot
+  corrupt it).
+- **Crash-recovery contract:** an item is `done` only when its result
+  exists in the **local** library. If the machine freezes, sleeps or the
+  server is killed, items that were `running` revert to `queued` on the
+  next start and solve again from scratch — a partial solve is never
+  ingested anywhere. `done` items stay done forever.
+- **Auto-upload:** when a `runner-config.json` exists (below), each done
+  item is pushed to the central library's ingest endpoint. Ingest is
+  idempotent by content hash, so retries are safe. Failed uploads record
+  the reason on the item and retry on server start and every
+  `QUEUE_UPLOAD_RETRY_MIN` minutes.
+- **Offline contract:** with **no** `runner-config.json`, uploads are
+  `skipped` and the queue still completes everything locally — offline
+  is a first-class state, not an error. Logging in later (below) makes
+  the retry loop pick the skipped items up.
+
+### Runner login (central upload credentials)
+
+```bash
+node api/runner-login.mjs --central http://<central-host>:8787
+# prompts for the central admin password (no echo on a TTY)
+```
+
+This POSTs to the central server's `/api/auth/login` and stores
+`{ central_url, session_cookie }` in `DATA_DIR/runner-config.json`
+(`DATA_DIR` from `--data-dir`, the env var, or `./data`). The file holds
+a **live session cookie — treat it like a password** (`chmod 600` it on
+POSIX; sessions expire after 30 days, then re-run the login). A `401`
+from the central ingest means the session died: the item records that,
+and re-running the login + the retry loop recovers it.
 
 ## Security note
 

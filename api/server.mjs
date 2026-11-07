@@ -7,6 +7,10 @@
 //   GET  /api/library           finished solves in the data dir
 //   GET  /api/library/:id       one library solve JSON
 //   POST /api/library/ingest    finished solve + spot metadata -> library [admin]
+//   GET  /api/catalog           spot catalog + library/queue status per spot
+//   GET  /api/queue             queue items + concurrency + paused
+//   POST /api/queue             enqueue catalog spots [admin]
+//   POST /api/queue/control     pause/resume/remove/set_concurrency [admin]
 //   GET  /api/preflop/index     preflop range-set index (data/preflop/index.json)
 //   GET  /api/preflop/sets/:id  one preflop range set (id must be in the index)
 //   GET  /api/preflop/class-table  per-class feature/equity table
@@ -25,8 +29,16 @@
 // A solve submission may name a preflop range set per side
 // (`oop_range_set` / `ip_range_set`, a set id from the preflop index) in
 // place of the raw `oop_range` / `ip_range` arrays. The server expands the
-// set into per-combo engine range entries (see expandRangeSet below) and
-// records the set ids on the job.
+// set into per-combo engine range entries (ranges-expand.mjs) and records
+// the set ids on the job. Per-side `*_range_cap` / `*_range_mode` /
+// `*_range_seed` / `*_range_action` / `*_range_base_set` fields switch a
+// side to the capped expansion (top/sample, optional product base).
+//
+// LOCAL RUNNER (RUN-1): with QUEUE_ENABLED=1 the server also works the
+// persistent catalog queue (DATA_DIR/queue.json): queued spots are
+// translated to engine spots, solved through the same job path, and
+// uploaded to the central library (DATA_DIR/runner-config.json, written
+// by runner-login.mjs). See README.md "Local runner queue".
 //
 // AUTH: every WRITE endpoint ([admin] above) requires an admin session
 // when ADMIN_PASSWORD_HASH is set (see auth.mjs and README.md). When it
@@ -49,6 +61,12 @@ import {
   sessionCookieValue,
   verifyPassword,
 } from './auth.mjs';
+import {
+  RangeExpandError,
+  createRangeExpander,
+  fnv1a32,
+} from './ranges-expand.mjs';
+import { attemptUpload, loadRunnerConfig } from './uploader.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
@@ -62,6 +80,19 @@ const MAX_BODY_BYTES = 4 * 1024 * 1024;
 const JOB_TIMEOUT_MS = Number(process.env.JOB_TIMEOUT_MS ?? 30 * 60 * 1000);
 const INGEST_MAX_BYTES = Number(process.env.INGEST_MAX_MB ?? 512) * 1024 * 1024;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? '';
+
+// --- Local runner / catalog queue (RUN-1) ----------------------------------
+const CATALOG_PATH =
+  process.env.CATALOG_PATH ?? path.resolve(HERE, '..', 'data', 'library', 'spot-catalog.json');
+const QUEUE_ENABLED = process.env.QUEUE_ENABLED === '1';
+const QUEUE_RANGE_MODE = process.env.QUEUE_RANGE_MODE ?? 'top';
+const QUEUE_RANGE_SEED = process.env.QUEUE_RANGE_SEED ?? '';
+const QUEUE_MAX_ITERATIONS = Number(process.env.QUEUE_MAX_ITERATIONS ?? 2_000_000);
+const QUEUE_SMOKE_MAX_ITERATIONS = process.env.QUEUE_SMOKE_MAX_ITERATIONS
+  ? Number(process.env.QUEUE_SMOKE_MAX_ITERATIONS)
+  : null;
+const QUEUE_UPLOAD_RETRY_MIN = Number(process.env.QUEUE_UPLOAD_RETRY_MIN ?? 15);
+const QUEUE_TICK_MS = 1000;
 
 const JOBS_DIR = path.join(DATA_DIR, 'jobs');
 const LIBRARY_DIR = path.join(DATA_DIR, 'library');
@@ -95,7 +126,64 @@ async function isAdminRequest(req) {
 
 /** @type {Map<string, object>} */
 const jobs = new Map();
-let jobChain = Promise.resolve();
+
+// Internal job scheduler. Historically solves ran strictly one at a time
+// (a promise chain); the catalog queue needs up to `concurrency` engine
+// processes at once on the runner PC, so submissions go through a small
+// pending list instead. The concurrency limit is 1 whenever the queue is
+// disabled (the historical behaviour for direct POST /api/solves use),
+// and the queue's configured concurrency when QUEUE_ENABLED=1 — direct
+// submissions share the same pool, so the machine is never oversubscribed
+// beyond the admin's setting.
+/** @type {{job: object, spot: object}[]} */
+const pendingJobs = [];
+let activeJobCount = 0;
+
+function jobConcurrencyLimit() {
+  return QUEUE_ENABLED ? Math.max(1, queueState.concurrency) : 1;
+}
+
+function pumpJobs() {
+  while (activeJobCount < jobConcurrencyLimit() && pendingJobs.length > 0) {
+    const next = pendingJobs.shift();
+    activeJobCount += 1;
+    runJob(next.job, next.spot)
+      .catch(() => undefined)
+      .finally(() => {
+        activeJobCount -= 1;
+        pumpJobs();
+      });
+  }
+}
+
+/**
+ * Create a job record for an engine spot and schedule it. Shared by
+ * POST /api/solves and the catalog queue worker. `meta` may carry
+ * { name, oop_range_set, ip_range_set, spot_id, range_expansion }.
+ */
+async function submitJob(spot, meta = {}) {
+  const job = {
+    id: randomUUID().slice(0, 8),
+    status: 'queued',
+    kind: kindForBoard(spot.board),
+    board: spot.board,
+    name: meta.name ?? `Custom solve · ${spot.board}`,
+    oop_range_set: meta.oop_range_set ?? null,
+    ip_range_set: meta.ip_range_set ?? null,
+    spot_id: meta.spot_id ?? null,
+    range_expansion: meta.range_expansion ?? null,
+    created_at: nowIso(),
+    finished_at: null,
+    nash_distance_pct: null,
+    iterations: null,
+    error: null,
+  };
+  jobs.set(job.id, job);
+  await writeJobFile(job);
+  pendingJobs.push({ job, spot });
+  pumpJobs();
+  return job;
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -190,6 +278,8 @@ async function runJob(job, spot) {
           board: job.board,
           oop_range_set: job.oop_range_set ?? null,
           ip_range_set: job.ip_range_set ?? null,
+          spot_id: job.spot_id ?? null,
+          range_expansion: job.range_expansion ?? null,
           nash_distance_pct: job.nash_distance_pct,
           iterations: job.iterations,
           finished_at: job.finished_at,
@@ -237,6 +327,7 @@ async function listLibrary() {
         board: result.board ?? '',
         oop_range_set: meta.oop_range_set ?? null,
         ip_range_set: meta.ip_range_set ?? null,
+        spot_id: meta.spot_id ?? meta.id ?? null,
         nash_distance_pct:
           result?.exploitability?.nash_distance_pct ?? meta.nash_distance_pct ?? null,
         iterations: result?.iterations ?? meta.iterations ?? null,
@@ -252,67 +343,11 @@ async function listLibrary() {
 }
 
 // ---------------------------------------------------------------------------
-// Preflop range sets (data/preflop/)
-//
-// A range set document maps canonical hand-class keys (a representative
-// combo whose suits are labelled by first occurrence, e.g. "As Ah Ks Kh")
-// to per-action frequencies. The concrete combos of a class are exactly
-// the distinct suit-permutation images of the representative: apply all
-// 24 permutations of the four suits, normalise each image by sorting its
-// cards (rank descending, then suit in s/h/d/c order) and dedupe. The
-// size of that set is the class multiplicity — summing it over a real set
-// file reproduces the set's combo-weighted action totals exactly (e.g.
-// the 6-max BTN RFI set yields 270,725 combos and 49.0% raise).
+// Preflop range sets (data/preflop/) — expansion lives in
+// ranges-expand.mjs (see its header for the orbit/coverage math). The
+// wrappers below keep the ADM-1 call sites and error shape: expansion
+// failures become HttpError with the expander's status.
 // ---------------------------------------------------------------------------
-
-const SUIT_ORDER = ['s', 'h', 'd', 'c'];
-const RANK_VALUE = {
-  A: 14, K: 13, Q: 12, J: 11, T: 10, 9: 9, 8: 8, 7: 7, 6: 6, 5: 5, 4: 4, 3: 3, 2: 2,
-};
-
-function suitPermutations() {
-  const perms = [];
-  const used = [false, false, false, false];
-  const current = [];
-  const walk = () => {
-    if (current.length === 4) {
-      perms.push([...current]);
-      return;
-    }
-    for (let i = 0; i < 4; i += 1) {
-      if (used[i]) continue;
-      used[i] = true;
-      current.push(SUIT_ORDER[i]);
-      walk();
-      current.pop();
-      used[i] = false;
-    }
-  };
-  walk();
-  return perms;
-}
-const SUIT_PERMS = suitPermutations();
-
-/** All concrete combos of the class named by a canonical representative key. */
-function classCombos(key) {
-  const cards = key.split(' ').map((tok) => ({ rank: tok[0], suit: tok[1] }));
-  const seen = new Set();
-  for (const perm of SUIT_PERMS) {
-    const mapping = { s: perm[0], h: perm[1], d: perm[2], c: perm[3] };
-    const mapped = cards.map((c) => ({ rank: c.rank, suit: mapping[c.suit] }));
-    mapped.sort(
-      (a, b) =>
-        RANK_VALUE[b.rank] - RANK_VALUE[a.rank] ||
-        SUIT_ORDER.indexOf(a.suit) - SUIT_ORDER.indexOf(b.suit),
-    );
-    seen.add(mapped.map((c) => `${c.rank}${c.suit}`).join(' '));
-  }
-  return [...seen];
-}
-
-function formatWeight(freq) {
-  return String(Number(freq.toFixed(6)));
-}
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -321,106 +356,453 @@ class HttpError extends Error {
   }
 }
 
-/** @type {object | null} */
-let preflopIndexCache = null;
-/** @type {Map<string, object>} */
-const preflopSetCache = new Map();
+const rangeExpander = createRangeExpander(PREFLOP_DIR);
+
+function asHttpError(err) {
+  if (err instanceof RangeExpandError) return new HttpError(err.status, err.message);
+  return err;
+}
 
 async function loadPreflopIndex() {
-  if (preflopIndexCache) return preflopIndexCache;
-  let parsed;
   try {
-    parsed = JSON.parse(await fs.readFile(path.join(PREFLOP_DIR, 'index.json'), 'utf8'));
-  } catch {
-    throw new HttpError(500, `Preflop index not readable at ${path.join(PREFLOP_DIR, 'index.json')}`);
+    return await rangeExpander.loadIndex();
+  } catch (err) {
+    throw asHttpError(err);
   }
-  if (!parsed || !Array.isArray(parsed.rangesets)) {
-    throw new HttpError(500, 'Preflop index is malformed (no rangesets array)');
-  }
-  preflopIndexCache = parsed;
-  return parsed;
 }
 
 async function findPreflopSetEntry(id) {
-  const index = await loadPreflopIndex();
-  return index.rangesets.find((entry) => entry && entry.id === id) ?? null;
+  try {
+    return await rangeExpander.findSetEntry(id);
+  } catch (err) {
+    throw asHttpError(err);
+  }
 }
 
 /** Resolve an index entry's path inside PREFLOP_DIR (never user-controlled). */
 function preflopEntryPath(entry) {
-  const resolved = path.resolve(PREFLOP_DIR, String(entry.path ?? ''));
-  if (!resolved.startsWith(PREFLOP_DIR + path.sep)) return null;
-  return resolved;
-}
-
-async function loadPreflopSet(id) {
-  if (preflopSetCache.has(id)) return preflopSetCache.get(id);
-  const entry = await findPreflopSetEntry(id);
-  if (!entry) {
-    throw new HttpError(400, `Unknown preflop range set id "${id}" (not in the preflop index)`);
-  }
-  const file = preflopEntryPath(entry);
-  if (!file) throw new HttpError(500, `Preflop index entry for "${id}" has an unsafe path`);
-  let doc;
-  try {
-    doc = JSON.parse(await fs.readFile(file, 'utf8'));
-  } catch {
-    throw new HttpError(500, `Preflop range set "${id}" is not readable at ${file}`);
-  }
-  if (!doc || typeof doc.hands !== 'object' || doc.hands === null) {
-    throw new HttpError(500, `Preflop range set "${id}" is malformed (no hands object)`);
-  }
-  preflopSetCache.set(id, doc);
-  return doc;
+  return rangeExpander.entryPath(entry);
 }
 
 /**
- * The action whose frequencies define the continuing range when a set is
- * loaded into a solve. v1 supports exactly the contexts where that range
- * is well-defined:
- *   - `rfi` sets:    the opening range = hands' `raise` frequencies.
- *   - `vs_rfi` sets: the continuing range vs an open = hands' `call`
- *                    frequencies (the 3-bet slice is a different, narrower
- *                    range and is NOT silently substituted).
- * Any other context (sb_play, three_bet, ...) is rejected with 422.
- */
-function solveActionForSet(doc) {
-  if (doc.context === 'rfi') return 'raise';
-  if (doc.context === 'vs_rfi') return 'call';
-  return null;
-}
-
-/**
- * Expand a range set into engine range entries ("As Ah Kd Qc:0.5", ...).
- * Every concrete combo of a class gets the class's frequency for the
- * set's solve action; classes with zero frequency for that action are
- * omitted. Returns { range, action, combos }.
+ * Expand a range set into engine range entries (the historical uncapped
+ * behaviour). Returns { range, action, combos }.
  */
 async function expandRangeSet(id) {
-  const doc = await loadPreflopSet(id);
-  const action = solveActionForSet(doc);
-  if (action === null) {
-    throw new HttpError(
-      422,
-      `Preflop range set "${id}" has context "${doc.context}", which cannot feed a solve in v1. ` +
-        'Only RFI sets (their raise range) and vs-RFI sets (their call range) have a well-defined continuing range.',
-    );
+  try {
+    return await rangeExpander.expandRangeSet(id);
+  } catch (err) {
+    throw asHttpError(err);
   }
-  const range = [];
-  for (const [key, actions] of Object.entries(doc.hands)) {
-    const freq = actions && typeof actions === 'object' ? actions[action] : undefined;
-    if (typeof freq !== 'number' || !(freq > 0)) continue;
-    const weight = formatWeight(freq);
-    for (const combo of classCombos(key)) {
-      range.push(`${combo}:${weight}`);
-    }
-  }
-  if (range.length === 0) {
-    throw new HttpError(422, `Preflop range set "${id}" expands to an empty ${action} range`);
-  }
-  return { range, action, combos: range.length };
 }
 
+/**
+ * Capped expansion (RUN-1): see ranges-expand.mjs. Returns the expander's
+ * full result incl. kept_combos / total_combos / coverage_pct / mode /
+ * seed / base_set.
+ */
+async function expandRangeSetCapped(opts) {
+  try {
+    return await rangeExpander.expandRangeSetCapped(opts);
+  } catch (err) {
+    throw asHttpError(err);
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Catalog + persistent solve queue (RUN-1)
+//
+// The catalog (data/library/spot-catalog.json) lists the ~300 planned
+// library spots. The queue is the runner's work list: Justin picks spots,
+// they solve consecutively (up to `concurrency` at once) through the same
+// internal job path as POST /api/solves, and each finished solve — which
+// by then exists in the LOCAL library — is uploaded to the central
+// library (uploader.mjs).
+//
+// CRASH CONTRACT: queue state persists to DATA_DIR/queue.json (atomic
+// temp + rename) on EVERY transition. An item is marked done only after
+// its job finished AND the job's library entry exists on disk. On server
+// start, items left "running" revert to "queued" (their engine process
+// died with the server; partial results are never ingested, and the job
+// registry is in-memory so the interrupted job is simply gone). "done"
+// items stay done. Uploads are idempotent (central ingest dedupes by
+// content hash) and retry on start + on a timer.
+// ---------------------------------------------------------------------------
+
+/** @type {object | null} */
+let catalogCache = null;
+
+async function loadCatalog() {
+  if (catalogCache) return catalogCache;
+  let parsed;
+  try {
+    parsed = JSON.parse(await fs.readFile(CATALOG_PATH, 'utf8'));
+  } catch {
+    throw new HttpError(500, `Spot catalog not readable at ${CATALOG_PATH}`);
+  }
+  if (!parsed || !Array.isArray(parsed.entries)) {
+    throw new HttpError(500, 'Spot catalog is malformed (no entries array)');
+  }
+  catalogCache = parsed;
+  return parsed;
+}
+
+async function findCatalogEntry(spotId) {
+  const catalog = await loadCatalog();
+  return catalog.entries.find((entry) => entry && entry.id === spotId) ?? null;
+}
+
+// --- Queue state -----------------------------------------------------------
+
+const QUEUE_PATH = path.join(DATA_DIR, 'queue.json');
+
+/** @type {{items: object[], concurrency: number, paused: boolean}} */
+const queueState = { items: [], concurrency: 1, paused: false };
+let queueSaveChain = Promise.resolve();
+
+/** Persist queue state atomically; saves are serialised through a chain. */
+function saveQueue() {
+  const snapshot = JSON.stringify(
+    {
+      items: queueState.items,
+      concurrency: queueState.concurrency,
+      paused: queueState.paused,
+    },
+    null,
+    2,
+  );
+  queueSaveChain = queueSaveChain
+    .then(async () => {
+      await fs.mkdir(DATA_DIR, { recursive: true });
+      const tmp = `${QUEUE_PATH}.tmp-${process.pid}`;
+      await fs.writeFile(tmp, snapshot);
+      await fs.rename(tmp, QUEUE_PATH);
+    })
+    .catch((err) => {
+      console.error(`queue: could not persist state: ${err instanceof Error ? err.message : err}`);
+    });
+  return queueSaveChain;
+}
+
+/**
+ * Load persisted queue state at startup and apply the crash contract:
+ * "running" items revert to "queued"; everything else is kept as-is.
+ * A missing/corrupt file starts an empty queue (corruption is logged —
+ * the queue is a work list, not the library; done solves also exist as
+ * library entries and re-adding a spot is reported, not duplicated).
+ */
+async function loadQueue() {
+  let parsed = null;
+  try {
+    parsed = JSON.parse(await fs.readFile(QUEUE_PATH, 'utf8'));
+  } catch {
+    parsed = null;
+  }
+  if (parsed && Array.isArray(parsed.items)) {
+    queueState.items = parsed.items.filter(
+      (item) => item && typeof item.spot_id === 'string' && typeof item.state === 'string',
+    );
+    if (Number.isInteger(parsed.concurrency)) {
+      queueState.concurrency = Math.min(8, Math.max(1, parsed.concurrency));
+    }
+    queueState.paused = parsed.paused === true;
+  }
+  let recovered = 0;
+  for (const item of queueState.items) {
+    if (item.state === 'running') {
+      item.state = 'queued';
+      item.job_id = null;
+      item.started_at = null;
+      item.error = null;
+      recovered += 1;
+    }
+  }
+  if (recovered > 0) {
+    console.log(`queue: recovered ${recovered} interrupted item(s) back to queued`);
+    await saveQueue();
+  }
+  return queueState;
+}
+
+function queueItemFor(spotId) {
+  return queueState.items.find((item) => item.spot_id === spotId) ?? null;
+}
+
+// --- Catalog -> engine spot translation ------------------------------------
+
+/**
+ * The RFI base set for a 3-bet continuation side. The v1.1 continuation
+ * sets (context vs_three_bet) store frequencies CONDITIONAL on opening,
+ * so a combo's postflop weight is base-RFI-freq x conditional-freq (the
+ * catalog generator's coverage_product convention). The catalog's three
+ * pairings, as generated:
+ *   constructed-v1.1-6max-btn-vs-bb-3bet -> constructed-v1-6max-btn-rfi
+ *   constructed-v1.1-6max-btn-vs-sb-3bet -> constructed-v1-6max-btn-rfi
+ *   constructed-v1.1-6max-co-vs-btn-3bet -> constructed-v1-6max-co-rfi
+ * derived generically: same table size, the continuation set's own
+ * position, its `rfi` set, action `raise`.
+ */
+async function continuationBase(setId) {
+  const doc = await rangeExpander.loadSet(setId);
+  if (doc.context !== 'vs_three_bet') return null;
+  const position = String(doc.position ?? '').toLowerCase();
+  const baseSetId = `constructed-v1-${doc.table_size}-${position}-rfi`;
+  return { baseSetId, baseAction: 'raise' };
+}
+
+/** Deterministic per-spot sampling seed: FNV-1a of the spot id (+ salt). */
+function spotSeed(spotId) {
+  return fnv1a32(QUEUE_RANGE_SEED ? `${QUEUE_RANGE_SEED}:${spotId}` : spotId);
+}
+
+/** Queue iteration budget: smoke override wins over the generous default. */
+function queueMaxIterations() {
+  return QUEUE_SMOKE_MAX_ITERATIONS ?? QUEUE_MAX_ITERATIONS;
+}
+
+/**
+ * Translate one catalog entry into an engine spot + job metadata.
+ *
+ * Mapping (see RUN1-NOTES.md for the table):
+ * - board / pot / stacks come straight from the entry (its pot_chips /
+ *   stacks_chips are already the root state after its declared `line`).
+ * - Ranges: expandRangeSetCapped per side with the entry's set + action +
+ *   cap_per_side; continuation sides get their RFI product base; mode
+ *   from QUEUE_RANGE_MODE; seed = spotSeed(entry.id).
+ * - Sizes: the entry's size_menu carries per-street menus; each street's
+ *   menu is written to the engine's `<street>_bet_sizes` /
+ *   `<street>_raise_sizes` / `<street>_max_raises` (= 2) /
+ *   `<street>_include_all_in` fields, and the ROOT street's menu also to
+ *   the generic bet_sizes / raise_sizes / max_raises defaults the
+ *   per-street parsers fall back to.
+ * - Tier: balanced -> target 0.3%, precise -> target 0.1%.
+ */
+async function translateCatalogEntry(entry) {
+  if (entry.status !== 'ready') {
+    throw new HttpError(
+      422,
+      `Catalog spot "${entry.id}" is not ready (status "${entry.status}"` +
+        (entry.status_reason ? `: ${entry.status_reason}` : '') +
+        ')',
+    );
+  }
+  const mode = QUEUE_RANGE_MODE;
+  const expansions = {};
+  const spot = {
+    board: entry.board,
+    pot: entry.pot_chips,
+    stacks: entry.stacks_chips,
+    max_iterations: queueMaxIterations(),
+    target_exploitability_pct: entry.tier === 'precise' ? 0.1 : 0.3,
+  };
+  for (const side of ['oop', 'ip']) {
+    const setId = entry[`${side}_set`];
+    const action = entry[`range_action_${side}`];
+    const base = await continuationBase(setId);
+    const expanded = await expandRangeSetCapped({
+      setId,
+      action,
+      cap: entry.cap_per_side,
+      mode,
+      seed: spotSeed(entry.id),
+      baseSetId: base?.baseSetId ?? null,
+      baseAction: base?.baseAction ?? 'raise',
+    });
+    spot[`${side}_range`] = expanded.range;
+    expansions[side] = {
+      set: setId,
+      action: expanded.action,
+      cap: entry.cap_per_side,
+      mode: expanded.mode,
+      seed: expanded.seed,
+      kept_combos: expanded.kept_combos,
+      total_combos: expanded.total_combos,
+      coverage_pct: expanded.coverage_pct,
+      base_set: expanded.base_set,
+      base_action: expanded.base_action,
+    };
+  }
+  const menu = entry.size_menu ?? {};
+  for (const street of ['flop', 'turn', 'river']) {
+    const streetMenu = menu[street];
+    if (!streetMenu) continue;
+    spot[`${street}_bet_sizes`] = streetMenu.bet_sizes;
+    spot[`${street}_raise_sizes`] = streetMenu.raise_sizes;
+    spot[`${street}_max_raises`] = 2;
+    spot[`${street}_include_all_in`] = streetMenu.include_all_in !== false;
+  }
+  const rootMenu = menu[entry.street];
+  if (rootMenu) {
+    spot.bet_sizes = rootMenu.bet_sizes;
+    spot.raise_sizes = rootMenu.raise_sizes;
+    spot.max_raises = 2;
+    spot.include_all_in = rootMenu.include_all_in !== false;
+  }
+  return {
+    spot,
+    meta: {
+      name: `Catalog · ${entry.id}`,
+      oop_range_set: entry.oop_set,
+      ip_range_set: entry.ip_set,
+      spot_id: entry.id,
+      range_expansion: expansions,
+    },
+  };
+}
+
+// --- Upload -----------------------------------------------------------------
+
+/**
+ * Attempt to upload one done item's result to the central library and
+ * record the outcome on the item. Never throws. Without a runner-config
+ * the item is "skipped" (offline mode is a first-class state).
+ */
+async function attemptItemUpload(item) {
+  const config = await loadRunnerConfig(DATA_DIR);
+  if (!config) {
+    if (item.upload_status !== 'skipped') {
+      item.upload_status = 'skipped';
+      item.upload_error = null;
+      await saveQueue();
+    }
+    return;
+  }
+  const entry = await findCatalogEntry(item.spot_id).catch(() => null);
+  if (!entry) {
+    item.upload_status = 'failed';
+    item.upload_error = 'Spot no longer present in the catalog; cannot build the ingest payload.';
+    await saveQueue();
+    return;
+  }
+  let result;
+  try {
+    result = JSON.parse(
+      await fs.readFile(path.join(JOBS_DIR, item.job_id, 'result.json'), 'utf8'),
+    );
+  } catch {
+    item.upload_status = 'failed';
+    item.upload_error = 'Job result file is missing locally; cannot upload.';
+    await saveQueue();
+    return;
+  }
+  const outcome = await attemptUpload({ config, spot: entry, result });
+  if (outcome.ok) {
+    item.upload_status = 'uploaded';
+    item.upload_error = null;
+    item.uploaded_at = nowIso();
+    item.upload_detail = outcome.status ?? null;
+  } else {
+    item.upload_status = 'failed';
+    item.upload_error = outcome.error;
+  }
+  await saveQueue();
+}
+
+/** Retry uploads for done items that are not yet uploaded. */
+async function retryPendingUploads() {
+  for (const item of queueState.items) {
+    if (item.state === 'done' && item.upload_status !== 'uploaded') {
+      await attemptItemUpload(item);
+    }
+  }
+}
+
+// --- Worker -------------------------------------------------------------------
+
+let queueTickRunning = false;
+
+/**
+ * One worker pass: settle running items whose jobs have finished, then
+ * start queued items up to the concurrency limit. Runs on a 1s timer
+ * when QUEUE_ENABLED=1 (and is kicked by queue mutations).
+ */
+async function queueTick() {
+  if (queueTickRunning) return;
+  queueTickRunning = true;
+  try {
+    // Settle: a queue item is done ONLY when its job is done AND the
+    // job's library entry exists (runJob writes it before returning).
+    for (const item of queueState.items) {
+      if (item.state !== 'running' || !item.job_id) continue;
+      const job = jobs.get(item.job_id);
+      if (!job) {
+        // The job registry is in-memory; a missing job here means the
+        // process restarted mid-solve (loadQueue already reverts those)
+        // or the job vanished — treat as interrupted, never as done.
+        item.state = 'queued';
+        item.job_id = null;
+        item.started_at = null;
+        await saveQueue();
+        continue;
+      }
+      if (job.status === 'done') {
+        let libraryExists = false;
+        try {
+          await fs.access(path.join(LIBRARY_DIR, `${job.id}.json`));
+          libraryExists = true;
+        } catch {
+          libraryExists = false;
+        }
+        if (!libraryExists) {
+          item.state = 'failed';
+          item.error = 'Job reported done but its library entry is missing; refusing to mark done.';
+          item.finished_at = nowIso();
+          await saveQueue();
+          continue;
+        }
+        item.state = 'done';
+        item.finished_at = nowIso();
+        item.nash_distance_pct = job.nash_distance_pct;
+        item.iterations = job.iterations;
+        item.error = null;
+        if (item.upload_status === 'uploaded') item.upload_status = 'pending';
+        await saveQueue();
+        await attemptItemUpload(item);
+      } else if (job.status === 'error') {
+        item.state = 'failed';
+        item.error = job.error ?? 'Engine job failed';
+        item.finished_at = nowIso();
+        await saveQueue();
+      }
+    }
+    // Start: fill free slots from the front of the queue.
+    if (!queueState.paused) {
+      let running = queueState.items.filter((item) => item.state === 'running').length;
+      for (const item of queueState.items) {
+        if (running >= queueState.concurrency) break;
+        if (item.state !== 'queued') continue;
+        const entry = await findCatalogEntry(item.spot_id);
+        if (!entry) {
+          item.state = 'failed';
+          item.error = 'Spot not found in the catalog.';
+          item.finished_at = nowIso();
+          await saveQueue();
+          continue;
+        }
+        try {
+          const { spot, meta } = await translateCatalogEntry(entry);
+          const job = await submitJob(spot, meta);
+          item.state = 'running';
+          item.job_id = job.id;
+          item.started_at = nowIso();
+          item.finished_at = null;
+          item.error = null;
+          item.upload_status = 'pending';
+          running += 1;
+          await saveQueue();
+        } catch (err) {
+          item.state = 'failed';
+          item.error = err instanceof Error ? err.message : String(err);
+          item.finished_at = nowIso();
+          await saveQueue();
+        }
+      }
+    }
+  } finally {
+    queueTickRunning = false;
+  }
+}
 /**
  * CORS headers for a response. Default: the historical wildcard (fine for
  * reads and same-origin use). When ALLOWED_ORIGIN is configured and the
@@ -606,11 +988,33 @@ const server = http.createServer(async (req, res) => {
       // preflop set id and replace the raw range array for that side. The
       // expansion happens here, server-side; the engine only ever sees
       // ordinary per-combo range entries.
+      //
+      // RUN-1 capped expansion: when any of `<side>_range_cap`,
+      // `<side>_range_mode`, `<side>_range_seed`, `<side>_range_action`,
+      // `<side>_range_base_set` or `<side>_range_base_action` is present,
+      // the side expands through expandRangeSetCapped (explicit actions
+      // allow sb_play / three_bet / vs_three_bet slices the uncapped v1
+      // path refuses); without them the historical uncapped v1 expansion
+      // runs unchanged. Either way the expansion summary is recorded on
+      // the job (range_expansion) and every helper field is stripped from
+      // the spot before it reaches the engine.
       const rangeSets = { oop: null, ip: null };
+      const rangeExpansion = { oop: null, ip: null };
       try {
         for (const side of ['oop', 'ip']) {
           const setId = spot[`${side}_range_set`];
-          if (setId === undefined || setId === null) continue;
+          const capFields = [
+            'range_cap',
+            'range_mode',
+            'range_seed',
+            'range_action',
+            'range_base_set',
+            'range_base_action',
+          ].map((f) => `${side}_${f}`);
+          if (setId === undefined || setId === null) {
+            for (const f of capFields) delete spot[f];
+            continue;
+          }
           if (typeof setId !== 'string' || setId.length === 0) {
             throw new HttpError(400, `${side}_range_set must be a preflop range set id string`);
           }
@@ -620,10 +1024,52 @@ const server = http.createServer(async (req, res) => {
               `Provide either ${side}_range or ${side}_range_set for the ${side.toUpperCase()} side, not both`,
             );
           }
-          const expanded = await expandRangeSet(setId);
-          spot[`${side}_range`] = expanded.range;
+          const useCapped = capFields.some((f) => spot[f] !== undefined && spot[f] !== null);
+          if (useCapped) {
+            const expanded = await expandRangeSetCapped({
+              setId,
+              action:
+                typeof spot[`${side}_range_action`] === 'string'
+                  ? spot[`${side}_range_action`]
+                  : null,
+              cap: spot[`${side}_range_cap`] ?? null,
+              mode: spot[`${side}_range_mode`] ?? 'top',
+              seed: spot[`${side}_range_seed`] ?? null,
+              baseSetId: spot[`${side}_range_base_set`] ?? null,
+              baseAction: spot[`${side}_range_base_action`] ?? 'raise',
+            });
+            spot[`${side}_range`] = expanded.range;
+            rangeExpansion[side] = {
+              set: setId,
+              action: expanded.action,
+              cap: spot[`${side}_range_cap`] ?? null,
+              mode: expanded.mode,
+              seed: expanded.seed,
+              kept_combos: expanded.kept_combos,
+              total_combos: expanded.total_combos,
+              coverage_pct: expanded.coverage_pct,
+              base_set: expanded.base_set,
+              base_action: expanded.base_action,
+            };
+          } else {
+            const expanded = await expandRangeSet(setId);
+            spot[`${side}_range`] = expanded.range;
+            rangeExpansion[side] = {
+              set: setId,
+              action: expanded.action,
+              cap: null,
+              mode: 'all',
+              seed: null,
+              kept_combos: expanded.combos,
+              total_combos: expanded.combos,
+              coverage_pct: 100,
+              base_set: null,
+              base_action: null,
+            };
+          }
           rangeSets[side] = setId;
           delete spot[`${side}_range_set`];
+          for (const f of capFields) delete spot[f];
         }
       } catch (err) {
         if (err instanceof HttpError) {
@@ -632,24 +1078,11 @@ const server = http.createServer(async (req, res) => {
         }
         throw err;
       }
-      const job = {
-        id: randomUUID().slice(0, 8),
-        status: 'queued',
-        kind,
-        board: spot.board,
-        name: `Custom solve · ${spot.board}`,
+      const job = await submitJob(spot, {
         oop_range_set: rangeSets.oop,
         ip_range_set: rangeSets.ip,
-        created_at: nowIso(),
-        finished_at: null,
-        nash_distance_pct: null,
-        iterations: null,
-        error: null,
-      };
-      jobs.set(job.id, job);
-      await writeJobFile(job);
-      // Serial queue: one solve at a time.
-      jobChain = jobChain.then(() => runJob(job, spot)).catch(() => undefined);
+        range_expansion: rangeExpansion.oop || rangeExpansion.ip ? rangeExpansion : null,
+      });
       sendJson(req, res, 202, publicJob(job));
       return;
     }
@@ -841,6 +1274,200 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // --- Spot catalog -----------------------------------------------------
+    // Public read: the catalog entries, each annotated with whether the
+    // spot is already in the LOCAL library (by spot id — job-produced
+    // entries carry their spot id in meta; ingested entries are filed
+    // under it) and its queue state when queued here.
+    if (req.method === 'GET' && url.pathname === '/api/catalog') {
+      try {
+        const catalog = await loadCatalog();
+        const library = await listLibrary();
+        const present = new Set();
+        for (const item of library) {
+          present.add(item.id);
+          if (item.spot_id) present.add(item.spot_id);
+        }
+        const entries = catalog.entries.map((entry) => {
+          const item = queueItemFor(entry.id);
+          return {
+            ...entry,
+            library_status: present.has(entry.id) ? 'present' : 'absent',
+            queue_status: item ? item.state : null,
+            queue_upload_status: item ? item.upload_status : null,
+          };
+        });
+        sendJson(req, res, 200, {
+          name: catalog.name ?? null,
+          schema_version: catalog.schema_version ?? null,
+          summary: catalog.summary ?? null,
+          entries,
+        });
+      } catch (err) {
+        if (err instanceof HttpError) {
+          sendJson(req, res, err.status, { error: err.message });
+          return;
+        }
+        throw err;
+      }
+      return;
+    }
+
+    // --- Solve queue --------------------------------------------------------
+    if (req.method === 'GET' && url.pathname === '/api/queue') {
+      sendJson(req, res, 200, {
+        items: queueState.items,
+        concurrency: queueState.concurrency,
+        paused: queueState.paused,
+        enabled: QUEUE_ENABLED,
+      });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/queue') {
+      if (!(await requireAdmin(req, res))) return;
+      const text = await readBody(req);
+      let body;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        sendJson(req, res, 400, { error: 'Body must be valid JSON: { spot_ids: [...] }.' });
+        return;
+      }
+      const spotIds = body && typeof body === 'object' ? body.spot_ids : undefined;
+      if (!Array.isArray(spotIds) || spotIds.some((id) => typeof id !== 'string')) {
+        sendJson(req, res, 400, { error: 'Body must carry spot_ids: an array of catalog spot id strings.' });
+        return;
+      }
+      let catalog;
+      try {
+        catalog = await loadCatalog();
+      } catch (err) {
+        if (err instanceof HttpError) {
+          sendJson(req, res, err.status, { error: err.message });
+          return;
+        }
+        throw err;
+      }
+      const known = new Set(catalog.entries.map((entry) => entry.id));
+      const unknown = [...new Set(spotIds.filter((id) => !known.has(id)))];
+      if (unknown.length > 0) {
+        sendJson(req, res, 400, {
+          error: `Unknown catalog spot id(s): ${unknown.join(', ')}`,
+          unknown,
+        });
+        return;
+      }
+      const added = [];
+      const skipped = [];
+      for (const spotId of new Set(spotIds)) {
+        const existing = queueItemFor(spotId);
+        if (existing && existing.state === 'failed') {
+          // Re-adding a failed spot is the retry path: reset it in place.
+          existing.state = 'queued';
+          existing.job_id = null;
+          existing.started_at = null;
+          existing.finished_at = null;
+          existing.error = null;
+          existing.upload_status = 'pending';
+          added.push(spotId);
+          continue;
+        }
+        if (existing) {
+          skipped.push({ spot_id: spotId, reason: `already ${existing.state}` });
+          continue;
+        }
+        queueState.items.push({
+          spot_id: spotId,
+          state: 'queued',
+          added_at: nowIso(),
+          started_at: null,
+          finished_at: null,
+          job_id: null,
+          upload_status: 'pending',
+          error: null,
+        });
+        added.push(spotId);
+      }
+      await saveQueue();
+      if (QUEUE_ENABLED) void queueTick();
+      sendJson(req, res, 200, { added, skipped, items: queueState.items });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/queue/control') {
+      if (!(await requireAdmin(req, res))) return;
+      const text = await readBody(req);
+      let body;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        sendJson(req, res, 400, { error: 'Body must be valid JSON: { action, ... }.' });
+        return;
+      }
+      const action = body && typeof body === 'object' ? body.action : undefined;
+      if (action === 'pause' || action === 'resume') {
+        queueState.paused = action === 'pause';
+        await saveQueue();
+        if (QUEUE_ENABLED && !queueState.paused) void queueTick();
+        sendJson(req, res, 200, {
+          items: queueState.items,
+          concurrency: queueState.concurrency,
+          paused: queueState.paused,
+          enabled: QUEUE_ENABLED,
+        });
+        return;
+      }
+      if (action === 'set_concurrency') {
+        const value = body.value;
+        if (!Number.isInteger(value) || value < 1 || value > 8) {
+          sendJson(req, res, 400, { error: 'set_concurrency needs value: an integer between 1 and 8.' });
+          return;
+        }
+        queueState.concurrency = value;
+        await saveQueue();
+        if (QUEUE_ENABLED) void queueTick();
+        sendJson(req, res, 200, {
+          items: queueState.items,
+          concurrency: queueState.concurrency,
+          paused: queueState.paused,
+          enabled: QUEUE_ENABLED,
+        });
+        return;
+      }
+      if (action === 'remove') {
+        const spotId = body.spot_id;
+        if (typeof spotId !== 'string' || spotId.length === 0) {
+          sendJson(req, res, 400, { error: 'remove needs spot_id: a queue item spot id.' });
+          return;
+        }
+        const item = queueItemFor(spotId);
+        if (!item) {
+          sendJson(req, res, 404, { error: `No queue item for spot "${spotId}"` });
+          return;
+        }
+        if (item.state === 'running') {
+          sendJson(req, res, 409, {
+            error: `Spot "${spotId}" is running; pause the queue and let it finish, or restart the server (running items revert to queued).`,
+          });
+          return;
+        }
+        queueState.items = queueState.items.filter((i) => i.spot_id !== spotId);
+        await saveQueue();
+        sendJson(req, res, 200, {
+          items: queueState.items,
+          concurrency: queueState.concurrency,
+          paused: queueState.paused,
+          enabled: QUEUE_ENABLED,
+        });
+        return;
+      }
+      sendJson(req, res, 400, {
+        error: 'action must be one of "pause", "resume", "remove", "set_concurrency".',
+      });
+      return;
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/health') {
       sendJson(req, res, 200, {
         ok: true,
@@ -848,6 +1475,8 @@ const server = http.createServer(async (req, res) => {
         data_dir: DATA_DIR,
         preflop_dir: PREFLOP_DIR,
         auth_enabled: AUTH_ENABLED,
+        queue_enabled: QUEUE_ENABLED,
+        catalog_path: CATALOG_PATH,
       });
       return;
     }
@@ -860,10 +1489,31 @@ const server = http.createServer(async (req, res) => {
 
 await fs.mkdir(JOBS_DIR, { recursive: true });
 await fs.mkdir(LIBRARY_DIR, { recursive: true });
+await loadQueue();
 server.listen(PORT, HOST, () => {
   console.log(`plo-api listening on http://${HOST}:${PORT}`);
   console.log(`  ENGINE_BIN=${ENGINE_BIN}`);
   console.log(`  DATA_DIR=${DATA_DIR}`);
+  console.log(
+    `  Queue: ${QUEUE_ENABLED ? 'ENABLED' : 'disabled (set QUEUE_ENABLED=1 to run catalog spots)'}` +
+      ` — ${queueState.items.length} item(s), concurrency ${queueState.concurrency}` +
+      `${queueState.paused ? ', PAUSED' : ''}`,
+  );
+  if (QUEUE_ENABLED) {
+    // Kick once at startup (retries any uploads left pending by a crash,
+    // then starts working the queue), then tick every second and retry
+    // uploads on the configured interval.
+    void retryPendingUploads().then(() => queueTick());
+    const tickTimer = setInterval(() => void queueTick(), QUEUE_TICK_MS);
+    tickTimer.unref();
+    if (QUEUE_UPLOAD_RETRY_MIN > 0) {
+      const retryTimer = setInterval(
+        () => void retryPendingUploads(),
+        QUEUE_UPLOAD_RETRY_MIN * 60 * 1000,
+      );
+      retryTimer.unref();
+    }
+  }
   if (!AUTH_ENABLED) {
     console.log('');
     console.log('  ************************************************************');
