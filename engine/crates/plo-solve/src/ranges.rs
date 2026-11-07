@@ -23,6 +23,17 @@
 //! 9-max sets are derived from the 6-max targets by a seat-mapping rule and cite
 //! no source.
 //!
+//! v1.1 extension (method `constructed-equity-v1.1`): continuation sets for the
+//! opener facing a 3-bet (context `vs_three_bet`), built by
+//! [`build_continuation_set`]. Eligible classes are exactly the classes the
+//! opener opens in their constructed RFI set; classes are scored with the v1
+//! blend against the three-bettor's `three_bet` slice. The continuation-rate
+//! targets are INTERNAL construction parameters (fractions of the opener's
+//! raising range, from the config's `continuations_v11` section): no published
+//! cross-check anchor for continuation rates was found, so the sets carry an
+//! empty provenance `sources` list and state the construction — and that
+//! status — in their `derivation`.
+//!
 //! Equity note: exact preflop hand-vs-range equity would need
 //! C(48,4) opponent combos x C(44,5) boards per class, which is not feasible to
 //! enumerate, so equities are Monte Carlo estimates with a fixed seed (fully
@@ -40,6 +51,8 @@ use crate::json::JsonValue;
 
 /// Method identifier recorded in every emitted set's provenance block.
 pub const METHOD: &str = "constructed-equity-v1";
+/// Method identifier for the v1.1 continuation sets (`vs_three_bet` context).
+pub const METHOD_V11: &str = "constructed-equity-v1.1";
 /// Total number of 4-card combinations from a 52-card deck: C(52,4).
 pub const TOTAL_COMBOS: u64 = 270_725;
 /// Number of suit-isomorphism classes of PLO starting hands.
@@ -452,6 +465,48 @@ pub struct PairTarget {
     pub kind: String,
 }
 
+/// One v1.1 continuation matchup: `continuer` opened (their RFI set
+/// `opener_rfi_set`), `three_bettor` 3-bet (their vs_rfi set
+/// `three_bettor_set`, `three_bet` slice), `continuer` now continues.
+#[derive(Clone, Debug)]
+pub struct ContinuationMatchup {
+    pub continuer: String,
+    pub three_bettor: String,
+    pub opener_rfi_set: String,
+    pub three_bettor_set: String,
+}
+
+/// The config's `continuations_v11` section. All targets here are INTERNAL
+/// construction parameters (fractions of the opener's raising range by combo
+/// weight) — no published cross-check anchor exists for continuation rates;
+/// `cross_check_status` records that verbatim for the emitted provenance.
+#[derive(Clone, Debug)]
+pub struct ContinuationsConfig {
+    pub method: String,
+    pub continue_fraction_of_open: f64,
+    pub call_fraction_of_continue: f64,
+    pub four_bet_fraction_of_continue: f64,
+    pub samples_vs_three_bettor: usize,
+    pub cross_check_status: String,
+    pub matchups: Vec<ContinuationMatchup>,
+}
+
+impl ContinuationsConfig {
+    /// The emitted set id for a matchup, per the v1.1 naming rule
+    /// `constructed-v1.1-6max-<continuer>-vs-<three-bettor>-3bet`.
+    pub fn set_id(m: &ContinuationMatchup) -> String {
+        format!(
+            "constructed-v1.1-6max-{}-vs-{}-3bet",
+            slug(&m.continuer),
+            slug(&m.three_bettor)
+        )
+    }
+
+    pub fn matchup_for_set_id(&self, id: &str) -> Option<&ContinuationMatchup> {
+        self.matchups.iter().find(|m| Self::set_id(m) == id)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct RangesConfig {
     pub version: String,
@@ -482,6 +537,8 @@ pub struct RangesConfig {
     pub btn_vs: BTreeMap<String, Vec<String>>,
     pub rfi_targets: BTreeMap<String, BTreeMap<String, RfiTarget>>,
     pub response_targets: BTreeMap<String, BTreeMap<String, BTreeMap<String, PairTarget>>>,
+    /// Optional v1.1 section (`continuations_v11`); absent = v1 behaviour only.
+    pub continuations: Option<ContinuationsConfig>,
     /// FNV-1a 64-bit hash of the raw config file bytes (identification only).
     pub config_hash: String,
 }
@@ -621,6 +678,69 @@ impl RangesConfig {
         } else {
             return Err("config 'response_targets' must be an object".to_string());
         }
+        // Optional v1.1 section. Parsing it must not disturb any v1 field:
+        // every v1 value above is read exactly as before, and the v1
+        // generation path never consults this section.
+        let continuations = match root.get("continuations_v11") {
+            Some(sec) => {
+                let method = obj_str(sec, "method")?;
+                if method != METHOD_V11 {
+                    return Err(format!(
+                        "continuations_v11.method must be '{METHOD_V11}', got '{method}'"
+                    ));
+                }
+                let continue_fraction_of_open = obj_num(sec, "continue_fraction_of_open")?;
+                let call_fraction_of_continue = obj_num(sec, "call_fraction_of_continue")?;
+                let four_bet_fraction_of_continue = obj_num(sec, "four_bet_fraction_of_continue")?;
+                if !(0.0 < continue_fraction_of_open && continue_fraction_of_open < 1.0) {
+                    return Err("continuations_v11.continue_fraction_of_open must be in (0, 1)".to_string());
+                }
+                if (call_fraction_of_continue + four_bet_fraction_of_continue - 1.0).abs() > 1e-9 {
+                    return Err(
+                        "continuations_v11 call/four_bet fractions of continue must sum to 1"
+                            .to_string(),
+                    );
+                }
+                let mut matchups = Vec::new();
+                let arr = sec
+                    .get("matchups")
+                    .and_then(|v| v.as_array())
+                    .ok_or("continuations_v11.matchups must be an array")?;
+                if arr.is_empty() {
+                    return Err("continuations_v11.matchups must not be empty".to_string());
+                }
+                for m in arr {
+                    let continuer = obj_str(m, "continuer")?;
+                    let three_bettor = obj_str(m, "three_bettor")?;
+                    if !POSITIONS_6MAX.contains(&continuer.as_str())
+                        || !POSITIONS_6MAX.contains(&three_bettor.as_str())
+                    {
+                        return Err(format!(
+                            "continuations_v11 matchup {continuer} vs {three_bettor}: v1.1 continuations are 6max only"
+                        ));
+                    }
+                    if continuer == three_bettor {
+                        return Err("continuations_v11 matchup: continuer and three_bettor must differ".to_string());
+                    }
+                    matchups.push(ContinuationMatchup {
+                        continuer,
+                        three_bettor,
+                        opener_rfi_set: obj_str(m, "opener_rfi_set")?,
+                        three_bettor_set: obj_str(m, "three_bettor_set")?,
+                    });
+                }
+                Some(ContinuationsConfig {
+                    method,
+                    continue_fraction_of_open,
+                    call_fraction_of_continue,
+                    four_bet_fraction_of_continue,
+                    samples_vs_three_bettor: obj_num(sec, "samples_vs_three_bettor")? as usize,
+                    cross_check_status: obj_str(sec, "cross_check")?,
+                    matchups,
+                })
+            }
+            None => None,
+        };
         Ok(RangesConfig {
             version,
             seed,
@@ -661,6 +781,7 @@ impl RangesConfig {
             btn_vs,
             rfi_targets,
             response_targets,
+            continuations,
             config_hash: fnv1a64_hex(text.as_bytes()),
         })
     }
@@ -866,6 +987,19 @@ pub struct RangeSetDoc {
     /// Achieved totals (combo-weighted) for the non-fold actions.
     pub achieved: BTreeMap<String, f64>,
     pub hands: BTreeMap<String, BTreeMap<String, f64>>,
+    /// Provenance method for this document (`METHOD` for v1 sets,
+    /// `METHOD_V11` for continuation sets).
+    pub method: String,
+    /// When `Some`, provenance is emitted as `sources: []` plus this
+    /// derivation text and no top-level `source` block is written. v1 9-max
+    /// sets carry the seat-mapping derivation here; v1.1 continuation sets
+    /// carry their construction description (naming the input sets). `None`
+    /// (v1 6-max sets) keeps the cross-check-sources provenance shape.
+    pub derivation: Option<String>,
+    /// When `Some`, this text replaces the generated `notes` string
+    /// verbatim (v1.1 sets state their target units explicitly: fractions
+    /// of the opener's raising range, not of all combos).
+    pub notes_override: Option<String>,
 }
 
 fn round6(x: f64) -> f64 {
@@ -946,22 +1080,28 @@ impl RangeSetDoc {
             .map(|(a, v)| format!("{a} {:.4}", v * 100.0))
             .collect::<Vec<_>>()
             .join(", ");
-        let notes = format!(
-            "CONSTRUCTED range (method {METHOD}) — built by build-ranges from exact card features and seeded Monte Carlo equities against config targets; NOT solver output, NOT GTO. Target ({}) vs achieved ({}) in % of all combos. Target kind: {}.",
-            target_txt, achieved_txt, self.target_kind
-        );
+        let notes = match &self.notes_override {
+            Some(text) => text.clone(),
+            None => format!(
+                "CONSTRUCTED range (method {}) — built by build-ranges from exact card features and seeded Monte Carlo equities against config targets; NOT solver output, NOT GTO. Target ({}) vs achieved ({}) in % of all combos. Target kind: {}.",
+                self.method, target_txt, achieved_txt, self.target_kind
+            ),
+        };
         let _ = writeln!(s, "  \"notes\": \"{}\",", json_escape(&notes));
-        if self.table_size == "6max" {
+        if self.table_size == "6max" && self.derivation.is_none() {
             let _ = writeln!(s, "  \"source\": {},", source_json(&cfg.cross_check_source, "  "));
         }
         // Provenance block.
         s.push_str("  \"provenance\": {\n");
-        let _ = writeln!(s, "    \"method\": \"{METHOD}\",");
+        let _ = writeln!(s, "    \"method\": \"{}\",", self.method);
         let _ = writeln!(s, "    \"tool\": \"build-ranges (plo-solve)\",");
         let _ = writeln!(s, "    \"tool_version\": \"{}\",", env!("CARGO_PKG_VERSION"));
         let _ = writeln!(s, "    \"config_version\": \"{}\",", json_escape(&cfg.version));
         let _ = writeln!(s, "    \"config_hash\": \"fnv1a64:{}\",", cfg.config_hash);
-        if self.table_size == "6max" {
+        if let Some(derivation) = &self.derivation {
+            s.push_str("    \"sources\": [],\n");
+            let _ = writeln!(s, "    \"derivation\": \"{}\"", json_escape(derivation));
+        } else if self.table_size == "6max" {
             let mut sources = source_json(&cfg.cross_check_source, "    ");
             if let Some(s2) = &cfg.cross_check_source_2 {
                 sources.push_str(",\n    ");
@@ -1029,6 +1169,9 @@ pub struct Generation {
 const SEED_TAG_RANDOM: u64 = 1;
 const SEED_TAG_REFERENCE: u64 = 2;
 const SEED_TAG_OPENER_BASE: u64 = 3;
+/// Base tag for the v1.1 equity-vs-three-bettor streams (kept far from the
+/// opener tags, which stay below ~111,000, so streams never collide).
+const SEED_TAG_CONTINUATION_BASE: u64 = 900_000;
 
 /// Deterministic parallel map over `0..n` producing one f64 per index.
 /// Per-index results depend only on the index (each equity stream has its
@@ -1200,6 +1343,13 @@ pub fn build_rfi_set(
         targets,
         achieved: achieved_map,
         hands,
+        method: METHOD.to_string(),
+        derivation: if table_size == "9max" {
+            Some(cfg.derivation_note_9max.clone())
+        } else {
+            None
+        },
+        notes_override: None,
     })
 }
 
@@ -1325,7 +1475,226 @@ pub fn build_response_set(
         targets,
         achieved: achieved_map,
         hands,
+        method: METHOD.to_string(),
+        derivation: if table_size == "9max" {
+            Some(cfg.derivation_note_9max.clone())
+        } else {
+            None
+        },
+        notes_override: None,
     })
+}
+
+/// Builds one v1.1 continuation set (context `vs_three_bet`): `matchup`'s
+/// opener has opened (per-class RFI raise frequencies `opener_freq`, read
+/// from the emitted RFI set, so eligibility is exactly "opened in that
+/// set") and now faces a 3-bet from `matchup`'s three-bettor.
+/// `eq_vs_three_bettor` is each class's seeded Monte Carlo equity against
+/// the three-bettor's `three_bet` slice.
+///
+/// Construction: eligible classes (opener raise frequency > 0) are ranked
+/// by the v1 score blend with the equity slot filled by equity vs the
+/// three-bettor's range, discounted by the continuer's postflop
+/// realisation factor (in position 0.92 / out of position 0.84, from the
+/// v1 config). The `four_bet` slice takes the top band and `call` the next
+/// band, fitted in opening-range weight (class combo share x opener raise
+/// frequency) with the v1 ramp + residual correction. Emitted frequencies
+/// are conditional on having opened: fold + call + four_bet = 1 for
+/// eligible classes; never-opened classes fold at 1.0.
+///
+/// Targets are fractions OF THE OPENER'S RAISING RANGE (see the config's
+/// `continuations_v11` section): internal construction parameters with no
+/// published cross-check anchor, labelled as such in the emitted notes and
+/// provenance derivation.
+pub fn build_continuation_set(
+    cfg: &RangesConfig,
+    classes: &[ScoredClass],
+    eq_vs_three_bettor: &[f64],
+    opener_freq: &[f64],
+    matchup: &ContinuationMatchup,
+) -> Result<RangeSetDoc, String> {
+    let cont = cfg
+        .continuations
+        .as_ref()
+        .ok_or("config has no continuations_v11 section")?;
+    let continuer = matchup.continuer.as_str();
+    let three_bettor = matchup.three_bettor.as_str();
+    let share: Vec<f64> = classes
+        .iter()
+        .map(|c| c.class.multiplicity as f64 / TOTAL_COMBOS as f64)
+        .collect();
+    let open_weight: Vec<f64> = share
+        .iter()
+        .zip(opener_freq.iter())
+        .map(|(s, f)| s * f)
+        .collect();
+    let open_total: f64 = open_weight.iter().sum();
+    if open_total <= 0.0 {
+        return Err(format!(
+            "continuation {continuer} vs {three_bettor}: opener's RFI set opens nothing"
+        ));
+    }
+    // Targets, in opening-range weight units.
+    let continue_w = open_total * cont.continue_fraction_of_open;
+    let four_bet_w = continue_w * cont.four_bet_fraction_of_continue;
+    let call_w = continue_w * cont.call_fraction_of_continue;
+    // Score: v1 blend, equity slot = realisation-discounted equity vs the
+    // three-bettor's three_bet slice.
+    let in_position = is_in_position_postflop(continuer, three_bettor);
+    let factor = if in_position {
+        cfg.realisation_in_position
+    } else {
+        cfg.realisation_out_of_position
+    };
+    let scores: Vec<f64> = classes
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            score_from_components(cfg, c.equity_vs_random, eq_vs_three_bettor[i] * factor, &c.features)
+        })
+        .collect();
+    let mut eligible: Vec<usize> = (0..classes.len())
+        .filter(|&i| opener_freq[i] > 0.0)
+        .collect();
+    eligible.sort_by(|&a, &b| {
+        scores[b]
+            .partial_cmp(&scores[a])
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(classes[a].class.key.cmp(&classes[b].class.key))
+    });
+    let mass: Vec<f64> = eligible.iter().map(|&i| open_weight[i]).collect();
+    let capacity = vec![1.0f64; eligible.len()];
+    let fb_ranked = fit_to_target(&mass, &capacity, four_bet_w, cfg.ramp_band);
+    let mut four_bet = vec![0.0f64; classes.len()];
+    for (r, &i) in eligible.iter().enumerate() {
+        four_bet[i] = fb_ranked[r];
+    }
+    let callable_mass: Vec<f64> = eligible
+        .iter()
+        .map(|&i| open_weight[i] * (1.0 - four_bet[i]))
+        .collect();
+    let call_ranked = fit_to_target(&callable_mass, &capacity, call_w, cfg.ramp_band);
+    let mut call = vec![0.0f64; classes.len()];
+    for (r, &i) in eligible.iter().enumerate() {
+        call[i] = (1.0 - four_bet[i]) * call_ranked[r];
+    }
+    let achieved_four_bet: f64 =
+        eligible.iter().map(|&i| open_weight[i] * four_bet[i]).sum::<f64>() / open_total;
+    let achieved_call: f64 =
+        eligible.iter().map(|&i| open_weight[i] * call[i]).sum::<f64>() / open_total;
+    let mut hands: BTreeMap<String, BTreeMap<String, f64>> = BTreeMap::new();
+    for (i, c) in classes.iter().enumerate() {
+        let mut actions = BTreeMap::new();
+        if opener_freq[i] > 0.0 {
+            let fb = round6(four_bet[i]);
+            let ca = round6(call[i]);
+            let fo = round6(1.0 - fb - ca);
+            if fo > 0.0 {
+                actions.insert("fold".to_string(), fo);
+            }
+            if ca > 0.0 {
+                actions.insert("call".to_string(), ca);
+            }
+            if fb > 0.0 {
+                actions.insert("four_bet".to_string(), fb);
+            }
+        }
+        if actions.is_empty() {
+            actions.insert("fold".to_string(), 1.0);
+        }
+        hands.insert(c.class.key.clone(), actions);
+    }
+    let call_target = cont.continue_fraction_of_open * cont.call_fraction_of_continue;
+    let four_bet_target = cont.continue_fraction_of_open * cont.four_bet_fraction_of_continue;
+    let mut targets = BTreeMap::new();
+    targets.insert("call".to_string(), call_target);
+    targets.insert("four_bet".to_string(), four_bet_target);
+    let mut achieved_map = BTreeMap::new();
+    achieved_map.insert("call".to_string(), achieved_call);
+    achieved_map.insert("four_bet".to_string(), achieved_four_bet);
+    let derivation = format!(
+        "constructed-equity-v1.1 continuation: eligible classes = the opener's RFI classes (input set {}, raise frequency > 0); scored against the three-bettor's three_bet slice (input set {}) with realisation {} (continuer {} postflop). Continuation targets are INTERNAL CONSTRUCTION PARAMETERS - fractions of the opener's raising range by weight (continue {:.1}% of the opening range; of the continue slice, call {:.1}% / four_bet {:.1}%). cross_check: {}.",
+        matchup.opener_rfi_set,
+        matchup.three_bettor_set,
+        fmt_num(factor),
+        if in_position { "in position" } else { "out of position" },
+        cont.continue_fraction_of_open * 100.0,
+        cont.call_fraction_of_continue * 100.0,
+        cont.four_bet_fraction_of_continue * 100.0,
+        cont.cross_check_status
+    );
+    let notes = format!(
+        "CONSTRUCTED range (method {METHOD_V11}) - built by build-ranges from the opener's constructed RFI set and the three-bettor's constructed three_bet slice; NOT solver output, NOT GTO. Target (call {:.4}, four_bet {:.4}) vs achieved (call {:.4}, four_bet {:.4}) in % OF THE OPENER'S RAISING RANGE (opening-range-weighted), not of all combos. Target kind: internal - internal construction parameters, no published anchor (cross_check: {}).",
+        call_target * 100.0,
+        four_bet_target * 100.0,
+        achieved_call * 100.0,
+        achieved_four_bet * 100.0,
+        cont.cross_check_status
+    );
+    Ok(RangeSetDoc {
+        id: ContinuationsConfig::set_id(matchup),
+        table_size: "6max".to_string(),
+        position: continuer.to_string(),
+        context: "vs_three_bet".to_string(),
+        context_detail: Some(format!(
+            "{continuer} opens, {three_bettor} 3-bets, {continuer} continues (constructed)"
+        )),
+        target_kind: "internal".to_string(),
+        targets,
+        achieved: achieved_map,
+        hands,
+        method: METHOD_V11.to_string(),
+        derivation: Some(derivation),
+        notes_override: Some(notes),
+    })
+}
+
+/// Recomputes a continuation set's action totals as fractions OF THE
+/// OPENER'S RAISING RANGE (opening-range-weighted), from the emitted JSON
+/// of the continuation set and of its opener RFI set. A class contributes
+/// only through the weight with which the opener actually opens it, so the
+/// totals are directly comparable to the config's internal continuation
+/// targets. (Plain [`set_totals`] would weight every class equally and is
+/// NOT meaningful for `vs_three_bet` sets.)
+pub fn opening_weighted_totals(
+    cont_doc: &JsonValue,
+    opener_doc: &JsonValue,
+    multiplicity: &HashMap<String, u32>,
+) -> BTreeMap<String, f64> {
+    let mut totals: BTreeMap<String, f64> = BTreeMap::new();
+    let (opener_hands, cont_hands) = match (opener_doc.get("hands"), cont_doc.get("hands")) {
+        (Some(JsonValue::Object(o)), Some(JsonValue::Object(c))) => (o, c),
+        _ => return totals,
+    };
+    let cont_by_hand: HashMap<&str, &JsonValue> = cont_hands
+        .iter()
+        .map(|(hand, actions)| (hand.as_str(), actions))
+        .collect();
+    let mut denom = 0.0f64;
+    for (hand, oacts) in opener_hands {
+        let raise = match oacts.get("raise") {
+            Some(v) => v.as_f64().unwrap_or(0.0),
+            None => 0.0,
+        };
+        if raise <= 0.0 {
+            continue;
+        }
+        let w = multiplicity.get(hand).copied().unwrap_or(0) as f64 / TOTAL_COMBOS as f64 * raise;
+        denom += w;
+        if let Some(JsonValue::Object(cacts)) = cont_by_hand.get(hand.as_str()) {
+            for (action, freq) in cacts {
+                if let Some(f) = freq.as_f64() {
+                    *totals.entry(action.clone()).or_insert(0.0) += w * f;
+                }
+            }
+        }
+    }
+    if denom > 0.0 {
+        for v in totals.values_mut() {
+            *v /= denom;
+        }
+    }
+    totals
 }
 
 /// Builds the opener sampling pool from per-class RFI frequencies.
@@ -1378,6 +1747,9 @@ pub fn generate(cfg: &RangesConfig) -> Result<Generation, String> {
     }
     // Response sets. Equities vs an opener's range are computed once per
     // (table, opener) and shared by every responder facing that opener.
+    // The docs are also kept addressable: the v1.1 continuation stage needs
+    // the three-bettors' three_bet slices.
+    let mut response_docs: BTreeMap<(String, String, String), RangeSetDoc> = BTreeMap::new();
     let mut opener_eq: BTreeMap<(String, String), Vec<f64>> = BTreeMap::new();
     for table in ["6max", "9max"] {
         let positions = positions_for(table).unwrap();
@@ -1421,8 +1793,69 @@ pub fn generate(cfg: &RangesConfig) -> Result<Generation, String> {
                 }
                 let eq = &opener_eq[&cache_key];
                 let doc = build_response_set(cfg, &classes, eq, table, responder, opener)?;
+                response_docs.insert(
+                    (table.to_string(), responder.to_string(), opener.to_string()),
+                    doc.clone(),
+                );
                 sets.push(doc);
             }
+        }
+    }
+    // v1.1 continuation sets (6max only): for each configured matchup, the
+    // opener's continuation after facing a 3-bet. Equities are computed
+    // against the three-bettor's three_bet slice, one seeded pass per
+    // matchup.
+    if let Some(cont) = &cfg.continuations {
+        for (mi, matchup) in cont.matchups.iter().enumerate() {
+            let rfi = rfi_docs
+                .get(&("6max".to_string(), matchup.continuer.clone()))
+                .ok_or_else(|| {
+                    format!("missing RFI doc for 6max {}", matchup.continuer)
+                })?;
+            if rfi.id != matchup.opener_rfi_set {
+                return Err(format!(
+                    "continuations_v11 matchup {} vs {}: opener_rfi_set '{}' does not match the generated RFI set '{}'",
+                    matchup.continuer, matchup.three_bettor, matchup.opener_rfi_set, rfi.id
+                ));
+            }
+            let tb_doc = response_docs
+                .get(&(
+                    "6max".to_string(),
+                    matchup.three_bettor.clone(),
+                    matchup.continuer.clone(),
+                ))
+                .ok_or_else(|| {
+                    format!(
+                        "missing response doc for 6max {} vs {}",
+                        matchup.three_bettor, matchup.continuer
+                    )
+                })?;
+            if tb_doc.id != matchup.three_bettor_set {
+                return Err(format!(
+                    "continuations_v11 matchup {} vs {}: three_bettor_set '{}' does not match the generated response set '{}'",
+                    matchup.continuer, matchup.three_bettor, matchup.three_bettor_set, tb_doc.id
+                ));
+            }
+            let opener_freq = action_freqs(rfi, &classes, "raise");
+            let tb_freq = action_freqs(tb_doc, &classes, "three_bet");
+            let pool = opener_pool(&classes, &tb_freq);
+            if pool.is_empty() {
+                return Err(format!(
+                    "continuation {} vs {}: three-bettor's three_bet slice is empty",
+                    matchup.continuer, matchup.three_bettor
+                ));
+            }
+            let tag = SEED_TAG_CONTINUATION_BASE + (mi as u64) * 10_000;
+            let eq = par_map(classes.len(), &|i| {
+                equity_vs_pool(
+                    &classes[i].class.representative,
+                    &pool,
+                    cont.samples_vs_three_bettor,
+                    derive_seed(cfg.seed, tag, i),
+                )
+            });
+            let doc = build_continuation_set(cfg, &classes, &eq, &opener_freq, matchup)?;
+            sets.push(doc);
         }
     }
     sets.sort_by(|a, b| a.id.cmp(&b.id));
@@ -1443,11 +1876,12 @@ fn opener_seed_tag(table: &str, opener: &str) -> u64 {
 // Validation (mirrors the amended rangeset.schema.json)
 // ---------------------------------------------------------------------------
 
-const CONTEXT_ACTIONS: [(&str, &[&str]); 4] = [
+const CONTEXT_ACTIONS: [(&str, &[&str]); 5] = [
     ("rfi", &["fold", "raise"]),
     ("vs_rfi", &["fold", "call", "three_bet"]),
     ("three_bet", &["fold", "call", "four_bet"]),
     ("sb_play", &["fold", "call", "raise", "three_bet"]),
+    ("vs_three_bet", &["fold", "call", "four_bet"]),
 ];
 
 fn valid_date(s: &str) -> bool {
@@ -1659,11 +2093,11 @@ pub fn index_entry_json(doc: &RangeSetDoc, cfg: &RangesConfig) -> String {
     let _ = writeln!(s, "      \"position\": \"{}\",", doc.position);
     let _ = writeln!(s, "      \"context\": \"{}\",", doc.context);
     let _ = writeln!(s, "      \"stack_bb\": {},", fmt_num(cfg.stack_bb));
-    if doc.table_size == "6max" {
+    if doc.table_size == "6max" && doc.derivation.is_none() {
         let _ = writeln!(s, "      \"source\": {},", source_json(&cfg.cross_check_source, "      "));
     }
     s.push_str("      \"provenance\": {\n");
-    let _ = writeln!(s, "        \"method\": \"{METHOD}\",");
+    let _ = writeln!(s, "        \"method\": \"{}\",", doc.method);
     let _ = writeln!(s, "        \"config_version\": \"{}\",", json_escape(&cfg.version));
     let _ = writeln!(s, "        \"config_hash\": \"fnv1a64:{}\"", cfg.config_hash);
     s.push_str("      }\n    }");
@@ -1705,7 +2139,10 @@ pub fn parse_opener(context_detail: &str) -> String {
 
 /// Compares one set's recomputed totals against the config targets.
 /// Returns (report lines, hard failures) — see [`cross_check`] for what
-/// counts as a hard failure.
+/// counts as a hard failure. For `vs_three_bet` sets, `totals` must be the
+/// OPENING-RANGE-WEIGHTED totals from [`opening_weighted_totals`] (the
+/// config's continuation targets are fractions of the opener's raising
+/// range, not of all combos); callers are responsible for passing those.
 pub fn check_doc_totals(
     cfg: &RangesConfig,
     id: &str,
@@ -1785,6 +2222,40 @@ pub fn check_doc_totals(
                 failures += 1;
             }
         }
+    } else if context == "vs_three_bet" {
+        // Internal construction contract (no published anchor): the
+        // opening-range-weighted totals must land on the configured
+        // internal targets within the same 0.5pp fit tolerance as v1.
+        match cfg.continuations.as_ref().and_then(|c| {
+            c.matchup_for_set_id(id).map(|m| (c, m))
+        }) {
+            Some((cont, _m)) => {
+                let want_call = cont.continue_fraction_of_open * cont.call_fraction_of_continue;
+                let want_fb = cont.continue_fraction_of_open * cont.four_bet_fraction_of_continue;
+                for (action, want) in [("call", want_call), ("four_bet", want_fb)] {
+                    let achieved = totals.get(action).copied().unwrap_or(0.0);
+                    let delta = (achieved - want) * 100.0;
+                    let bad = (achieved - want).abs() > 0.005;
+                    if bad {
+                        failures += 1;
+                    }
+                    lines.push(format!(
+                        "{}: {} {:.2}% of opening range vs internal target {:.2}% (delta {:+.2}pp, internal - {}) {}",
+                        id,
+                        action,
+                        achieved * 100.0,
+                        want * 100.0,
+                        delta,
+                        cont.cross_check_status,
+                        if bad { "OUT OF TOLERANCE" } else { "OK" }
+                    ));
+                }
+            }
+            None => {
+                lines.push(format!("{id}: no continuations_v11 matchup in config for this set"));
+                failures += 1;
+            }
+        }
     }
     (lines, failures)
 }
@@ -1792,7 +2263,9 @@ pub fn check_doc_totals(
 /// Runs the cross-check over in-memory set documents (used right after
 /// generation). Returns (report lines, number of hard failures). Hard
 /// failures: RFI sets outside their published band; anchored defense totals
-/// beyond the configured tolerance. Interpolated/extrapolated/derived
+/// beyond the configured tolerance; v1.1 continuation totals beyond 0.5pp
+/// of their INTERNAL targets (a construction-contract check only — there is
+/// no published anchor for them). Interpolated/extrapolated/derived
 /// totals and the Upswing totals are reported as deltas only.
 pub fn cross_check(
     cfg: &RangesConfig,
@@ -1817,7 +2290,36 @@ pub fn cross_check(
                 continue;
             }
         };
-        let totals = set_totals(&parsed, multiplicity);
+        let totals = if doc.context == "vs_three_bet" {
+            // Continuation targets live in opening-range units: recompute
+            // the totals weighted by the opener's RFI set (also present in
+            // `docs`), round-tripped the same way.
+            let opener_doc = cfg
+                .continuations
+                .as_ref()
+                .and_then(|c| c.matchup_for_set_id(&doc.id))
+                .and_then(|m| docs.iter().find(|d| d.id == m.opener_rfi_set));
+            match opener_doc {
+                Some(od) => match JsonValue::parse(&od.to_json(cfg)) {
+                    Ok(op) => opening_weighted_totals(&parsed, &op, multiplicity),
+                    Err(e) => {
+                        lines.push(format!("{}: opener JSON parse failed: {e}", doc.id));
+                        failures += 1;
+                        continue;
+                    }
+                },
+                None => {
+                    lines.push(format!(
+                        "{}: no opener RFI doc available for opening-weighted totals",
+                        doc.id
+                    ));
+                    failures += 1;
+                    continue;
+                }
+            }
+        } else {
+            set_totals(&parsed, multiplicity)
+        };
         let opener = doc.context_detail.as_deref().map(parse_opener);
         let (mut dl, df) = check_doc_totals(
             cfg,

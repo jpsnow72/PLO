@@ -20,6 +20,7 @@ const CONTEXT_ACTIONS = {
   vs_rfi: ['fold', 'call', 'three_bet'],
   three_bet: ['fold', 'call', 'four_bet'],
   sb_play: ['fold', 'call', 'raise', 'three_bet'],
+  vs_three_bet: ['fold', 'call', 'four_bet'],
 };
 const ACTION_ORDER = ['fold', 'call', 'raise', 'three_bet', 'four_bet'];
 const ACTION_ALIASES = {
@@ -59,7 +60,7 @@ function parseArgs(argv) {
       console.log(
         'Usage: node import-csv.mjs --input rows.csv --output <id>.json \\\n' +
           '  --id <slug> --table-size 6max|9max --position <POS> \\\n' +
-          '  --context rfi|vs_rfi|three_bet|sb_play --stack-bb <n> \\\n' +
+          '  --context rfi|vs_rfi|three_bet|sb_play|vs_three_bet --stack-bb <n> \\\n' +
           '  --rake-note "<note>" --source-name "<name>" --source-url <url> \\\n' +
           '  --source-licence "<licence>" --retrieved YYYY-MM-DD [--force]',
       );

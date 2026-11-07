@@ -2,7 +2,8 @@
 //! nodes (E3, [`turn`]), and flop solver with flop-street card bucketing (E4,
 //! [`buckets`] + [`flop`]), all using Discounted CFR, plus independent
 //! best-response exploitability checkers (`br.rs`), plus the constructed
-//! preflop range builder ([`ranges`], method `constructed-equity-v1`).
+//! preflop range builder ([`ranges`], methods `constructed-equity-v1` and
+//! `constructed-equity-v1.1` continuation sets).
 
 pub mod br;
 pub mod buckets;
