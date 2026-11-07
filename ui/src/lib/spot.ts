@@ -7,9 +7,12 @@
 //   river spots: bet_sizes / raise_sizes / max_raises
 //   turn spots:  turn_bet_sizes / river_bet_sizes / *_raise_sizes /
 //                turn_max_raises / river_max_raises / include_all_in
+//   flop spots:  flop_bet_sizes / turn_bet_sizes / river_bet_sizes (+ the
+//                matching raise/max-raises keys) and per-street
+//                flop_include_all_in / turn_include_all_in /
+//                river_include_all_in; solved exactly unless the spot JSON
+//                requests bucketing (the wizard never does)
 //   both: max_iterations, target_exploitability_pct
-// Flop spots (3-card board) are accepted by the form for when the flop
-// solver lands; the job service currently answers 422 for them.
 
 import { parseCardList, parseCombo } from './cards';
 
@@ -160,8 +163,7 @@ export function buildSpot(form: WizardForm): SpotBuild {
     base.raise_sizes = form.river.raiseSizes;
     base.max_raises = form.river.maxRaises;
   } else {
-    // Turn parser reads per-street keys; flop keys are carried for the
-    // future flop parser and ignored by today's binaries.
+    // Turn and flop parsers read per-street keys.
     base.flop_bet_sizes = form.flop.betSizes;
     base.flop_raise_sizes = form.flop.raiseSizes;
     base.flop_max_raises = form.flop.maxRaises;
@@ -171,10 +173,12 @@ export function buildSpot(form: WizardForm): SpotBuild {
     base.river_bet_sizes = form.river.betSizes;
     base.river_raise_sizes = form.river.raiseSizes;
     base.river_max_raises = form.river.maxRaises;
-    // Engine limitation: one include_all_in flag covers both streets of a
-    // turn spot. We OR the two toggles so an all-in the user asked for on
-    // either street is present; see UI-NOTES known gaps.
-    base.include_all_in = form.turn.allIn || form.river.allIn;
+    // Per-street all-in toggles (the parsers honour these directly); the
+    // shared flag stays as a fallback for older spot files.
+    base.flop_include_all_in = form.flop.allIn;
+    base.turn_include_all_in = form.turn.allIn;
+    base.river_include_all_in = form.river.allIn;
+    base.include_all_in = form.flop.allIn || form.turn.allIn || form.river.allIn;
   }
 
   return { spot: base, errors: [], street };

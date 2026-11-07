@@ -1,8 +1,10 @@
-// Types for the engine solve JSON (produced by plo-solve's `solve-river` and
-// `solve-turn` binaries) and for the thin job-service API.
+// Types for the engine solve JSON (produced by plo-solve's `solve-river`,
+// `solve-turn` and `solve-flop` binaries) and for the thin job-service API.
 //
 // The raw interfaces mirror the JSON exactly as the engine emits it.
-// River solves have no `street` / `river_card` fields; turn solves add them.
+// River solves have no `street` / `river_card` fields; turn solves add them;
+// flop solves add `turn_card` as well (the dealt turn card of the subtree a
+// node lives in).
 
 export type Player = 'OOP' | 'IP';
 
@@ -30,9 +32,11 @@ export interface RawSolveNode {
   decision_id: number;
   node_id: number;
   player: Player;
-  /** Turn solves only: "turn" | "river". Absent in river solves. */
+  /** Turn/flop solves only: "flop" | "turn" | "river". Absent in river solves. */
   street?: string;
-  /** Turn solves only: the runout card for river nodes, else null. Absent in river solves. */
+  /** Flop solves only: the turn card of the subtree this node lives in, else null. Absent in river/turn solves. */
+  turn_card?: string | null;
+  /** Turn/flop solves only: the runout card for river nodes, else null. Absent in river solves. */
   river_card?: string | null;
   history: string;
   pot: number;

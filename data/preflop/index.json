@@ -1,0 +1,634 @@
+{
+  "schema_version": 1,
+  "rangesets": [
+    {
+      "id": "constructed-v1-6max-bb-vs-btn",
+      "path": "sets/constructed-v1-6max-bb-vs-btn.json",
+      "table_size": "6max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "source": {
+        "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+        "url": "https://plo.com/plo-6-max-opening-ranges",
+        "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+        "retrieved": "2026-11-07"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-6max-bb-vs-co",
+      "path": "sets/constructed-v1-6max-bb-vs-co.json",
+      "table_size": "6max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "source": {
+        "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+        "url": "https://plo.com/plo-6-max-opening-ranges",
+        "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+        "retrieved": "2026-11-07"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-6max-bb-vs-mp",
+      "path": "sets/constructed-v1-6max-bb-vs-mp.json",
+      "table_size": "6max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "source": {
+        "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+        "url": "https://plo.com/plo-6-max-opening-ranges",
+        "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+        "retrieved": "2026-11-07"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-6max-bb-vs-sb",
+      "path": "sets/constructed-v1-6max-bb-vs-sb.json",
+      "table_size": "6max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "source": {
+        "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+        "url": "https://plo.com/plo-6-max-opening-ranges",
+        "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+        "retrieved": "2026-11-07"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-6max-bb-vs-utg",
+      "path": "sets/constructed-v1-6max-bb-vs-utg.json",
+      "table_size": "6max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "source": {
+        "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+        "url": "https://plo.com/plo-6-max-opening-ranges",
+        "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+        "retrieved": "2026-11-07"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-6max-btn-rfi",
+      "path": "sets/constructed-v1-6max-btn-rfi.json",
+      "table_size": "6max",
+      "position": "BTN",
+      "context": "rfi",
+      "stack_bb": 100.0,
+      "source": {
+        "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+        "url": "https://plo.com/plo-6-max-opening-ranges",
+        "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+        "retrieved": "2026-11-07"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-6max-btn-vs-co",
+      "path": "sets/constructed-v1-6max-btn-vs-co.json",
+      "table_size": "6max",
+      "position": "BTN",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "source": {
+        "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+        "url": "https://plo.com/plo-6-max-opening-ranges",
+        "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+        "retrieved": "2026-11-07"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-6max-btn-vs-mp",
+      "path": "sets/constructed-v1-6max-btn-vs-mp.json",
+      "table_size": "6max",
+      "position": "BTN",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "source": {
+        "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+        "url": "https://plo.com/plo-6-max-opening-ranges",
+        "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+        "retrieved": "2026-11-07"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-6max-co-rfi",
+      "path": "sets/constructed-v1-6max-co-rfi.json",
+      "table_size": "6max",
+      "position": "CO",
+      "context": "rfi",
+      "stack_bb": 100.0,
+      "source": {
+        "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+        "url": "https://plo.com/plo-6-max-opening-ranges",
+        "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+        "retrieved": "2026-11-07"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-6max-mp-rfi",
+      "path": "sets/constructed-v1-6max-mp-rfi.json",
+      "table_size": "6max",
+      "position": "MP",
+      "context": "rfi",
+      "stack_bb": 100.0,
+      "source": {
+        "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+        "url": "https://plo.com/plo-6-max-opening-ranges",
+        "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+        "retrieved": "2026-11-07"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-6max-sb-sbplay",
+      "path": "sets/constructed-v1-6max-sb-sbplay.json",
+      "table_size": "6max",
+      "position": "SB",
+      "context": "sb_play",
+      "stack_bb": 100.0,
+      "source": {
+        "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+        "url": "https://plo.com/plo-6-max-opening-ranges",
+        "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+        "retrieved": "2026-11-07"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-6max-sb-vs-btn",
+      "path": "sets/constructed-v1-6max-sb-vs-btn.json",
+      "table_size": "6max",
+      "position": "SB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "source": {
+        "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+        "url": "https://plo.com/plo-6-max-opening-ranges",
+        "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+        "retrieved": "2026-11-07"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-6max-sb-vs-co",
+      "path": "sets/constructed-v1-6max-sb-vs-co.json",
+      "table_size": "6max",
+      "position": "SB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "source": {
+        "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+        "url": "https://plo.com/plo-6-max-opening-ranges",
+        "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+        "retrieved": "2026-11-07"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-6max-sb-vs-mp",
+      "path": "sets/constructed-v1-6max-sb-vs-mp.json",
+      "table_size": "6max",
+      "position": "SB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "source": {
+        "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+        "url": "https://plo.com/plo-6-max-opening-ranges",
+        "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+        "retrieved": "2026-11-07"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-6max-sb-vs-utg",
+      "path": "sets/constructed-v1-6max-sb-vs-utg.json",
+      "table_size": "6max",
+      "position": "SB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "source": {
+        "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+        "url": "https://plo.com/plo-6-max-opening-ranges",
+        "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+        "retrieved": "2026-11-07"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-6max-utg-rfi",
+      "path": "sets/constructed-v1-6max-utg-rfi.json",
+      "table_size": "6max",
+      "position": "UTG",
+      "context": "rfi",
+      "stack_bb": 100.0,
+      "source": {
+        "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+        "url": "https://plo.com/plo-6-max-opening-ranges",
+        "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+        "retrieved": "2026-11-07"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-bb-vs-btn",
+      "path": "sets/constructed-v1-9max-bb-vs-btn.json",
+      "table_size": "9max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-bb-vs-co",
+      "path": "sets/constructed-v1-9max-bb-vs-co.json",
+      "table_size": "9max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-bb-vs-hj",
+      "path": "sets/constructed-v1-9max-bb-vs-hj.json",
+      "table_size": "9max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-bb-vs-lj",
+      "path": "sets/constructed-v1-9max-bb-vs-lj.json",
+      "table_size": "9max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-bb-vs-sb",
+      "path": "sets/constructed-v1-9max-bb-vs-sb.json",
+      "table_size": "9max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-bb-vs-utg",
+      "path": "sets/constructed-v1-9max-bb-vs-utg.json",
+      "table_size": "9max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-bb-vs-utgplus1",
+      "path": "sets/constructed-v1-9max-bb-vs-utgplus1.json",
+      "table_size": "9max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-bb-vs-utgplus2",
+      "path": "sets/constructed-v1-9max-bb-vs-utgplus2.json",
+      "table_size": "9max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-btn-rfi",
+      "path": "sets/constructed-v1-9max-btn-rfi.json",
+      "table_size": "9max",
+      "position": "BTN",
+      "context": "rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-btn-vs-co",
+      "path": "sets/constructed-v1-9max-btn-vs-co.json",
+      "table_size": "9max",
+      "position": "BTN",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-btn-vs-hj",
+      "path": "sets/constructed-v1-9max-btn-vs-hj.json",
+      "table_size": "9max",
+      "position": "BTN",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-co-rfi",
+      "path": "sets/constructed-v1-9max-co-rfi.json",
+      "table_size": "9max",
+      "position": "CO",
+      "context": "rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-hj-rfi",
+      "path": "sets/constructed-v1-9max-hj-rfi.json",
+      "table_size": "9max",
+      "position": "HJ",
+      "context": "rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-lj-rfi",
+      "path": "sets/constructed-v1-9max-lj-rfi.json",
+      "table_size": "9max",
+      "position": "LJ",
+      "context": "rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-sb-sbplay",
+      "path": "sets/constructed-v1-9max-sb-sbplay.json",
+      "table_size": "9max",
+      "position": "SB",
+      "context": "sb_play",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-sb-vs-btn",
+      "path": "sets/constructed-v1-9max-sb-vs-btn.json",
+      "table_size": "9max",
+      "position": "SB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-sb-vs-co",
+      "path": "sets/constructed-v1-9max-sb-vs-co.json",
+      "table_size": "9max",
+      "position": "SB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-sb-vs-hj",
+      "path": "sets/constructed-v1-9max-sb-vs-hj.json",
+      "table_size": "9max",
+      "position": "SB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-sb-vs-lj",
+      "path": "sets/constructed-v1-9max-sb-vs-lj.json",
+      "table_size": "9max",
+      "position": "SB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-sb-vs-utg",
+      "path": "sets/constructed-v1-9max-sb-vs-utg.json",
+      "table_size": "9max",
+      "position": "SB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-sb-vs-utgplus1",
+      "path": "sets/constructed-v1-9max-sb-vs-utgplus1.json",
+      "table_size": "9max",
+      "position": "SB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-sb-vs-utgplus2",
+      "path": "sets/constructed-v1-9max-sb-vs-utgplus2.json",
+      "table_size": "9max",
+      "position": "SB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-utg-rfi",
+      "path": "sets/constructed-v1-9max-utg-rfi.json",
+      "table_size": "9max",
+      "position": "UTG",
+      "context": "rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-utgplus1-rfi",
+      "path": "sets/constructed-v1-9max-utgplus1-rfi.json",
+      "table_size": "9max",
+      "position": "UTG+1",
+      "context": "rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    },
+    {
+      "id": "constructed-v1-9max-utgplus2-rfi",
+      "path": "sets/constructed-v1-9max-utgplus2-rfi.json",
+      "table_size": "9max",
+      "position": "UTG+2",
+      "context": "rfi",
+      "stack_bb": 100.0,
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1",
+        "config_hash": "fnv1a64:9d2190cf87c815ad"
+      }
+    }
+  ]
+}

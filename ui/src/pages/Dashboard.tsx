@@ -79,6 +79,7 @@ export function DashboardPage() {
 
   const riverCount = library?.filter((i) => i.kind === 'river').length ?? 0;
   const turnCount = library?.filter((i) => i.kind === 'turn').length ?? 0;
+  const flopCount = library?.filter((i) => i.kind === 'flop').length ?? 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -134,11 +135,11 @@ export function DashboardPage() {
               </div>
               <div className="flex justify-between">
                 <dt className="text-ink-dim">Flop solves</dt>
-                <dd className="font-mono text-ink">0</dd>
+                <dd className="font-mono text-ink">{flopCount}</dd>
               </div>
               <p className="mt-1 text-xs text-ink-faint">
-                Flop coverage arrives with the bucketed flop solver (engine ticket E4) and the
-                library build-out — target ~300 solves.
+                Flop solves run through the Solver wizard and land here when done — the library
+                build-out target is ~300 solves.
               </p>
             </dl>
           )}

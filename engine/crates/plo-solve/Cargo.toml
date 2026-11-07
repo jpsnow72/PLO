@@ -12,6 +12,18 @@ path = "src/bin/solve-river.rs"
 name = "solve-turn"
 path = "src/bin/solve-turn.rs"
 
+[[bin]]
+name = "solve-flop"
+path = "src/bin/solve-flop.rs"
+
 [dependencies]
 plo-cards = { path = "../plo-cards" }
 plo-eval = { path = "../plo-eval" }
+
+[[bin]]
+name = "measure-flop"
+path = "src/bin/measure-flop.rs"
+
+[[bin]]
+name = "build-ranges"
+path = "src/bin/build-ranges.rs"

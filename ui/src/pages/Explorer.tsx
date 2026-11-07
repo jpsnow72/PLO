@@ -85,6 +85,7 @@ export function ExplorerPage() {
     );
   }
 
+  const turnCard = node.turn_card ? parseCard(node.turn_card) : null;
   const riverCard = node.river_card ? parseCard(node.river_card) : null;
   const oopEv = rangeEv(solve, 'OOP');
   const ipEv = rangeEv(solve, 'IP');
@@ -96,7 +97,12 @@ export function ExplorerPage() {
         <div>
           <h1 className="text-xl font-bold text-ink">{solveName}</h1>
           <p className="text-xs text-ink-faint">
-            {solve.kind === 'turn' ? 'Turn solve (turn + river tree)' : 'River solve'} ·{' '}
+            {solve.kind === 'flop'
+              ? 'Flop solve (flop + turn + river tree)'
+              : solve.kind === 'turn'
+                ? 'Turn solve (turn + river tree)'
+                : 'River solve'}{' '}
+            ·{' '}
             {solve.raw.iterations.toLocaleString()} iterations · pot {solve.raw.starting_pot} ·
             stacks {solve.raw.effective_stack}
             {solveSource === 'sample' ? ' · bundled fixture' : ''}
@@ -119,8 +125,13 @@ export function ExplorerPage() {
             </h2>
             <div className="flex items-center gap-2">
               <CardRow cards={solve.boardCards} size="lg" />
+              {turnCard ? (
+                <span className="rounded-md ring-2 ring-table" title="Turn card">
+                  <CardRow cards={[turnCard]} size="lg" />
+                </span>
+              ) : null}
               {riverCard ? (
-                <span className="rounded-md ring-2 ring-accent">
+                <span className="rounded-md ring-2 ring-accent" title="River card">
                   <CardRow cards={[riverCard]} size="lg" />
                 </span>
               ) : null}

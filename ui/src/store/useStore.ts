@@ -147,7 +147,11 @@ export const useStore = create<AppState>((set, get) => ({
     set({
       path: [
         ...path,
-        { nodeHistory: option.node.history, label: `River card · ${card}`, kind: 'runout' },
+        {
+          nodeHistory: option.node.history,
+          label: `${option.street === 'turn' ? 'Turn' : 'River'} card · ${card}`,
+          kind: 'runout',
+        },
       ],
       pendingRunout: null,
       terminalAction: null,
