@@ -1,0 +1,17 @@
+[package]
+name = "plo-solve"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "solve-river"
+path = "src/bin/solve-river.rs"
+
+[[bin]]
+name = "solve-turn"
+path = "src/bin/solve-turn.rs"
+
+[dependencies]
+plo-cards = { path = "../plo-cards" }
+plo-eval = { path = "../plo-eval" }

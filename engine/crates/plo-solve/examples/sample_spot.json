@@ -1,0 +1,19 @@
+{
+  "board": "As Ks Qs 7d 2c",
+  "oop_range": [
+    "Ts 9s 3c 4c:1.0",
+    "Jd Td 8h 9h:1.0",
+    "3d 4d 5c 6c:1.0"
+  ],
+  "ip_range": [
+    "8s 6s 3h 4h:1.0",
+    "Jh Th 8d 9d:1.0",
+    "3s 4s 5d 6d:0.5"
+  ],
+  "pot": 100.0,
+  "stacks": 100.0,
+  "bet_sizes": [0.33, 0.75, 1.0],
+  "max_raises": 2,
+  "max_iterations": 30000,
+  "target_exploitability_pct": 0.02
+}
