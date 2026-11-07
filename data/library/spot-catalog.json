@@ -27,8 +27,7 @@
       "river": 110
     },
     "status_counts": {
-      "ready": 240,
-      "needs-range": 60
+      "ready": 300
     },
     "estimated_flop_core_hours": {
       "minimum": 430,
@@ -7486,9 +7485,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "9s 8d 7c",
       "board_family": "middle connected",
       "board_seed": "9s 8d 7c",
@@ -7531,11 +7530,11 @@
       },
       "cap_per_side": 300,
       "capped_combos_oop": 300,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 300,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 1.2313,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 0.5516,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": 5.0,
@@ -7544,8 +7543,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-ts-9h-8d-flop",
@@ -7555,9 +7554,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Ts 9h 8d",
       "board_family": "middle connected",
       "board_seed": "Ts 9h 8d",
@@ -7600,11 +7599,11 @@
       },
       "cap_per_side": 300,
       "capped_combos_oop": 300,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 300,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 1.2313,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 0.5516,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": 5.0,
@@ -7613,8 +7612,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-6s-5d-4c-flop",
@@ -7624,9 +7623,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "6s 5d 4c",
       "board_family": "low connected",
       "board_seed": "6s 5d 4c",
@@ -7669,11 +7668,11 @@
       },
       "cap_per_side": 300,
       "capped_combos_oop": 300,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 300,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 1.2313,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 0.5516,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": 5.0,
@@ -7682,8 +7681,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-5s-4h-3d-flop",
@@ -7693,9 +7692,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "5s 4h 3d",
       "board_family": "low connected",
       "board_seed": "5s 4h 3d",
@@ -7738,11 +7737,11 @@
       },
       "cap_per_side": 300,
       "capped_combos_oop": 300,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 300,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 1.2313,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 0.5516,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": 5.0,
@@ -7751,8 +7750,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-as-ad-kc-flop",
@@ -7762,9 +7761,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "As Ad Kc",
       "board_family": "paired high",
       "board_seed": "As Ad Kc",
@@ -7807,11 +7806,11 @@
       },
       "cap_per_side": 300,
       "capped_combos_oop": 300,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 300,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 1.2313,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 0.5516,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": 5.0,
@@ -7820,8 +7819,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-ks-kh-qd-flop",
@@ -7831,9 +7830,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Ks Kh Qd",
       "board_family": "paired high",
       "board_seed": "Ks Kh Qd",
@@ -7876,11 +7875,11 @@
       },
       "cap_per_side": 300,
       "capped_combos_oop": 300,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 300,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 1.2313,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 0.5516,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": 5.0,
@@ -7889,8 +7888,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-7s-7d-2c-flop",
@@ -7900,9 +7899,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "7s 7d 2c",
       "board_family": "paired low",
       "board_seed": "7s 7d 2c",
@@ -7945,11 +7944,11 @@
       },
       "cap_per_side": 300,
       "capped_combos_oop": 300,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 300,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 1.2313,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 0.5516,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": 5.0,
@@ -7958,8 +7957,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-9s-8d-7c-2s-turn",
@@ -7969,9 +7968,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "9s 8d 7c 2s",
       "board_family": "middle connected",
       "board_seed": "9s 8d 7c",
@@ -8004,11 +8003,11 @@
       },
       "cap_per_side": 600,
       "capped_combos_oop": 600,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 600,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 2.4625,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 1.1032,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": null,
@@ -8017,8 +8016,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-ts-9h-8d-2s-turn",
@@ -8028,9 +8027,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Ts 9h 8d 2s",
       "board_family": "middle connected",
       "board_seed": "Ts 9h 8d",
@@ -8063,11 +8062,11 @@
       },
       "cap_per_side": 600,
       "capped_combos_oop": 600,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 600,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 2.4625,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 1.1032,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": null,
@@ -8076,8 +8075,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-6s-5d-4c-2s-turn",
@@ -8087,9 +8086,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "6s 5d 4c 2s",
       "board_family": "low connected",
       "board_seed": "6s 5d 4c",
@@ -8122,11 +8121,11 @@
       },
       "cap_per_side": 600,
       "capped_combos_oop": 600,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 600,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 2.4625,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 1.1032,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": null,
@@ -8135,8 +8134,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-5s-4h-3d-7s-turn",
@@ -8146,9 +8145,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "5s 4h 3d 7s",
       "board_family": "low connected",
       "board_seed": "5s 4h 3d",
@@ -8181,11 +8180,11 @@
       },
       "cap_per_side": 600,
       "capped_combos_oop": 600,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 600,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 2.4625,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 1.1032,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": null,
@@ -8194,8 +8193,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-as-ad-kc-3s-turn",
@@ -8205,9 +8204,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "As Ad Kc 3s",
       "board_family": "paired high",
       "board_seed": "As Ad Kc",
@@ -8240,11 +8239,11 @@
       },
       "cap_per_side": 600,
       "capped_combos_oop": 600,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 600,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 2.4625,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 1.1032,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": null,
@@ -8253,8 +8252,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-ks-kh-qd-2s-turn",
@@ -8264,9 +8263,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Ks Kh Qd 2s",
       "board_family": "paired high",
       "board_seed": "Ks Kh Qd",
@@ -8299,11 +8298,11 @@
       },
       "cap_per_side": 600,
       "capped_combos_oop": 600,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 600,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 2.4625,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 1.1032,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": null,
@@ -8312,8 +8311,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-9s-8d-7c-2s-4s-river",
@@ -8323,9 +8322,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "9s 8d 7c 2s 4s",
       "board_family": "middle connected",
       "board_seed": "9s 8d 7c",
@@ -8348,11 +8347,11 @@
       },
       "cap_per_side": 1500,
       "capped_combos_oop": 1500,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 1500,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 6.1563,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 2.7579,
       "tier": "precise",
       "est_core_hours": {
         "minimum": null,
@@ -8361,8 +8360,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-ts-9h-8d-2s-4s-river",
@@ -8372,9 +8371,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Ts 9h 8d 2s 4s",
       "board_family": "middle connected",
       "board_seed": "Ts 9h 8d",
@@ -8397,11 +8396,11 @@
       },
       "cap_per_side": 1500,
       "capped_combos_oop": 1500,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 1500,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 6.1563,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 2.7579,
       "tier": "precise",
       "est_core_hours": {
         "minimum": null,
@@ -8410,8 +8409,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-6s-5d-4c-2s-8s-river",
@@ -8421,9 +8420,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "6s 5d 4c 2s 8s",
       "board_family": "low connected",
       "board_seed": "6s 5d 4c",
@@ -8446,11 +8445,11 @@
       },
       "cap_per_side": 1500,
       "capped_combos_oop": 1500,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 1500,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 6.1563,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 2.7579,
       "tier": "precise",
       "est_core_hours": {
         "minimum": null,
@@ -8459,8 +8458,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-5s-4h-3d-7s-9s-river",
@@ -8470,9 +8469,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "5s 4h 3d 7s 9s",
       "board_family": "low connected",
       "board_seed": "5s 4h 3d",
@@ -8495,11 +8494,11 @@
       },
       "cap_per_side": 1500,
       "capped_combos_oop": 1500,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 1500,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 6.1563,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 2.7579,
       "tier": "precise",
       "est_core_hours": {
         "minimum": null,
@@ -8508,8 +8507,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-as-ad-kc-3s-5s-river",
@@ -8519,9 +8518,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "As Ad Kc 3s 5s",
       "board_family": "paired high",
       "board_seed": "As Ad Kc",
@@ -8544,11 +8543,11 @@
       },
       "cap_per_side": 1500,
       "capped_combos_oop": 1500,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 1500,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 6.1563,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 2.7579,
       "tier": "precise",
       "est_core_hours": {
         "minimum": null,
@@ -8557,8 +8556,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-ks-kh-qd-2s-4s-river",
@@ -8568,9 +8567,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Ks Kh Qd 2s 4s",
       "board_family": "paired high",
       "board_seed": "Ks Kh Qd",
@@ -8593,11 +8592,11 @@
       },
       "cap_per_side": 1500,
       "capped_combos_oop": 1500,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 1500,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 6.1563,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 2.7579,
       "tier": "precise",
       "est_core_hours": {
         "minimum": null,
@@ -8606,8 +8605,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-bb-3bet-7s-7d-2c-4s-9s-river",
@@ -8617,9 +8616,9 @@
       "oop_position": "BB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-bb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-bb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "7s 7d 2c 4s 9s",
       "board_family": "paired low",
       "board_seed": "7s 7d 2c",
@@ -8642,11 +8641,11 @@
       },
       "cap_per_side": 1500,
       "capped_combos_oop": 1500,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 1500,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59805,
       "coverage_oop_pct": 6.1563,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 2.7579,
       "tier": "precise",
       "est_core_hours": {
         "minimum": null,
@@ -8655,8 +8654,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against a BB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-as-ks-7s-flop",
@@ -8666,9 +8665,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "As Ks 7s",
       "board_family": "monotone",
       "board_seed": "As Ks 7s",
@@ -8711,11 +8710,11 @@
       },
       "cap_per_side": 300,
       "capped_combos_oop": 300,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 300,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 1.2313,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 0.5516,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": 5.0,
@@ -8724,8 +8723,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-qh-jh-4h-flop",
@@ -8735,9 +8734,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Qh Jh 4h",
       "board_family": "monotone",
       "board_seed": "Qh Jh 4h",
@@ -8780,11 +8779,11 @@
       },
       "cap_per_side": 300,
       "capped_combos_oop": 300,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 300,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 1.2313,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 0.5516,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": 5.0,
@@ -8793,8 +8792,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-as-ks-7d-flop",
@@ -8804,9 +8803,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "As Ks 7d",
       "board_family": "two-tone flush-draw",
       "board_seed": "As Ks 7d",
@@ -8849,11 +8848,11 @@
       },
       "cap_per_side": 300,
       "capped_combos_oop": 300,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 300,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 1.2313,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 0.5516,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": 5.0,
@@ -8862,8 +8861,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-qh-jh-4d-flop",
@@ -8873,9 +8872,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Qh Jh 4d",
       "board_family": "two-tone flush-draw",
       "board_seed": "Qh Jh 4d",
@@ -8918,11 +8917,11 @@
       },
       "cap_per_side": 300,
       "capped_combos_oop": 300,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 300,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 1.2313,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 0.5516,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": 5.0,
@@ -8931,8 +8930,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-js-ts-8d-flop",
@@ -8942,9 +8941,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Js Ts 8d",
       "board_family": "wet draw-heavy",
       "board_seed": "Js Ts 8d",
@@ -8987,11 +8986,11 @@
       },
       "cap_per_side": 300,
       "capped_combos_oop": 300,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 300,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 1.2313,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 0.5516,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": 5.0,
@@ -9000,8 +8999,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-9h-8h-6d-flop",
@@ -9011,9 +9010,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "9h 8h 6d",
       "board_family": "wet draw-heavy",
       "board_seed": "9h 8h 6d",
@@ -9056,11 +9055,11 @@
       },
       "cap_per_side": 300,
       "capped_combos_oop": 300,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 300,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 1.2313,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 0.5516,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": 5.0,
@@ -9069,8 +9068,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-ks-8d-3c-flop",
@@ -9080,9 +9079,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Ks 8d 3c",
       "board_family": "dry K/Q-high",
       "board_seed": "Ks 8d 3c",
@@ -9125,11 +9124,11 @@
       },
       "cap_per_side": 300,
       "capped_combos_oop": 300,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 300,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 1.2313,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 0.5516,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": 5.0,
@@ -9138,8 +9137,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-as-ks-7s-3s-turn",
@@ -9149,9 +9148,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "As Ks 7s 3s",
       "board_family": "monotone",
       "board_seed": "As Ks 7s",
@@ -9184,11 +9183,11 @@
       },
       "cap_per_side": 600,
       "capped_combos_oop": 600,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 600,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 2.4625,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 1.1032,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": null,
@@ -9197,8 +9196,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-qh-jh-4h-2s-turn",
@@ -9208,9 +9207,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Qh Jh 4h 2s",
       "board_family": "monotone",
       "board_seed": "Qh Jh 4h",
@@ -9243,11 +9242,11 @@
       },
       "cap_per_side": 600,
       "capped_combos_oop": 600,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 600,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 2.4625,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 1.1032,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": null,
@@ -9256,8 +9255,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-as-ks-7d-3s-turn",
@@ -9267,9 +9266,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "As Ks 7d 3s",
       "board_family": "two-tone flush-draw",
       "board_seed": "As Ks 7d",
@@ -9302,11 +9301,11 @@
       },
       "cap_per_side": 600,
       "capped_combos_oop": 600,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 600,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 2.4625,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 1.1032,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": null,
@@ -9315,8 +9314,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-qh-jh-4d-2s-turn",
@@ -9326,9 +9325,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Qh Jh 4d 2s",
       "board_family": "two-tone flush-draw",
       "board_seed": "Qh Jh 4d",
@@ -9361,11 +9360,11 @@
       },
       "cap_per_side": 600,
       "capped_combos_oop": 600,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 600,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 2.4625,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 1.1032,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": null,
@@ -9374,8 +9373,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-js-ts-8d-2s-turn",
@@ -9385,9 +9384,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Js Ts 8d 2s",
       "board_family": "wet draw-heavy",
       "board_seed": "Js Ts 8d",
@@ -9420,11 +9419,11 @@
       },
       "cap_per_side": 600,
       "capped_combos_oop": 600,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 600,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 2.4625,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 1.1032,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": null,
@@ -9433,8 +9432,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-9h-8h-6d-2s-turn",
@@ -9444,9 +9443,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "9h 8h 6d 2s",
       "board_family": "wet draw-heavy",
       "board_seed": "9h 8h 6d",
@@ -9479,11 +9478,11 @@
       },
       "cap_per_side": 600,
       "capped_combos_oop": 600,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 600,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 2.4625,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 1.1032,
       "tier": "balanced",
       "est_core_hours": {
         "minimum": null,
@@ -9492,8 +9491,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-as-ks-7s-3s-5s-river",
@@ -9503,9 +9502,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "As Ks 7s 3s 5s",
       "board_family": "monotone",
       "board_seed": "As Ks 7s",
@@ -9528,11 +9527,11 @@
       },
       "cap_per_side": 1500,
       "capped_combos_oop": 1500,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 1500,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 6.1563,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 2.7579,
       "tier": "precise",
       "est_core_hours": {
         "minimum": null,
@@ -9541,8 +9540,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-qh-jh-4h-2s-6s-river",
@@ -9552,9 +9551,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Qh Jh 4h 2s 6s",
       "board_family": "monotone",
       "board_seed": "Qh Jh 4h",
@@ -9577,11 +9576,11 @@
       },
       "cap_per_side": 1500,
       "capped_combos_oop": 1500,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 1500,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 6.1563,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 2.7579,
       "tier": "precise",
       "est_core_hours": {
         "minimum": null,
@@ -9590,8 +9589,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-as-ks-7d-3s-5s-river",
@@ -9601,9 +9600,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "As Ks 7d 3s 5s",
       "board_family": "two-tone flush-draw",
       "board_seed": "As Ks 7d",
@@ -9626,11 +9625,11 @@
       },
       "cap_per_side": 1500,
       "capped_combos_oop": 1500,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 1500,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 6.1563,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 2.7579,
       "tier": "precise",
       "est_core_hours": {
         "minimum": null,
@@ -9639,8 +9638,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-qh-jh-4d-2s-6s-river",
@@ -9650,9 +9649,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Qh Jh 4d 2s 6s",
       "board_family": "two-tone flush-draw",
       "board_seed": "Qh Jh 4d",
@@ -9675,11 +9674,11 @@
       },
       "cap_per_side": 1500,
       "capped_combos_oop": 1500,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 1500,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 6.1563,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 2.7579,
       "tier": "precise",
       "est_core_hours": {
         "minimum": null,
@@ -9688,8 +9687,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-js-ts-8d-2s-4s-river",
@@ -9699,9 +9698,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Js Ts 8d 2s 4s",
       "board_family": "wet draw-heavy",
       "board_seed": "Js Ts 8d",
@@ -9724,11 +9723,11 @@
       },
       "cap_per_side": 1500,
       "capped_combos_oop": 1500,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 1500,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 6.1563,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 2.7579,
       "tier": "precise",
       "est_core_hours": {
         "minimum": null,
@@ -9737,8 +9736,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-9h-8h-6d-2s-4s-river",
@@ -9748,9 +9747,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "9h 8h 6d 2s 4s",
       "board_family": "wet draw-heavy",
       "board_seed": "9h 8h 6d",
@@ -9773,11 +9772,11 @@
       },
       "cap_per_side": 1500,
       "capped_combos_oop": 1500,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 1500,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 6.1563,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 2.7579,
       "tier": "precise",
       "est_core_hours": {
         "minimum": null,
@@ -9786,8 +9785,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-btn-vs-sb-3bet-ks-8d-3c-5s-ts-river",
@@ -9797,9 +9796,9 @@
       "oop_position": "SB",
       "ip_position": "BTN",
       "oop_set": "constructed-v1-6max-sb-vs-btn",
-      "ip_set": null,
+      "ip_set": "constructed-v1.1-6max-btn-vs-sb-3bet",
       "range_action_oop": "three_bet",
-      "range_action_ip": "call_vs_3bet",
+      "range_action_ip": "call",
       "board": "Ks 8d 3c 5s Ts",
       "board_family": "dry K/Q-high",
       "board_seed": "Ks 8d 3c",
@@ -9822,11 +9821,11 @@
       },
       "cap_per_side": 1500,
       "capped_combos_oop": 1500,
-      "capped_combos_ip": null,
+      "capped_combos_ip": 1500,
       "source_action_combos_oop": 27078,
-      "source_action_combos_ip": null,
+      "source_action_combos_ip": 59809,
       "coverage_oop_pct": 6.1563,
-      "coverage_ip_pct": null,
+      "coverage_ip_pct": 2.7579,
       "tier": "precise",
       "est_core_hours": {
         "minimum": null,
@@ -9835,8 +9834,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains BTN's continuation against an SB 3-bet; BTN's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-as-4d-3c-flop",
@@ -9845,9 +9844,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "As 4d 3c",
       "board_family": "wheel-heavy",
@@ -9890,11 +9889,11 @@
         }
       },
       "cap_per_side": 300,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 300,
       "capped_combos_ip": 300,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 0.9009,
       "coverage_ip_pct": 1.3681,
       "tier": "balanced",
       "est_core_hours": {
@@ -9904,8 +9903,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-ah-5d-2c-flop",
@@ -9914,9 +9913,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "Ah 5d 2c",
       "board_family": "wheel-heavy",
@@ -9959,11 +9958,11 @@
         }
       },
       "cap_per_side": 300,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 300,
       "capped_combos_ip": 300,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 0.9009,
       "coverage_ip_pct": 1.3681,
       "tier": "balanced",
       "est_core_hours": {
@@ -9973,8 +9972,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-as-kd-7c-flop",
@@ -9983,9 +9982,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "As Kd 7c",
       "board_family": "dry A-high rainbow",
@@ -10028,11 +10027,11 @@
         }
       },
       "cap_per_side": 300,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 300,
       "capped_combos_ip": 300,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 0.9009,
       "coverage_ip_pct": 1.3681,
       "tier": "balanced",
       "est_core_hours": {
@@ -10042,8 +10041,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-ah-qd-4c-flop",
@@ -10052,9 +10051,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "Ah Qd 4c",
       "board_family": "dry A-high rainbow",
@@ -10097,11 +10096,11 @@
         }
       },
       "cap_per_side": 300,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 300,
       "capped_combos_ip": 300,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 0.9009,
       "coverage_ip_pct": 1.3681,
       "tier": "balanced",
       "est_core_hours": {
@@ -10111,8 +10110,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-qs-jd-tc-flop",
@@ -10121,9 +10120,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "Qs Jd Tc",
       "board_family": "broadway connected",
@@ -10166,11 +10165,11 @@
         }
       },
       "cap_per_side": 300,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 300,
       "capped_combos_ip": 300,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 0.9009,
       "coverage_ip_pct": 1.3681,
       "tier": "balanced",
       "est_core_hours": {
@@ -10180,8 +10179,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-ks-qh-jd-flop",
@@ -10190,9 +10189,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "Ks Qh Jd",
       "board_family": "broadway connected",
@@ -10235,11 +10234,11 @@
         }
       },
       "cap_per_side": 300,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 300,
       "capped_combos_ip": 300,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 0.9009,
       "coverage_ip_pct": 1.3681,
       "tier": "balanced",
       "est_core_hours": {
@@ -10249,8 +10248,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-9s-8d-7c-flop",
@@ -10259,9 +10258,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "9s 8d 7c",
       "board_family": "middle connected",
@@ -10304,11 +10303,11 @@
         }
       },
       "cap_per_side": 300,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 300,
       "capped_combos_ip": 300,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 0.9009,
       "coverage_ip_pct": 1.3681,
       "tier": "balanced",
       "est_core_hours": {
@@ -10318,8 +10317,8 @@
         "label": "estimate",
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-as-4d-3c-6s-turn",
@@ -10328,9 +10327,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "As 4d 3c 6s",
       "board_family": "wheel-heavy",
@@ -10363,11 +10362,11 @@
         }
       },
       "cap_per_side": 600,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 600,
       "capped_combos_ip": 600,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 1.8018,
       "coverage_ip_pct": 2.7361,
       "tier": "balanced",
       "est_core_hours": {
@@ -10377,8 +10376,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-ah-5d-2c-7s-turn",
@@ -10387,9 +10386,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "Ah 5d 2c 7s",
       "board_family": "wheel-heavy",
@@ -10422,11 +10421,11 @@
         }
       },
       "cap_per_side": 600,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 600,
       "capped_combos_ip": 600,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 1.8018,
       "coverage_ip_pct": 2.7361,
       "tier": "balanced",
       "est_core_hours": {
@@ -10436,8 +10435,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-as-ad-ks-kh-turn",
@@ -10446,9 +10445,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "As Ad Ks Kh",
       "board_family": "double-paired",
@@ -10481,11 +10480,11 @@
         }
       },
       "cap_per_side": 600,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 600,
       "capped_combos_ip": 600,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 1.8018,
       "coverage_ip_pct": 2.7361,
       "tier": "balanced",
       "est_core_hours": {
@@ -10495,8 +10494,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-qs-qd-js-jh-turn",
@@ -10505,9 +10504,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "Qs Qd Js Jh",
       "board_family": "double-paired",
@@ -10540,11 +10539,11 @@
         }
       },
       "cap_per_side": 600,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 600,
       "capped_combos_ip": 600,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 1.8018,
       "coverage_ip_pct": 2.7361,
       "tier": "balanced",
       "est_core_hours": {
@@ -10554,8 +10553,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-as-kd-7c-3s-turn",
@@ -10564,9 +10563,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "As Kd 7c 3s",
       "board_family": "dry A-high rainbow",
@@ -10599,11 +10598,11 @@
         }
       },
       "cap_per_side": 600,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 600,
       "capped_combos_ip": 600,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 1.8018,
       "coverage_ip_pct": 2.7361,
       "tier": "balanced",
       "est_core_hours": {
@@ -10613,8 +10612,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-ah-qd-4c-6s-turn",
@@ -10623,9 +10622,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "Ah Qd 4c 6s",
       "board_family": "dry A-high rainbow",
@@ -10658,11 +10657,11 @@
         }
       },
       "cap_per_side": 600,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 600,
       "capped_combos_ip": 600,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 1.8018,
       "coverage_ip_pct": 2.7361,
       "tier": "balanced",
       "est_core_hours": {
@@ -10672,8 +10671,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-as-4d-3c-6s-8s-river",
@@ -10682,9 +10681,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "As 4d 3c 6s 8s",
       "board_family": "wheel-heavy",
@@ -10707,11 +10706,11 @@
         }
       },
       "cap_per_side": 1500,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 1500,
       "capped_combos_ip": 1500,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 4.5046,
       "coverage_ip_pct": 6.8403,
       "tier": "precise",
       "est_core_hours": {
@@ -10721,8 +10720,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-ah-5d-2c-7s-9s-river",
@@ -10731,9 +10730,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "Ah 5d 2c 7s 9s",
       "board_family": "wheel-heavy",
@@ -10756,11 +10755,11 @@
         }
       },
       "cap_per_side": 1500,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 1500,
       "capped_combos_ip": 1500,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 4.5046,
       "coverage_ip_pct": 6.8403,
       "tier": "precise",
       "est_core_hours": {
@@ -10770,8 +10769,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-as-ad-ks-kh-3s-river",
@@ -10780,9 +10779,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "As Ad Ks Kh 3s",
       "board_family": "double-paired",
@@ -10805,11 +10804,11 @@
         }
       },
       "cap_per_side": 1500,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 1500,
       "capped_combos_ip": 1500,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 4.5046,
       "coverage_ip_pct": 6.8403,
       "tier": "precise",
       "est_core_hours": {
@@ -10819,8 +10818,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-qs-qd-js-jh-2s-river",
@@ -10829,9 +10828,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "Qs Qd Js Jh 2s",
       "board_family": "double-paired",
@@ -10854,11 +10853,11 @@
         }
       },
       "cap_per_side": 1500,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 1500,
       "capped_combos_ip": 1500,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 4.5046,
       "coverage_ip_pct": 6.8403,
       "tier": "precise",
       "est_core_hours": {
@@ -10868,8 +10867,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-as-kd-7c-3s-5s-river",
@@ -10878,9 +10877,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "As Kd 7c 3s 5s",
       "board_family": "dry A-high rainbow",
@@ -10903,11 +10902,11 @@
         }
       },
       "cap_per_side": 1500,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 1500,
       "capped_combos_ip": 1500,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 4.5046,
       "coverage_ip_pct": 6.8403,
       "tier": "precise",
       "est_core_hours": {
@@ -10917,8 +10916,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-ah-qd-4c-6s-8s-river",
@@ -10927,9 +10926,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "Ah Qd 4c 6s 8s",
       "board_family": "dry A-high rainbow",
@@ -10952,11 +10951,11 @@
         }
       },
       "cap_per_side": 1500,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 1500,
       "capped_combos_ip": 1500,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 4.5046,
       "coverage_ip_pct": 6.8403,
       "tier": "precise",
       "est_core_hours": {
@@ -10966,8 +10965,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-3bet-qs-jd-tc-2s-4s-river",
@@ -10976,9 +10975,9 @@
       "matchup": "CO opens, BTN 3-bets, CO continues",
       "oop_position": "CO",
       "ip_position": "BTN",
-      "oop_set": null,
+      "oop_set": "constructed-v1.1-6max-co-vs-btn-3bet",
       "ip_set": "constructed-v1-6max-btn-vs-co",
-      "range_action_oop": "call_vs_3bet",
+      "range_action_oop": "call",
       "range_action_ip": "three_bet",
       "board": "Qs Jd Tc 2s 4s",
       "board_family": "broadway connected",
@@ -11001,11 +11000,11 @@
         }
       },
       "cap_per_side": 1500,
-      "capped_combos_oop": null,
+      "capped_combos_oop": 1500,
       "capped_combos_ip": 1500,
-      "source_action_combos_oop": null,
+      "source_action_combos_oop": 38709,
       "source_action_combos_ip": 24638,
-      "coverage_oop_pct": null,
+      "coverage_oop_pct": 4.5046,
       "coverage_ip_pct": 6.8403,
       "tier": "precise",
       "est_core_hours": {
@@ -11015,8 +11014,8 @@
         "label": "estimate_not_allocated_per_entry",
         "basis": "Library plan gives only an aggregate for turn/river solves (216 solves, minutes each, under 40 core-hours total) and does not allocate a defensible per-entry range."
       },
-      "status": "needs-range",
-      "status_reason": "No v1 range set contains CO's continuation against a BTN 3-bet; CO's RFI set is not a call-vs-3-bet range and was not substituted."
+      "status": "ready",
+      "status_reason": null
     },
     {
       "id": "6max-co-vs-btn-qs-jd-tc-2s-turn",

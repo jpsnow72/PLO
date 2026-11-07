@@ -63,6 +63,12 @@ class BoardSeed:
 class RangeSide:
     set_id: Optional[str]
     action: str
+    # For continuation sets (v1.1 vs_three_bet), the emitted action
+    # frequencies are conditional on the opener having opened. The
+    # postflop combo weight is base_freq * action_freq, where the base
+    # is the opener's RFI set/action below.
+    base_set_id: Optional[str] = None
+    base_action: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -202,6 +208,8 @@ def _pair(
     ip_action: str,
     pot_type: str = "srp",
     missing_reason: Optional[str] = None,
+    oop_base: Optional[tuple] = None,
+    ip_base: Optional[tuple] = None,
 ) -> Pair:
     return Pair(
         key=key,
@@ -210,8 +218,8 @@ def _pair(
         matchup=matchup,
         oop_position=oop_position,
         ip_position=ip_position,
-        oop=RangeSide(oop_set, oop_action),
-        ip=RangeSide(ip_set, ip_action),
+        oop=RangeSide(oop_set, oop_action, *(oop_base or (None, None))),
+        ip=RangeSide(ip_set, ip_action, *(ip_base or (None, None))),
         pot_type=pot_type,
         missing_reason=missing_reason,
     )
@@ -301,19 +309,18 @@ _register(_srp_open_call(
     "9-co-btn-call", "9max", "CO", "co", "BTN", "btn", responder_first=False
 ))
 
-# 3-bet-pot pairs.  The 3-bettor's three_bet slice exists inside a vs_rfi set,
-# but v1 has no set for the opener's continuation against that 3-bet.  The RFI
-# set is deliberately not substituted for that missing continuation.
+# 3-bet-pot pairs.  The 3-bettor's side is the three_bet slice of their
+# vs_rfi set; the opener's side is the v1.1 vs_three_bet continuation set
+# (call slice), weighted by the product of the opener's RFI raise
+# frequency and the conditional call frequency — the continuation sets'
+# frequencies are conditional on having opened.
 _register(
     _pair(
         "6-btn-bb-3bet", "6max", "btn-vs-bb-3bet",
         "BTN opens, BB 3-bets, BTN continues", "BB", "BTN",
         _set("6max", "bb-vs-btn"), "three_bet",
-        None, "call_vs_3bet", pot_type="3bet",
-        missing_reason=(
-            "No v1 range set contains BTN's continuation against a BB 3-bet; "
-            "BTN's RFI set is not a call-vs-3-bet range and was not substituted."
-        ),
+        "constructed-v1.1-6max-btn-vs-bb-3bet", "call", pot_type="3bet",
+        ip_base=(_set("6max", "btn-rfi"), "raise"),
     )
 )
 _register(
@@ -321,23 +328,17 @@ _register(
         "6-btn-sb-3bet", "6max", "btn-vs-sb-3bet",
         "BTN opens, SB 3-bets, BTN continues", "SB", "BTN",
         _set("6max", "sb-vs-btn"), "three_bet",
-        None, "call_vs_3bet", pot_type="3bet",
-        missing_reason=(
-            "No v1 range set contains BTN's continuation against an SB 3-bet; "
-            "BTN's RFI set is not a call-vs-3-bet range and was not substituted."
-        ),
+        "constructed-v1.1-6max-btn-vs-sb-3bet", "call", pot_type="3bet",
+        ip_base=(_set("6max", "btn-rfi"), "raise"),
     )
 )
 _register(
     _pair(
         "6-co-btn-3bet", "6max", "co-vs-btn-3bet",
         "CO opens, BTN 3-bets, CO continues", "CO", "BTN",
-        None, "call_vs_3bet",
+        "constructed-v1.1-6max-co-vs-btn-3bet", "call",
         _set("6max", "btn-vs-co"), "three_bet", pot_type="3bet",
-        missing_reason=(
-            "No v1 range set contains CO's continuation against a BTN 3-bet; "
-            "CO's RFI set is not a call-vs-3-bet range and was not substituted."
-        ),
+        oop_base=(_set("6max", "co-rfi"), "raise"),
     )
 )
 
@@ -391,6 +392,50 @@ class RangeData:
                 action_combos += mult
         if total_weight <= 0:
             raise ValueError(f"Set {set_id} has no positive {action} weight")
+        rows.sort(key=lambda row: (-row[0], row[2]))
+        remaining = cap
+        kept_weight = 0.0
+        kept_combos = 0
+        for freq, mult, _hand in rows:
+            if remaining == 0:
+                break
+            take = min(mult, remaining)
+            kept_weight += freq * take
+            kept_combos += take
+            remaining -= take
+        result = {
+            "coverage_pct": round(100.0 * kept_weight / total_weight, 4),
+            "kept_combos": kept_combos,
+            "action_combos": action_combos,
+            "action_weight": round(total_weight, 4),
+        }
+        self._coverage_cache[key] = result
+        return result
+
+    def coverage_product(self, set_id: str, action: str,
+                         base_set_id: str, base_action: str, cap: int) -> dict:
+        """Coverage for a continuation side: per-class weight is the
+        product of the base (RFI) frequency and the conditional action
+        frequency, since the continuation set's frequencies are
+        conditional on having opened."""
+        key = (set_id, action, base_set_id, base_action, cap)
+        if key in self._coverage_cache:
+            return self._coverage_cache[key]
+        doc = self.sets[set_id]
+        base = self.sets[base_set_id]
+        rows: list[tuple[float, int, str]] = []
+        total_weight = 0.0
+        action_combos = 0
+        for hand, actions in doc["hands"].items():
+            freq = float(actions.get(action, 0.0)) * float(
+                base["hands"][hand].get(base_action, 0.0))
+            if freq > 0:
+                mult = self.multiplicity[hand]
+                rows.append((freq, mult, hand))
+                total_weight += freq * mult
+                action_combos += mult
+        if total_weight <= 0:
+            raise ValueError(f"Set {set_id} has no positive {action} product weight")
         rows.sort(key=lambda row: (-row[0], row[2]))
         remaining = cap
         kept_weight = 0.0
@@ -538,7 +583,11 @@ def make_entry(
     def side_result(side: RangeSide) -> tuple[Optional[float], Optional[int], Optional[int]]:
         if side.set_id is None:
             return None, None, None
-        result = data.coverage(side.set_id, side.action, cap)
+        if side.base_set_id is not None:
+            result = data.coverage_product(
+                side.set_id, side.action, side.base_set_id, side.base_action, cap)
+        else:
+            result = data.coverage(side.set_id, side.action, cap)
         return result["coverage_pct"], result["kept_combos"], result["action_combos"]
 
     oop_cov, oop_kept, oop_action_combos = side_result(pair.oop)
@@ -622,8 +671,8 @@ def build_catalog(data: RangeData) -> dict:
     add(GROUP_SB_BB, "6-sb-bb", "turn", 8, 17)
     add(GROUP_SB_BB, "6-sb-bb", "river", 8, 17)
 
-    # 3-bet pots: 20 per matchup (7/6/7).  All are needs-range in v1 because
-    # the opener's call-vs-3-bet continuation set does not exist.
+    # 3-bet pots: 20 per matchup (7/6/7).  Ready since ranges v1.1 added
+    # the opener's call-vs-3-bet continuation sets.
     for pair_key, start in [
         ("6-btn-bb-3bet", 4),
         ("6-btn-sb-3bet", 14),
@@ -788,7 +837,13 @@ def verify_catalog(catalog: dict, data: RangeData) -> dict:
                 assert entry[cov_key] is None and entry[kept_key] is None and entry[combos_key] is None, entry["id"]
                 continue
             assert set_id in data.sets, entry["id"]
-            recomputed = data.coverage(set_id, entry[action_key], entry["cap_per_side"])
+            side_obj = _pair_for_entry(entry).oop if side_name == "oop" else _pair_for_entry(entry).ip
+            if side_obj.base_set_id is not None:
+                recomputed = data.coverage_product(
+                    set_id, entry[action_key], side_obj.base_set_id,
+                    side_obj.base_action, entry["cap_per_side"])
+            else:
+                recomputed = data.coverage(set_id, entry[action_key], entry["cap_per_side"])
             assert math.isclose(entry[cov_key], recomputed["coverage_pct"], abs_tol=0.00011), (
                 entry["id"], side_name, entry[cov_key], recomputed["coverage_pct"]
             )
@@ -804,7 +859,7 @@ def verify_catalog(catalog: dict, data: RangeData) -> dict:
             assert entry["oop_set"] is not None and entry["ip_set"] is not None, entry["id"]
             assert entry["status_reason"] is None, entry["id"]
 
-    assert needs_range == 60, f"Expected 60 needs-range entries, got {needs_range}"
+    assert needs_range == 0, f"Expected 0 needs-range entries, got {needs_range}"
     return {
         "entries": len(entries),
         "group_counts": dict(group_counts),

@@ -200,3 +200,6 @@ The generator verifies the catalog in memory before writing it. The explicit ver
 - exactly 60 needs-range entries, each with exactly one missing side and a non-empty reason.
 
 Latest explicit result: **VERIFY PASS**, with 300 entries, 60 needs-range entries, and the coverage distribution tabulated above.
+
+## Addendum — ranges v1.1 regeneration (2026-11-07)
+Ranges v1.1 added the three call-vs-3bet continuation sets (constructed-v1.1-6max-{btn-vs-bb,btn-vs-sb,co-vs-btn}-3bet). The generator's 3-bet pair definitions now use them, so all 300 entries are `ready` (was 240 ready / 60 needs-range); the verifier's needs-range expectation is now 0 and passes. Continuation-side coverage uses PRODUCT weights: a combo's postflop weight is the opener's RFI raise frequency times the continuation set's conditional call frequency (the v1.1 sets' frequencies are conditional on having opened). The four_bet slice roots a different pot (a 4-bet pot) and is not used by these spots.
