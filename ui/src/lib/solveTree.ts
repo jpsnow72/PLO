@@ -10,18 +10,23 @@
 //     child; instead one river subtree root exists per river card with
 //     history `{childHistory}|r:{Card}`. That is the chance node: the UI
 //     presents a runout picker.
+//   - Flop solves add one more chance level on top: an action that closes
+//     the flop street leads to one turn subtree root per turn card with
+//     history `{childHistory}|t:{Card}`; inside those subtrees the turn
+//     solver's own `{...}|r:{Card}` river roots hang below the namespaced
+//     turn path (e.g. `B(75)/C|t:As/X/X|r:Kd`).
 
 import { parseCard, parseCardList, RANK_ORDER, type Card } from './cards';
 import type { Player, RawSolve, RawSolveNode } from './types';
 
 export interface SolveNode extends RawSolveNode {
   /** Normalised street: river solves report every node as "river". */
-  streetName: 'turn' | 'river';
+  streetName: 'flop' | 'turn' | 'river';
 }
 
 export interface SolveData {
   raw: RawSolve;
-  kind: 'river' | 'turn';
+  kind: 'river' | 'turn' | 'flop';
   boardCards: Card[];
   root: SolveNode;
   nodesByHistory: Map<string, SolveNode>;
@@ -53,21 +58,30 @@ export function parseSolve(value: unknown): SolveData | null {
   if (!isRawSolve(value)) return null;
   const raw = value;
   const boardCards = parseCardList(raw.board) ?? [];
-  const kind: SolveData['kind'] = raw.nodes.some((n) => typeof n.street === 'string')
-    ? 'turn'
-    : 'river';
+  const kind: SolveData['kind'] =
+    boardCards.length === 3
+      ? 'flop'
+      : boardCards.length === 4
+        ? 'turn'
+        : boardCards.length === 5
+          ? 'river'
+          : raw.nodes.some((n) => typeof n.street === 'string')
+            ? 'turn'
+            : 'river';
 
   const nodesByHistory = new Map<string, SolveNode>();
   let root: SolveNode | null = null;
   for (const n of raw.nodes) {
     const streetName: SolveNode['streetName'] =
-      n.street === 'turn' || n.street === 'river'
+      n.street === 'flop' || n.street === 'turn' || n.street === 'river'
         ? n.street
         : n.river_card
           ? 'river'
-          : kind === 'turn'
-            ? 'turn'
-            : 'river';
+          : kind === 'flop'
+            ? 'flop'
+            : kind === 'turn'
+              ? 'turn'
+              : 'river';
     const node: SolveNode = { ...n, streetName };
     nodesByHistory.set(node.history, node);
     if (node.history === 'root') root = node;
@@ -128,6 +142,8 @@ export function childHistory(node: SolveNode, actionLabel: string): string {
 
 export interface RunoutOption {
   card: string;
+  /** Which chance node this option belongs to: dealing the turn or the river. */
+  street: 'turn' | 'river';
   node: SolveNode;
 }
 
@@ -139,7 +155,8 @@ export type StepResult =
 /**
  * What happens when `actionLabel` is taken at `node`:
  *  - a direct child decision node (normal case),
- *  - a chance node (turn street closed -> pick a river card), or
+ *  - a chance node (flop street closed -> pick a turn card; turn street
+ *    closed -> pick a river card), or
  *  - a terminal (fold / call / check that ends the hand, or an all-in
  *    runout with no further decisions in this solve).
  */
@@ -148,22 +165,34 @@ export function resolveStep(data: SolveData, node: SolveNode, actionLabel: strin
   const direct = data.nodesByHistory.get(child);
   if (direct) return { type: 'node', node: direct };
 
-  const prefix = `${child}|r:`;
-  const options: RunoutOption[] = [];
-  for (const candidate of data.nodesByHistory.values()) {
-    if (!candidate.history.startsWith(prefix)) continue;
-    const rest = candidate.history.slice(prefix.length);
-    if (rest.includes('/')) continue; // only subtree roots, not deeper nodes
-    options.push({ card: candidate.river_card ?? rest, node: candidate });
-  }
-  if (options.length > 0) {
-    options.sort((a, b) => {
-      const ra = parseCard(a.card);
-      const rb = parseCard(b.card);
-      const byRank = (RANK_ORDER[rb?.rank ?? ''] ?? 0) - (RANK_ORDER[ra?.rank ?? ''] ?? 0);
-      return byRank !== 0 ? byRank : a.card.localeCompare(b.card);
-    });
-    return { type: 'runout', baseHistory: child, options };
+  // Chance nodes: subtree roots live at `{child}|t:{Card}` (turn deal, flop
+  // solves) or `{child}|r:{Card}` (river deal, turn and flop solves).
+  const chanceSpecs = [
+    { marker: 't', street: 'turn' },
+    { marker: 'r', street: 'river' },
+  ] as const;
+  for (const spec of chanceSpecs) {
+    const prefix = `${child}|${spec.marker}:`;
+    const options: RunoutOption[] = [];
+    for (const candidate of data.nodesByHistory.values()) {
+      if (!candidate.history.startsWith(prefix)) continue;
+      const rest = candidate.history.slice(prefix.length);
+      if (rest.includes('/') || rest.includes('|')) continue; // only subtree roots
+      const card =
+        spec.street === 'turn'
+          ? (candidate.turn_card ?? rest)
+          : (candidate.river_card ?? rest);
+      options.push({ card, street: spec.street, node: candidate });
+    }
+    if (options.length > 0) {
+      options.sort((a, b) => {
+        const ra = parseCard(a.card);
+        const rb = parseCard(b.card);
+        const byRank = (RANK_ORDER[rb?.rank ?? ''] ?? 0) - (RANK_ORDER[ra?.rank ?? ''] ?? 0);
+        return byRank !== 0 ? byRank : a.card.localeCompare(b.card);
+      });
+      return { type: 'runout', baseHistory: child, options };
+    }
   }
   return { type: 'terminal', actionLabel };
 }

@@ -85,3 +85,59 @@ CLI: `solve-turn`) that extends the E2 river solver to a game starting on the tu
   and two 120-combo convergence spots (wet and paired boards) held to the 0.3%-of-pot
   checker bar. The heavy tests are release-only (`#[cfg(not(debug_assertions))]`)
   because debug-mode wall time over 48 runouts is impractical.
+
+## Flop Solver (Ticket E4)
+
+`plo-solve` also contains a three-street **flop solver** (`crates/plo-solve/src/flop.rs`,
+CLI: `solve-flop` / measurement harness `measure-flop`): bucketed on the flop,
+exact on turn and river.
+
+- **Bucketing (`crates/plo-solve/src/buckets.rs`)**: each combo gets a 12-dim
+  texture-feature vector (hole-pair structure — weighted primary — pair height,
+  board-pair interaction, 3-connectedness incl. wheel windows, straight-draw
+  potential, flush-draw strength, nut-flush blockers, suit pattern, top-two
+  strength, low-card share, overcard share, board-rank duplication; never raw
+  equity alone). Deterministic weighted k-means (fixed-seed k-means++ init,
+  range-weight centroids, ties to the lowest centroid) assigns K buckets per
+  player; identical feature vectors always share a bucket. `BucketConfig::Exact`
+  keeps one bucket per combo. Bucket definitions serialise with the solve
+  output (`BucketAssignment::to_json`).
+- **Game (`FlopSpot` / `FlopGame`)**: 3-card board, per-street `TreeConfig`s.
+  When a flop line closes, **one turn subtree per turn card** (49) is built —
+  an E3 `TurnGame` on board+turn card with the pot and stacks carried over.
+  Per disjoint combo pair exactly 41 turn cards are dealable (1/41 each);
+  card removal is exact per pair, as in E3.
+- **Solving**: DCFR at bucket level on the flop (regrets aggregate the
+  range-weighted per-combo counterfactual regrets per bucket), exact per
+  combo inside every subtree, reusing the extracted `TurnSolverState`
+  (kernels shared per turn card across subtrees).
+- **The flop <-> subtree seam (correctness invariant)**: inside a subtree the
+  pot — which already contains both players' flop commitments — is dead
+  money, so subtree values are net of turn/river contributions only. Both
+  the solver and the checker therefore subtract
+  `flop_committed × (valid opponent reach mass)` when mapping subtree root
+  values back to flop combos. Without this charge, flop lines that commit
+  chips are systematically over-valued. The regression test
+  `zero_sum_identity_with_flop_betting_and_raises` asserts the dead-money
+  identity `oop_ev + ip_ev == starting_pot` on bet+raise lines, exact
+  traversal of any profile being the only way the identity can hold.
+- **Checking**: `compute_exploitability_flop` (`br.rs`) expands the bucketed
+  profile to combo level and measures its exploitability by exact
+  combo-level best response **in the unabstracted game** — the only Nash
+  number reported for a flop solve.
+- **Measured shape of the canonical SRP spot** (200 combos/side, pot 12,
+  94 behind, flop bet 75%/all-in + pot raise): 22,645,200 total infosets of
+  which the flop street is only 1,200 (0.005%); solver working set 1.56 GB
+  at every K including exact; ~3,600 s per 1,000 DCFR iterations on the
+  6-vCPU gate VM. Flop bucketing therefore buys essentially no memory or
+  speed — its only cost is accuracy (small-spot abstraction floor
+  ≈ +0.18 pp of pot at K=9/K=5; on the canonical spot at a fixed
+  500-iteration budget, checker Nash was 4.14% exact vs 6.60% K=100 vs
+  9.85% K=50). Full table and the RAM-tier verdict: `LANE-NOTES-E4.md` in
+  the lane work dir.
+- **Validation** (`crates/plo-solve/tests/flop_validation.rs`): bucket
+  determinism/serialisation, identical-features-share-a-bucket,
+  nuts-vs-air separation on a dry board, turn-card/subtree accounting
+  (49 cards; 45 per combo; 49 − |union| per pair), solver smoke tests, the
+  zero-sum seam regression, and a release-only abstraction-loss test
+  (small spot solved exactly and at K=9/K=5, 4,000 iterations each).

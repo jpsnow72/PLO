@@ -18,6 +18,8 @@
 //! independent best-response checker for this game lives in
 //! [`crate::br::compute_exploitability_turn`].
 
+use std::rc::Rc;
+
 use plo_cards::{Card, HandMask};
 use plo_eval::{eval_omaha_pairs_triples, extract_board_triples, HandRank, PloRange, WeightedCombo};
 
@@ -685,6 +687,12 @@ impl TurnKernel {
         }
     }
 
+    /// Heap memory held by this kernel's CSR tables (offsets + opponent indices).
+    pub fn memory_bytes(&self) -> usize {
+        self.offsets.len() * std::mem::size_of::<[u32; 4]>()
+            + self.opp_indices.len() * std::mem::size_of::<u32>()
+    }
+
     #[inline]
     fn eval_fold(&self, opp_reach: &[f64], payoff: f64, out: &mut [f64]) {
         if payoff == 0.0 {
@@ -856,21 +864,146 @@ fn build_player_kernels(game: &TurnGame, player: Player) -> PlayerKernels {
     PlayerKernels { turn_fold, runouts }
 }
 
+impl PlayerKernels {
+    /// Heap memory held by all kernels of this perspective (fold + per-runout).
+    pub fn memory_bytes(&self) -> usize {
+        self.turn_fold.memory_bytes()
+            + self.runouts.iter().map(|k| k.memory_bytes()).sum::<usize>()
+    }
+}
+
+/// Precomputed terminal-evaluation kernels for both player perspectives of a
+/// [`TurnGame`]. Kernels depend only on the game's combos and per-runout ranks,
+/// so games with identical combos/ranks (e.g. the flop solver's per-turn-card
+/// subtrees, which differ only in pot/stack/tree) can share one instance via
+/// [`Rc`]; see [`TurnSolverState::with_kernels`].
+pub struct TurnKernels {
+    per_player: [PlayerKernels; 2],
+}
+
+impl TurnKernels {
+    /// Builds the kernels for both perspectives of `game`.
+    pub fn new(game: &TurnGame) -> Self {
+        Self {
+            per_player: [
+                build_player_kernels(game, Player::Oop),
+                build_player_kernels(game, Player::Ip),
+            ],
+        }
+    }
+
+    /// Total heap memory held by both perspectives' kernels.
+    pub fn memory_bytes(&self) -> usize {
+        self.per_player[0].memory_bytes() + self.per_player[1].memory_bytes()
+    }
+}
+
+/// Persistent Discounted-CFR state for one [`TurnGame`]: shared kernels plus the
+/// per-decision-node regret / cumulative-strategy / current-strategy buffers.
+///
+/// This is the reusable form of the solver loop in [`solve_turn`]: the flop
+/// solver (Ticket E4) drives one `TurnSolverState` per (flop history, turn card)
+/// subtree, feeding root reaches down from flop play and reading root
+/// counterfactual values back. A half-iteration is
+/// [`begin_update`](Self::begin_update) + [`traverse_root`](Self::traverse_root).
+pub struct TurnSolverState {
+    kernels: Rc<TurnKernels>,
+    buffers: Vec<TurnNodeBuffer>,
+}
+
+impl TurnSolverState {
+    /// Creates a state with freshly built kernels for `game`.
+    pub fn new(game: &TurnGame) -> Self {
+        Self::with_kernels(game, Rc::new(TurnKernels::new(game)))
+    }
+
+    /// Creates a state reusing `kernels` (which must have been built for a game
+    /// with identical combos and per-runout ranks as `game`).
+    pub fn with_kernels(game: &TurnGame, kernels: Rc<TurnKernels>) -> Self {
+        let buffers: Vec<TurnNodeBuffer> = (0..game.num_decision_nodes())
+            .map(|did| {
+                let d = game.decision_node(did);
+                let num_combos = game.player_combos(d.player).len();
+                TurnNodeBuffer::new(d.player, d.actions.len(), num_combos)
+            })
+            .collect();
+        Self { kernels, buffers }
+    }
+
+    /// The kernels this state traverses with.
+    pub fn kernels(&self) -> &TurnKernels {
+        &self.kernels
+    }
+
+    /// Recomputes the current (regret-matching) strategy for all of
+    /// `traverser`'s decision nodes. Call once per half-iteration, before
+    /// [`traverse_root`](Self::traverse_root).
+    pub fn begin_update(&mut self, traverser: Player) {
+        for buf in &mut self.buffers {
+            if buf.player == traverser {
+                buf.recompute_current_strategy();
+            }
+        }
+    }
+
+    /// Runs one DCFR traversal from the root for `traverser`, updating
+    /// `traverser`'s regrets and cumulative strategies, and returns the
+    /// traverser's root counterfactual values (per combo of `traverser`,
+    /// unnormalised: summed against `opp_reach`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn traverse_root(
+        &mut self,
+        game: &TurnGame,
+        traverser: Player,
+        my_reach: &[f64],
+        opp_reach: &[f64],
+        pos_discount: f64,
+        neg_discount: f64,
+        strat_weight: f64,
+    ) -> Vec<f64> {
+        turn_traverse(
+            game,
+            &self.kernels.per_player[traverser.index()],
+            &mut self.buffers,
+            0,
+            traverser,
+            None,
+            my_reach,
+            opp_reach,
+            pos_discount,
+            neg_discount,
+            strat_weight,
+        )
+    }
+
+    /// Extracts the average (cumulative) strategy at every decision node.
+    pub fn average_strategies(&self, game: &TurnGame) -> Vec<NodeStrategy> {
+        (0..game.num_decision_nodes())
+            .map(|did| self.buffers[did].to_node_strategy(game, did))
+            .collect()
+    }
+
+    /// Total (decision node × combo) information sets covered by the buffers.
+    pub fn num_infosets(&self) -> usize {
+        self.buffers.iter().map(|b| b.num_combos).sum()
+    }
+
+    /// Total strategy slots: `sum over decision nodes of combos × actions`.
+    pub fn action_slots(&self) -> usize {
+        self.buffers.iter().map(|b| b.num_combos * b.num_actions).sum()
+    }
+
+    /// Working memory of the three `f64` buffer arrays (regret + cumulative +
+    /// current strategy) in bytes. Excludes kernels (see [`TurnKernels`]).
+    pub fn buffer_bytes(&self) -> usize {
+        self.action_slots() * 3 * std::mem::size_of::<f64>()
+    }
+}
+
 /// Solves a [`TurnGame`] using vectorised Discounted CFR (same parameters and
 /// alternating-update scheme as the E2 river solver, see [`crate::cfr`]).
 pub fn solve_turn(game: &TurnGame, config: &DcfrConfig) -> TurnSolveResult {
-    let kernels = [
-        build_player_kernels(game, Player::Oop),
-        build_player_kernels(game, Player::Ip),
-    ];
-
-    let mut buffers: Vec<TurnNodeBuffer> = (0..game.num_decision_nodes())
-        .map(|did| {
-            let d = game.decision_node(did);
-            let num_combos = game.player_combos(d.player).len();
-            TurnNodeBuffer::new(d.player, d.actions.len(), num_combos)
-        })
-        .collect();
+    let mut state = TurnSolverState::new(game);
 
     let init_oop_reach: Vec<f64> = game.combos[0].iter().map(|c| c.weight).collect();
     let init_ip_reach: Vec<f64> = game.combos[1].iter().map(|c| c.weight).collect();
@@ -891,18 +1024,10 @@ pub fn solve_turn(game: &TurnGame, config: &DcfrConfig) -> TurnSolveResult {
         let neg_discount = t_beta / (t_beta + 1.0);
         let strat_weight = t.powf(config.gamma);
 
-        for buf in &mut buffers {
-            if buf.player == Player::Oop {
-                buf.recompute_current_strategy();
-            }
-        }
-        turn_traverse(
+        state.begin_update(Player::Oop);
+        state.traverse_root(
             game,
-            &kernels[Player::Oop.index()],
-            &mut buffers,
-            0,
             Player::Oop,
-            None,
             &init_oop_reach,
             &init_ip_reach,
             pos_discount,
@@ -910,18 +1035,10 @@ pub fn solve_turn(game: &TurnGame, config: &DcfrConfig) -> TurnSolveResult {
             strat_weight,
         );
 
-        for buf in &mut buffers {
-            if buf.player == Player::Ip {
-                buf.recompute_current_strategy();
-            }
-        }
-        turn_traverse(
+        state.begin_update(Player::Ip);
+        state.traverse_root(
             game,
-            &kernels[Player::Ip.index()],
-            &mut buffers,
-            0,
             Player::Ip,
-            None,
             &init_ip_reach,
             &init_oop_reach,
             pos_discount,
@@ -933,9 +1050,7 @@ pub fn solve_turn(game: &TurnGame, config: &DcfrConfig) -> TurnSolveResult {
             && config.check_interval > 0
             && (iter % config.check_interval == 0 || iter == config.max_iterations)
         {
-            let strategies: Vec<NodeStrategy> = (0..game.num_decision_nodes())
-                .map(|did| buffers[did].to_node_strategy(game, did))
-                .collect();
+            let strategies: Vec<NodeStrategy> = state.average_strategies(game);
             let report = compute_exploitability_turn(game, &strategies);
             if report.nash_distance_pct <= config.target_exploitability_pct {
                 final_report = Some(report);
@@ -947,9 +1062,7 @@ pub fn solve_turn(game: &TurnGame, config: &DcfrConfig) -> TurnSolveResult {
         }
     }
 
-    let strategies: Vec<NodeStrategy> = (0..game.num_decision_nodes())
-        .map(|did| buffers[did].to_node_strategy(game, did))
-        .collect();
+    let strategies: Vec<NodeStrategy> = state.average_strategies(game);
 
     let exploitability =
         final_report.unwrap_or_else(|| compute_exploitability_turn(game, &strategies));

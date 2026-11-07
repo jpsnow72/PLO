@@ -393,9 +393,10 @@ export function SolverPage() {
           <StreetEditor title="River sizes" value={form.river} onChange={(river) => patch({ river })} />
         </div>
         <p className="text-xs text-ink-faint">
-          Sizes are defined per street. Today's engine solves river spots (5-card board) and turn
-          spots (4-card board, turn + river sizes). Flop spots are accepted by the form and will
-          run when the flop solver lands (E4).
+          Sizes are defined per street. The engine solves river spots (5-card board), turn spots
+          (4-card board, turn + river sizes), and flop spots (3-card board, flop + turn + river
+          sizes). Flop solves are exact unless a spot requests bucketing, and wide flop ranges
+          can take a long time — they run as background jobs and land in the library when done.
         </p>
 
         {errors.length > 0 ? (

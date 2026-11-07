@@ -20,7 +20,7 @@ Configuration (environment variables):
 | ---------------- | ----------------------------------------- | ----------------------------------------- |
 | `PORT`           | `8787`                                    | Listen port                               |
 | `HOST`           | `127.0.0.1`                               | Bind address                              |
-| `ENGINE_BIN`     | `../engine/target/release` (relative)     | Directory containing `solve-river` / `solve-turn` |
+| `ENGINE_BIN`     | `../engine/target/release` (relative)     | Directory containing `solve-river` / `solve-turn` / `solve-flop` |
 | `DATA_DIR`       | `./data`                                  | Jobs + library storage                    |
 | `JOB_TIMEOUT_MS` | `1800000` (30 min)                        | Per-solve wall-clock cap                  |
 
@@ -28,7 +28,7 @@ Configuration (environment variables):
 
 | Method | Path                    | Behaviour                                                                 |
 | ------ | ----------------------- | ------------------------------------------------------------------------- |
-| POST   | `/api/solves`           | Body = engine spot JSON. Returns `202` + job record. Board with 5 cards → `solve-river`, 4 cards → `solve-turn`, 3 cards → `422` (flop solver is ticket E4, not in the engine yet). |
+| POST   | `/api/solves`           | Body = engine spot JSON. Returns `202` + job record. Board with 5 cards → `solve-river`, 4 cards → `solve-turn`, 3 cards → `solve-flop`. |
 | GET    | `/api/solves/:id`       | Job record: `status` (`queued`/`running`/`done`/`error`), `nash_distance_pct` + `iterations` when done, `error` when failed. |
 | GET    | `/api/solves/:id/result`| The finished solve JSON (engine output, verbatim). `409` until done.     |
 | GET    | `/api/jobs`             | All job records known to this process.                                    |
@@ -42,7 +42,10 @@ registry itself is in-memory (plus a `job.json` audit file per job under
 `DATA_DIR/jobs/<id>/`).
 
 Spot JSON format is the engine's own — see `engine/crates/plo-solve/examples/sample_spot.json`
-and `engine/crates/plo-solve/src/json.rs` (`parse_spot_json` / `parse_turn_spot_json`).
+and `engine/crates/plo-solve/src/json.rs` (`parse_spot_json` / `parse_turn_spot_json` /
+`parse_flop_spot_json`). Flop spots are solved exactly unless the spot JSON requests
+bucketing (`buckets` / `bucket_config` / `bucket_count`); flop solves can run far longer
+than river/turn jobs, so raise `JOB_TIMEOUT_MS` for wide ranges.
 
 ## Security note
 

@@ -9,18 +9,23 @@ interface Props {
 }
 
 /**
- * Chance-node picker: shown when an action closes the turn street and the
- * line continues into one river subtree per possible river card.
+ * Chance-node picker: shown when an action closes a street and the line
+ * continues into one subtree per possible dealt card (turn card after the
+ * flop, river card after the turn).
  */
 export function RunoutPicker({ options, onPick, onDismiss }: Props) {
+  const street = options[0]?.street ?? 'river';
+  const streetLabel = street === 'turn' ? 'Turn' : 'River';
+  const closedStreet = street === 'turn' ? 'flop' : 'turn';
   return (
     <section
-      aria-label="Choose the river card"
+      aria-label={`Choose the ${street} card`}
       className="rounded-lg border border-accent/60 bg-navy-900 p-3 shadow-panel"
     >
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-ink">
-          River card <span className="font-normal text-ink-dim">— the turn action closed the street</span>
+          {streetLabel} card{' '}
+          <span className="font-normal text-ink-dim">— the {closedStreet} action closed the street</span>
         </h3>
         <button
           type="button"
@@ -39,7 +44,7 @@ export function RunoutPicker({ options, onPick, onDismiss }: Props) {
               type="button"
               onClick={() => onPick(opt.card)}
               className="rounded-md transition-transform hover:scale-110"
-              aria-label={`River card ${opt.card}`}
+              aria-label={`${streetLabel} card ${opt.card}`}
             >
               {card ? <CardChip card={card} size="sm" /> : <span>{opt.card}</span>}
             </button>

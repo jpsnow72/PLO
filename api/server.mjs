@@ -9,8 +9,9 @@
 //
 // Jobs run one at a time (solves are CPU-heavy). The service writes the
 // spot JSON to DATA_DIR/jobs/<id>/spot.json, invokes the engine binary
-// (solve-river for 5-card boards, solve-turn for 4-card boards) from
-// ENGINE_BIN, and on success copies the result into DATA_DIR/library/.
+// (solve-river for 5-card boards, solve-turn for 4-card boards, solve-flop
+// for 3-card boards) from ENGINE_BIN, and on success copies the result
+// into DATA_DIR/library/.
 //
 // NO AUTH: bind to localhost / a private network only. See README.md.
 
@@ -68,7 +69,9 @@ async function runJob(job, spot) {
   const resultPath = path.join(dir, 'result.json');
   await fs.writeFile(spotPath, JSON.stringify(spot, null, 2));
 
-  const binary = path.join(ENGINE_BIN, job.kind === 'turn' ? 'solve-turn' : 'solve-river');
+  const binaryName =
+    job.kind === 'flop' ? 'solve-flop' : job.kind === 'turn' ? 'solve-turn' : 'solve-river';
+  const binary = path.join(ENGINE_BIN, binaryName);
   try {
     await fs.access(binary);
   } catch {
@@ -124,7 +127,10 @@ async function runJob(job, spot) {
           id: job.id,
           name: job.name,
           kind: job.kind,
+          street: job.kind,
           board: job.board,
+          nash_distance_pct: job.nash_distance_pct,
+          iterations: job.iterations,
           finished_at: job.finished_at,
         },
         null,
@@ -166,10 +172,11 @@ async function listLibrary() {
       items.push({
         id,
         name: meta.name ?? `Solve · ${result.board ?? id}`,
-        kind: meta.kind ?? kindForBoard(result.board) ?? 'river',
+        kind: meta.kind ?? meta.street ?? kindForBoard(result.board) ?? 'river',
         board: result.board ?? '',
-        nash_distance_pct: result?.exploitability?.nash_distance_pct ?? null,
-        iterations: result?.iterations ?? null,
+        nash_distance_pct:
+          result?.exploitability?.nash_distance_pct ?? meta.nash_distance_pct ?? null,
+        iterations: result?.iterations ?? meta.iterations ?? null,
         finished_at: meta.finished_at ?? null,
         size_bytes: stat.size,
       });
@@ -237,13 +244,6 @@ const server = http.createServer(async (req, res) => {
       const kind = kindForBoard(spot?.board);
       if (kind === null) {
         sendJson(res, 400, { error: 'Spot board must have 3, 4 or 5 cards.' });
-        return;
-      }
-      if (kind === 'flop') {
-        sendJson(res, 422, {
-          error:
-            'Flop solving is not available yet: the engine has river and turn solvers today; the bucketed flop solver is ticket E4. Submit a 4- or 5-card board.',
-        });
         return;
       }
       const job = {
