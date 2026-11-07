@@ -3,6 +3,8 @@
  "_comment_btn_vs": "Which opens the BTN responds to (the HU-relevant in-position pairs the postflop solver needs first). BB responds to every opener and SB to every non-blind opener; those pairs are generated from the position lists, not from this table.",
  "_comment_call_floor": "Call selection in vs_rfi sets ranks remaining classes by equity vs the opener's range multiplied by a realisation factor (in_position / out_of_position, by postflop acting order). Classes below call_equity_floor (on the discounted equity) are excluded; if that makes the call target unreachable the floor is relaxed in 0.02 steps down to 0 (documented construction fallback, so targets - the contract - are met).",
  "_comment_components": "Playability component tables. pair_component = pair_base[kind] + pair_rank_bonus * (top_pair_rank / 14); for kind=none the rank term is 0. Trips are deliberately LOW: three of a kind is a weak, unplayable-heavy PLO starting structure (published class data: trips open ~0-1% even on the button). suitedness_component keys are the suit-count patterns of the 4 cards. connectedness is computed from rank gaps (see RANGES-NOTES.md), high_card = 0.6*(top/14) + 0.4*((top+second)/28).",
+ "_comment_continuations_targets_v11": "Continuation targets are INTERNAL CONSTRUCTION PARAMETERS, not published values: no published cross-check anchor for opener continuation rates vs a 3-bet was found in the free-charts research (free-charts-research-2026-11-07.md; the one free page with a vs-3bet spot, plo.ai-speeds.com, publishes dominant actions only, no frequencies, and carries no reuse licence, so it is not cited as a source). Targets are fractions OF THE OPENER'S RAISING RANGE by combo weight: continue_fraction_of_open of the opening range continues, split between call and four_bet by call_fraction_of_continue and four_bet_fraction_of_continue. cross_check status for these sets: no published anchor - method disclosed. They must never be presented as externally validated or solver-derived.",
+ "_comment_continuations_v11": "v1.1 continuations (method constructed-equity-v1.1): for each matchup in continuations_v11.matchups, the opener's continuation range after facing a 3-bet. Eligible classes are exactly the classes the opener opens in their constructed RFI set (raise frequency > 0 in that set). Classes are scored with the v1 feature blend, with the equity slot computed against the three-bettor's three_bet slice (seeded Monte Carlo, samples_vs_three_bettor samples per class, seed discipline identical to v1) discounted by the postflop realisation factor for the continuer (realisation.in_position when the continuer acts after the three-bettor postflop, else realisation.out_of_position). Ranking is by that score: the four_bet slice takes the top band and call takes the next band, fitted with the same linear ramp plus deterministic residual correction as v1. Emitted frequencies are conditional on having opened: for an eligible class fold + call + four_bet = 1; a class the opener never opens folds at 1.0 and can never continue.",
  "_comment_cross_check": "In --check mode, RFI sets must land inside their published band and anchored defense totals within cross_check_defense_tolerance (absolute, in fraction units) of the anchor; interpolated/extrapolated/derived totals are reported as deltas only. Because generation fits targets by construction, --check is a regression/validation diff of the emitted files against these published targets, not an independent solve.",
  "_comment_cross_check_source": "The external sources recorded in emitted provenance: (1) PLO.com - its data page states its numbers are free to cite with a link back; we cite its aggregate totals as cross-check targets only, no PLO.com range data is transcribed into any set. (2) Upswing Advanced PLO Preflop Guide - owner-provided copy, personal use, cross-check totals only (see _comment_upswing); it has no URL because the copy is the owner's PDF, so its provenance entry omits url. ThinkGTO totals were compared in the research report ONLY; ThinkGTO's terms prohibit copying/derivative works and it is NOT recorded as a source anywhere in the emitted data (a consent request was sent 2026-11-07; if granted, the coordinator will update provenance then).",
  "_comment_derivation_9max": "No free published 9-max PLO4 chart exists (research report section 5). 9-max targets are DERIVED from the 6-max solver targets by the players-behind seat mapping (a seat's width is governed by how many players act behind it): 9-max LJ (5 behind) ~= 6-max UTG, HJ ~= MP, CO/BTN/SB keep their 6-max targets, and the three new early seats extrapolate the curve (UTG 10-13%, UTG+1 13-15%, UTG+2 15-17%). 9-max sets are labelled derived-by-mapping in their provenance and carry an empty sources array.",
@@ -41,6 +43,34 @@
    "single": 0.55,
    "three": 0.7
   }
+ },
+ "continuations_v11": {
+  "call_fraction_of_continue": 0.82,
+  "continue_fraction_of_open": 0.5,
+  "cross_check": "no published anchor - method disclosed",
+  "four_bet_fraction_of_continue": 0.18,
+  "matchups": [
+   {
+    "continuer": "BTN",
+    "opener_rfi_set": "constructed-v1-6max-btn-rfi",
+    "three_bettor": "BB",
+    "three_bettor_set": "constructed-v1-6max-bb-vs-btn"
+   },
+   {
+    "continuer": "BTN",
+    "opener_rfi_set": "constructed-v1-6max-btn-rfi",
+    "three_bettor": "SB",
+    "three_bettor_set": "constructed-v1-6max-sb-vs-btn"
+   },
+   {
+    "continuer": "CO",
+    "opener_rfi_set": "constructed-v1-6max-co-rfi",
+    "three_bettor": "BTN",
+    "three_bettor_set": "constructed-v1-6max-btn-vs-co"
+   }
+  ],
+  "method": "constructed-equity-v1.1",
+  "samples_vs_three_bettor": 4000
  },
  "cross_check_defense_tolerance": 0.03,
  "cross_check_source": {

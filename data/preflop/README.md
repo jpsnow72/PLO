@@ -40,6 +40,19 @@ target frequencies in `ranges-config-v1.json`. Constructed sets:
 - live under `sets/`, are catalogued in `index.json` with their provenance,
   and are regenerated (not hand-edited) by re-running `build-ranges`.
 
+**v1.1 continuation sets (method `constructed-equity-v1.1`)** extend the
+constructed family: for three 6-max matchups (BTN vs BB 3-bet, BTN vs SB
+3-bet, CO vs BTN 3-bet) they give the *opener's* continuation range after
+facing a 3-bet (context `vs_three_bet`), built from the opener's RFI set
+and the three-bettor's `three_bet` slice by the same machinery. Their
+continuation-rate targets are **internal construction parameters** —
+fractions of the opener's raising range in the config's
+`continuations_v11` section — because no published cross-check anchor for
+continuation rates exists. They therefore carry an empty provenance
+`sources` list, state the construction and the two input set ids in
+`provenance.derivation`, and must never be presented as externally
+validated. See `RANGES-V11-NOTES.md` at the repository root.
+
 `class-table.json` (generated) records, for every one of the 16,432
 canonical hand classes, its combo multiplicity, Monte Carlo equities,
 playability features and construction score, so any constructed set can be
@@ -78,6 +91,7 @@ Contexts and the actions allowed in each:
 | `vs_rfi`    | facing one open raise                     | `fold`, `call`, `three_bet` |
 | `three_bet` | facing a three-bet                        | `fold`, `call`, `four_bet` |
 | `sb_play`   | small blind first-in / completion play    | `fold`, `call`, `raise`, `three_bet` |
+| `vs_three_bet` | opener's continuation after facing a 3-bet (constructed v1.1 sets) | `fold`, `call`, `four_bet` |
 
 `context_detail` (optional) carries what the enum cannot — e.g. which
 position opened, for `vs_rfi` — transcribed from the source, never guessed.
