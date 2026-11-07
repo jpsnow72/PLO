@@ -5,6 +5,7 @@ import { DashboardPage } from './pages/Dashboard';
 import { ExplorerPage } from './pages/Explorer';
 import { LoginPage } from './pages/Login';
 import { PreflopPage } from './pages/Preflop';
+import { RunnerPage } from './pages/Runner';
 import { SolverPage } from './pages/Solver';
 import { SpotPickerPage } from './pages/SpotPicker';
 import {
@@ -115,6 +116,7 @@ export function App() {
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/admin" element={<AdminPage />} />
+            <Route path="/admin/runner" element={<RunnerPage />} />
           </Routes>
         </div>
       </main>

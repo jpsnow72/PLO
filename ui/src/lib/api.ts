@@ -10,6 +10,16 @@ import {
   type PreflopIndex,
   type PreflopSetDoc,
 } from './preflop';
+import {
+  parseCatalogResponse,
+  parseEnqueueResult,
+  parseQueueResponse,
+  parseRunnerStatus,
+  type CatalogResponse,
+  type EnqueueResult,
+  type QueueResponse,
+  type RunnerStatus,
+} from './runner';
 import type { AuthState, JobRecord, LibraryItem } from './types';
 
 export class ApiError extends Error {
@@ -167,4 +177,58 @@ export async function login(password: string): Promise<void> {
 /** Log out (clears the session cookie server-side). */
 export async function logout(): Promise<void> {
   await requestJson('/api/auth/logout', { method: 'POST', body: '{}' });
+}
+
+// ---------- Local runner (catalog queue) ----------
+
+/** The spot catalog, annotated with per-spot library/queue status. */
+export async function fetchCatalog(): Promise<CatalogResponse> {
+  const body = await requestJson('/api/catalog');
+  const parsed = parseCatalogResponse(body);
+  if (!parsed) throw new ApiError(0, 'Malformed catalog response');
+  return parsed;
+}
+
+/** Current queue state (items, concurrency, paused, enabled). */
+export async function fetchQueue(): Promise<QueueResponse> {
+  const body = await requestJson('/api/queue');
+  const parsed = parseQueueResponse(body);
+  if (!parsed) throw new ApiError(0, 'Malformed queue response');
+  return parsed;
+}
+
+/** Queue switches + upload configuration, for the runner status strip. */
+export async function fetchRunnerStatus(): Promise<RunnerStatus> {
+  const body = await requestJson('/api/runner/status');
+  const parsed = parseRunnerStatus(body);
+  if (!parsed) throw new ApiError(0, 'Malformed runner status response');
+  return parsed;
+}
+
+/** Enqueue catalog spots [admin]. Throws ApiError(401) when not signed in. */
+export async function enqueueSpots(spotIds: string[]): Promise<EnqueueResult> {
+  const body = await requestJson('/api/queue', {
+    method: 'POST',
+    body: JSON.stringify({ spot_ids: spotIds }),
+  });
+  const parsed = parseEnqueueResult(body);
+  if (!parsed) throw new ApiError(0, 'Malformed enqueue response');
+  return parsed;
+}
+
+export type QueueControlAction =
+  | { action: 'pause' }
+  | { action: 'resume' }
+  | { action: 'remove'; spot_id: string }
+  | { action: 'set_concurrency'; value: number };
+
+/** Pause/resume/remove/set concurrency [admin]. Returns the new queue state. */
+export async function queueControl(action: QueueControlAction): Promise<QueueResponse> {
+  const body = await requestJson('/api/queue/control', {
+    method: 'POST',
+    body: JSON.stringify(action),
+  });
+  const parsed = parseQueueResponse(body);
+  if (!parsed) throw new ApiError(0, 'Malformed queue control response');
+  return parsed;
 }

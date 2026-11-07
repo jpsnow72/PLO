@@ -13,8 +13,8 @@ function formatBytes(bytes: number): string {
 
 /**
  * Admin area: adding solves is admin-only. Shows the session state, real
- * library stats from the job service, and (for now) a placeholder for the
- * local solve runner — no queue data exists until that package lands.
+ * library stats from the job service, and the entry point to the local
+ * solve runner (/admin/runner).
  */
 export function AdminPage() {
   const navigate = useNavigate();
@@ -177,10 +177,16 @@ export function AdminPage() {
       >
         <h2 className="text-sm font-semibold text-ink">Local solve runner</h2>
         <p className="mt-2 text-sm text-ink-dim">
-          Local solve runner — coming with the runner package. When it lands, solves finished on
-          your own machine will be pushed into this library through the ingest endpoint, signed
-          with this same admin login.
+          Queue catalog spots and let this machine solve them one after another; each finished
+          solve joins the local library and is uploaded to the central library when one is
+          configured.
         </p>
+        <Link
+          to="/admin/runner"
+          className="mt-3 inline-block rounded-md bg-table px-3 py-2 text-sm font-semibold text-white hover:bg-table-dark"
+        >
+          Open the solve runner
+        </Link>
       </section>
     </div>
   );

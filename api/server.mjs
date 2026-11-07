@@ -76,6 +76,11 @@ const PREFLOP_DIR =
   process.env.PREFLOP_DIR ?? path.resolve(HERE, '..', 'data', 'preflop');
 const ENGINE_BIN =
   process.env.ENGINE_BIN ?? path.resolve(HERE, '..', 'engine', 'target', 'release');
+// Built UI (ui/dist) served same-origin when present — this is what makes
+// the packaged runner work: one process, one origin, the admin session
+// cookie just works. When no build exists the server behaves exactly as
+// before (API only, JSON 404s).
+const UI_DIR = process.env.UI_DIR ?? path.resolve(HERE, '..', 'ui', 'dist');
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 const JOB_TIMEOUT_MS = Number(process.env.JOB_TIMEOUT_MS ?? 30 * 60 * 1000);
 const INGEST_MAX_BYTES = Number(process.env.INGEST_MAX_MB ?? 512) * 1024 * 1024;
@@ -839,6 +844,70 @@ async function sendJsonFile(req, res, file) {
   res.end(raw);
 }
 
+const STATIC_CONTENT_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.map': 'application/json',
+  '.txt': 'text/plain; charset=utf-8',
+  '.webmanifest': 'application/manifest+json',
+};
+
+/**
+ * Serve the built UI (UI_DIR) for a non-API GET/HEAD path, with an SPA
+ * fallback to index.html so client-side routes (/admin/runner, /solver,
+ * ...) survive a refresh or a deep link. Returns true when a response
+ * was sent; false when no UI build exists (caller then 404s as before).
+ * Paths are resolved inside UI_DIR only — traversal attempts are refused.
+ */
+async function tryServeUiFile(req, res, pathname) {
+  const indexFile = path.join(UI_DIR, 'index.html');
+  const indexStat = await fs.stat(indexFile).catch(() => null);
+  if (!indexStat || !indexStat.isFile()) return false;
+
+  let rel;
+  try {
+    rel = decodeURIComponent(pathname);
+  } catch {
+    sendJson(req, res, 400, { error: 'Bad path' });
+    return true;
+  }
+  if (rel === '' || rel === '/') rel = '/index.html';
+  const resolved = path.resolve(UI_DIR, `.${rel}`);
+  if (resolved !== UI_DIR && !resolved.startsWith(UI_DIR + path.sep)) {
+    sendJson(req, res, 400, { error: 'Bad path' });
+    return true;
+  }
+  let file = resolved;
+  let stat = await fs.stat(file).catch(() => null);
+  if (!stat || !stat.isFile()) {
+    // No such asset: hand the SPA its index.html (client routes), unless
+    // the path looks like a file request — those are honest 404s.
+    if (path.extname(rel) !== '') return false;
+    file = indexFile;
+    stat = indexStat;
+  }
+  const body = await fs.readFile(file);
+  const type = STATIC_CONTENT_TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
+  res.writeHead(200, {
+    'Content-Type': type,
+    'Content-Length': body.length,
+    ...corsHeaders(req),
+  });
+  res.end(req.method === 'HEAD' ? undefined : body);
+  return true;
+}
+
 function sendJson(req, res, status, body, extraHeaders = {}) {
   const text = JSON.stringify(body);
   res.writeHead(status, {
@@ -1324,6 +1393,22 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Runner status for the admin UI: queue switches + whether uploads
+    // to a central library are configured. Exposes the configured
+    // central URL (a plain http(s) base URL) — NEVER the session cookie
+    // stored beside it in runner-config.json. Public read, like /api/queue.
+    if (req.method === 'GET' && url.pathname === '/api/runner/status') {
+      const config = await loadRunnerConfig(DATA_DIR);
+      sendJson(req, res, 200, {
+        queue_enabled: QUEUE_ENABLED,
+        concurrency: queueState.concurrency,
+        paused: queueState.paused,
+        upload_configured: config !== null,
+        central_url: config ? config.central_url : null,
+      });
+      return;
+    }
+
     if (req.method === 'POST' && url.pathname === '/api/queue') {
       if (!(await requireAdmin(req, res))) return;
       const text = await readBody(req);
@@ -1481,6 +1566,15 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Built UI for any non-API path (packaged runner / self-hosting).
+    // No-op when no UI build exists next to the API.
+    if (
+      (req.method === 'GET' || req.method === 'HEAD') &&
+      !url.pathname.startsWith('/api/')
+    ) {
+      if (await tryServeUiFile(req, res, url.pathname)) return;
+    }
+
     sendJson(req, res, 404, { error: 'Not found' });
   } catch (err) {
     sendJson(req, res, 500, { error: err instanceof Error ? err.message : 'Internal error' });
@@ -1494,6 +1588,7 @@ server.listen(PORT, HOST, () => {
   console.log(`plo-api listening on http://${HOST}:${PORT}`);
   console.log(`  ENGINE_BIN=${ENGINE_BIN}`);
   console.log(`  DATA_DIR=${DATA_DIR}`);
+  console.log(`  UI_DIR=${UI_DIR} (served for non-API paths when a build exists there)`);
   console.log(
     `  Queue: ${QUEUE_ENABLED ? 'ENABLED' : 'disabled (set QUEUE_ENABLED=1 to run catalog spots)'}` +
       ` — ${queueState.items.length} item(s), concurrency ${queueState.concurrency}` +

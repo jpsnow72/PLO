@@ -28,6 +28,7 @@ Configuration (environment variables):
 | `ALLOWED_ORIGIN`      | *(unset)*                                 | Exact origin allowed to make credentialed cross-origin calls (e.g. the Pages site origin) |
 | `INGEST_MAX_MB`       | `512`                                     | Max body size for `POST /api/library/ingest` (flop trees are big) |
 | `CATALOG_PATH`        | `../data/library/spot-catalog.json`       | Spot catalog for `GET /api/catalog` and the queue                 |
+| `UI_DIR`              | `../ui/dist` (relative)                   | Built UI served same-origin for non-API GET paths (SPA fallback to `index.html`); ignored when no build exists there |
 | `QUEUE_ENABLED`       | *(unset — queue worker off)*              | `1` starts the catalog queue worker + upload retries              |
 | `QUEUE_RANGE_MODE`    | `top`                                     | Catalog range-cap mode: `top` or `sample`                         |
 | `QUEUE_RANGE_SEED`    | *(unset)*                                 | Optional salt for per-spot sampling seeds                         |
@@ -56,7 +57,9 @@ Configuration (environment variables):
 | POST   | `/api/auth/login`       | Body = `{ password }`. On success: `200 { admin: true }` + `plo_admin` session cookie. Wrong password: generic `401` after a small constant delay. |
 | POST   | `/api/auth/logout`      | Deletes the session (if any) and clears the cookie. Always `200`.          |
 | GET    | `/api/auth/me`          | `200 { admin: true, auth_enabled }` with a valid session (or when auth is disabled), else `401`. |
+| GET    | `/api/runner/status`    | `{ queue_enabled, concurrency, paused, upload_configured, central_url }` for the admin runner UI. `central_url` is the configured central base URL from `runner-config.json` (or `null`); the session cookie is never exposed. |
 | GET    | `/api/health`           | `{ ok, engine_bin, data_dir, preflop_dir, auth_enabled }`.                |
+| GET    | *(any non-API path)*    | The built UI from `UI_DIR` when a build exists there, with SPA fallback to `index.html` for client-side routes; JSON `404` otherwise. |
 
 **[admin]** = requires an admin session when auth is enabled (`401` JSON
 otherwise). All GET endpoints stay public.

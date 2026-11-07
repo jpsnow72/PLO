@@ -1,0 +1,11 @@
+# PLO solve runner settings - read by start.bat / start.sh at launch.
+# Edit the value, save, and restart the runner for it to take effect.
+#
+# QUEUE_RANGE_MODE: how a catalog spot's preflop ranges are trimmed to
+# the per-side combo cap before solving.
+#   top    = keep the highest-weight combos (a deterministic
+#            premium-heavy slice of the range)
+#   sample = draw combos in proportion to their range weight, so the
+#            trimmed range sketches the whole range (the draw is
+#            seeded per spot, so it is the same on every run)
+QUEUE_RANGE_MODE=top
