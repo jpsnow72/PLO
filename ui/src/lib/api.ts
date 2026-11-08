@@ -3,6 +3,12 @@
 // notice when the service is unreachable.
 
 import {
+  parseHeuristicsResponse,
+  parseHeuristic,
+  type Heuristic,
+  type NewHeuristic,
+} from './heuristics';
+import {
   isPreflopClassTable,
   isPreflopIndex,
   isPreflopSetDoc,
@@ -10,6 +16,12 @@ import {
   type PreflopIndex,
   type PreflopSetDoc,
 } from './preflop';
+import {
+  parseQuizProgress,
+  type GradingMode,
+  type QuizProgress,
+  type QuizTopic,
+} from './quiz';
 import {
   parseCatalogResponse,
   parseEnqueueResult,
@@ -214,6 +226,71 @@ export async function enqueueSpots(spotIds: string[]): Promise<EnqueueResult> {
   const parsed = parseEnqueueResult(body);
   if (!parsed) throw new ApiError(0, 'Malformed enqueue response');
   return parsed;
+}
+
+// ---------- Heuristics log (parallel lane S1; defensive) ----------
+
+/**
+ * The heuristics log. Throws ApiError(404) until the endpoint exists —
+ * callers treat that as "heuristics unavailable", not as a hard failure.
+ */
+export async function fetchHeuristics(): Promise<Heuristic[]> {
+  const body = await requestJson('/api/heuristics');
+  const parsed = parseHeuristicsResponse(body);
+  if (!parsed) throw new ApiError(0, 'Malformed heuristics response');
+  return parsed;
+}
+
+/** Save a new heuristic (e.g. an Explain-panel candidate). */
+export async function createHeuristic(entry: NewHeuristic): Promise<Heuristic | null> {
+  const body = await requestJson('/api/heuristics', {
+    method: 'POST',
+    body: JSON.stringify(entry),
+  });
+  // The create response shape is the other lane's choice: accept the
+  // entry itself or an envelope around it; null when unrecognisable
+  // (the save still happened — callers confirm by refetching if needed).
+  const direct = parseHeuristic(body);
+  if (direct) return direct;
+  if (isRecord(body)) return parseHeuristic(body.heuristic) ?? parseHeuristic(body.entry);
+  return null;
+}
+
+// ---------- Quiz progress (S2; api/quiz.mjs) ----------
+
+/**
+ * SRS progress + per-topic accuracy. Gated by the admin session
+ * server-side: throws ApiError(401) when signed out.
+ */
+export async function fetchQuizProgress(): Promise<QuizProgress> {
+  const body = await requestJson('/api/quiz/progress');
+  const parsed = parseQuizProgress(body);
+  if (!parsed) throw new ApiError(0, 'Malformed quiz progress response');
+  return parsed;
+}
+
+export interface QuizAnswerRecord {
+  item_key: string;
+  kind: 'spot' | 'heuristic';
+  topic: QuizTopic;
+  score: number;
+  grading: GradingMode;
+  ev_lost_pct?: number | null;
+}
+
+/** Record one graded answer; returns the updated progress when parseable. */
+export async function recordQuizAnswer(
+  record: QuizAnswerRecord,
+): Promise<QuizProgress | null> {
+  await requestJson('/api/quiz/answer', {
+    method: 'POST',
+    body: JSON.stringify(record),
+  });
+  try {
+    return await fetchQuizProgress();
+  } catch {
+    return null;
+  }
 }
 
 export type QueueControlAction =
