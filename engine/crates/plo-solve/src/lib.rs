@@ -3,7 +3,9 @@
 //! [`buckets`] + [`flop`]), all using Discounted CFR, plus independent
 //! best-response exploitability checkers (`br.rs`), plus the constructed
 //! preflop range builder ([`ranges`], methods `constructed-equity-v1` and
-//! `constructed-equity-v1.1` continuation sets).
+//! `constructed-equity-v1.1` continuation sets). Turn/flop traversals fork
+//! at chance nodes across worker threads (E5a, [`parallel`]) with
+//! bit-identical results at any thread count.
 
 pub mod br;
 pub mod buckets;
@@ -12,6 +14,7 @@ pub mod cfr;
 pub mod flop;
 pub mod game;
 pub mod json;
+pub mod parallel;
 pub mod turn;
 
 pub use br::{
@@ -24,8 +27,9 @@ pub use buckets::{
 };
 pub use cfr::{solve_river, ComboEv, DcfrConfig, NodeStrategy, SolveResult};
 pub use flop::{
-    expand_bucket_strategies, solve_flop, BucketConfig, FlopChild, FlopDecisionNode, FlopGame,
-    FlopNode, FlopSolveResult, FlopSpot, FlopSubtree, FlopSubtreeGroup, TURN_CARD_DEAL_PROB,
+    expand_bucket_strategies, solve_flop, solve_flop_with_threads, BucketConfig, FlopChild,
+    FlopDecisionNode, FlopGame, FlopNode, FlopSolveResult, FlopSpot, FlopSubtree,
+    FlopSubtreeGroup, TURN_CARD_DEAL_PROB,
 };
 pub use game::{
     compute_pot_limit_bounds, legal_bet_sizes, legal_raise_sizes, Action, DecisionNode, Node,
@@ -37,6 +41,6 @@ pub use json::{
     parse_flop_spot_json, parse_spot_json, parse_turn_spot_json, JsonValue,
 };
 pub use turn::{
-    solve_turn, ChanceNode, Street, TurnDecisionNode, TurnGame, TurnNode, TurnSolveResult,
-    TurnSpot, RIVER_DEAL_PROB,
+    solve_turn, solve_turn_with_threads, ChanceNode, Street, TurnDecisionNode, TurnGame, TurnNode,
+    TurnSolveResult, TurnSpot, RIVER_DEAL_PROB,
 };
