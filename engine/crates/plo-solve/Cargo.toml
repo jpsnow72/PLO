@@ -27,3 +27,7 @@ path = "src/bin/measure-flop.rs"
 [[bin]]
 name = "build-ranges"
 path = "src/bin/build-ranges.rs"
+
+[[bin]]
+name = "multiway-equity"
+path = "src/bin/multiway-equity.rs"

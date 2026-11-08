@@ -35,7 +35,13 @@ import {
   type ReviewEventInput,
   type StudyProgress,
 } from './study';
-import type { AuthState, JobRecord, LibraryItem } from './types';
+import type {
+  AuthState,
+  JobRecord,
+  LibraryItem,
+  MultiwayEquityRequest,
+  MultiwayEquityResponse,
+} from './types';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -339,4 +345,38 @@ export async function fetchStudyProgress(): Promise<StudyProgress> {
   const parsed = parseStudyProgress(body);
   if (!parsed) throw new ApiError(0, 'Malformed study progress response');
   return parsed;
+// ---------- Multiway equity (MW-1) ----------
+
+/**
+ * Compute multiway PLO equity via POST /api/multiway/equity.
+ * Never returns placeholder/default equities: any network, validation, or
+ * engine error throws an ApiError or Error for the caller to display.
+ */
+export async function fetchMultiwayEquity(
+  req: MultiwayEquityRequest,
+): Promise<MultiwayEquityResponse> {
+  let body: unknown;
+  try {
+    body = await requestJson('/api/multiway/equity', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    });
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(
+      0,
+      err instanceof Error
+        ? `Multiway equity API unreachable (${err.message})`
+        : 'Multiway equity API unreachable',
+    );
+  }
+  if (
+    !isRecord(body) ||
+    (body.mode !== 'exact' && body.mode !== 'monte_carlo') ||
+    typeof body.hero_equity !== 'number' ||
+    !Array.isArray(body.players)
+  ) {
+    throw new ApiError(0, 'Malformed multiway equity response from server');
+  }
+  return body as unknown as MultiwayEquityResponse;
 }

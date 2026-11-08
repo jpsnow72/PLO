@@ -8,6 +8,7 @@ import { CardRow } from '../components/CardChip';
 import { ExplainPanel } from '../components/ExplainPanel';
 import { HandDetail } from '../components/HandDetail';
 import { LinkToHeuristic } from '../components/LinkToHeuristic';
+import { MultiwayLens } from '../components/MultiwayLens';
 import { NodeStrip } from '../components/NodeStrip';
 import { RangeGrid } from '../components/RangeGrid';
 import { StrategyTables } from '../components/StrategyTables';
@@ -100,6 +101,18 @@ export function ExplorerPage() {
 
   const turnCard = node.turn_card ? parseCard(node.turn_card) : null;
   const riverCard = node.river_card ? parseCard(node.river_card) : null;
+  const currentBoardCards = [
+    ...solve.boardCards,
+    ...(turnCard ? [turnCard] : []),
+    ...(riverCard ? [riverCard] : []),
+  ];
+  const nodeRangeText = Object.entries(node.strategy)
+    .filter(([, freqs]) => freqs.reduce((a, b) => a + b, 0) > 0)
+    .map(([combo]) => {
+      const w = solve.weights[node.player].get(combo) ?? 1;
+      return `${combo}:${w}`;
+    })
+    .join('\n');
   const oopEv = rangeEv(solve, 'OOP');
   const ipEv = rangeEv(solve, 'IP');
   const pendingStreet = pendingRunout?.[0]?.street ?? null;
@@ -360,6 +373,12 @@ export function ExplorerPage() {
             </h2>
             <HandDetail data={solve} node={node} combo={selectedCombo} />
           </section>
+
+          <MultiwayLens
+            boardCards={currentBoardCards}
+            selectedCombo={selectedCombo}
+            nodeRangeText={nodeRangeText}
+          />
 
           <section
             aria-label="Study tools"

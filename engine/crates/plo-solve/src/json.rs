@@ -428,7 +428,7 @@ fn parse_range_value(val: &JsonValue) -> Result<PloRange, SolveError> {
     let mut range = PloRange::new();
     match val {
         JsonValue::String(s) => {
-            for token in s.split(',') {
+            for token in s.split(|c| c == ',' || c == '\n' || c == ';') {
                 let trimmed = token.trim();
                 if trimmed.is_empty() {
                     continue;
@@ -1408,6 +1408,482 @@ pub fn format_flop_solve_result_json(game: &FlopGame, result: &FlopSolveResult) 
     }
 
     out.push_str("  ]\n");
+    out.push_str("}\n");
+    out
+}
+
+// ============================================================================
+// Multiway equity (Ticket MW-1): JSON parsing, execution, and serialization
+// for `multiway-equity`.
+// ============================================================================
+
+/// Requested execution mode in a multiway equity JSON request.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum MultiwayModeRequest {
+    Auto,
+    Exact,
+    MonteCarlo,
+}
+
+/// Parsed multiway equity request from JSON.
+#[derive(Clone, Debug)]
+pub struct MultiwayEquityRequest {
+    pub board: Vec<Card>,
+    pub dead_cards: Vec<Card>,
+    pub hero: plo_eval::HeroInput,
+    pub opponents: Vec<PloRange>,
+    pub opponent_labels: Vec<String>,
+    pub mode: MultiwayModeRequest,
+    pub samples: usize,
+    pub seed: u64,
+}
+
+fn parse_cards_flexible(val: &JsonValue, field_name: &str) -> Result<Vec<Card>, SolveError> {
+    match val {
+        JsonValue::String(s) => Ok(Card::parse_many(s)?),
+        JsonValue::Array(arr) => {
+            let mut joined = String::new();
+            for item in arr {
+                let s = item.as_str().ok_or_else(|| {
+                    SolveError::JsonError(format!(
+                        "\"{field_name}\" array elements must be card strings"
+                    ))
+                })?;
+                if !joined.is_empty() {
+                    joined.push(' ');
+                }
+                joined.push_str(s);
+            }
+            Ok(Card::parse_many(&joined)?)
+        }
+        _ => Err(SolveError::JsonError(format!(
+            "\"{field_name}\" must be a string or array of card strings"
+        ))),
+    }
+}
+
+fn is_random_preset_str(s: &str) -> bool {
+    let t = s.trim();
+    t.eq_ignore_ascii_case("random")
+        || t.eq_ignore_ascii_case("all")
+        || t.eq_ignore_ascii_case("any")
+        || t == "*"
+        || t == "100%"
+}
+
+fn parse_range_or_random(
+    val: &JsonValue,
+    dead_mask: plo_cards::HandMask,
+) -> Result<PloRange, SolveError> {
+    if let JsonValue::String(s) = val {
+        if is_random_preset_str(s) {
+            return Ok(PloRange::all_unblocked(dead_mask)?);
+        }
+    }
+    if let JsonValue::Object(_) = val {
+        if let Some(inner) = val.get("range") {
+            return parse_range_or_random(inner, dead_mask);
+        }
+    }
+    parse_range_value(val)
+}
+
+fn escape_json_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Parses a [`MultiwayEquityRequest`] from a JSON string.
+pub fn parse_multiway_equity_request_json(
+    input: &str,
+) -> Result<MultiwayEquityRequest, SolveError> {
+    let root = JsonValue::parse(input)?;
+
+    // 1. Parse board (3, 4, or 5 cards)
+    let board_val = root
+        .get("board")
+        .ok_or_else(|| SolveError::JsonError("missing required field \"board\"".to_string()))?;
+    let board = parse_cards_flexible(board_val, "board")?;
+    if board.len() < 3 || board.len() > 5 {
+        return Err(SolveError::Equity(
+            plo_eval::EquityError::InvalidBoardCardCount(board.len()),
+        ));
+    }
+    let board_mask = plo_cards::HandMask::from_cards(&board);
+
+    // 2. Optional dead_cards
+    let dead_cards = match root.get("dead_cards").or_else(|| root.get("dead")) {
+        Some(JsonValue::Null) | None => Vec::new(),
+        Some(v) => parse_cards_flexible(v, "dead_cards")?,
+    };
+    let extra_dead_mask = plo_cards::HandMask::from_cards(&dead_cards);
+
+    // 3. Parse hero (`hero_hand`, `hero_range`, or `hero`)
+    let (hero, hero_fixed_mask) = if let Some(hh_val) =
+        root.get("hero_hand").filter(|v| !matches!(v, JsonValue::Null))
+    {
+        let cards_vec = parse_cards_flexible(hh_val, "hero_hand")?;
+        if cards_vec.len() != 4 {
+            return Err(SolveError::Equity(
+                plo_eval::EquityError::InvalidHandCardCount(cards_vec.len()),
+            ));
+        }
+        let cards = [cards_vec[0], cards_vec[1], cards_vec[2], cards_vec[3]];
+        let mask = plo_cards::HandMask::from_cards(&cards);
+        (plo_eval::HeroInput::Hand(cards), mask)
+    } else if let Some(hr_val) = root
+        .get("hero_range")
+        .filter(|v| !matches!(v, JsonValue::Null))
+    {
+        let range = parse_range_or_random(hr_val, board_mask | extra_dead_mask)?;
+        (plo_eval::HeroInput::Range(range), plo_cards::HandMask::EMPTY)
+    } else if let Some(h_val) = root.get("hero").filter(|v| !matches!(v, JsonValue::Null)) {
+        match h_val {
+            JsonValue::String(s) => {
+                let trimmed = s.trim();
+                if is_random_preset_str(trimmed) {
+                    let range = PloRange::all_unblocked(board_mask | extra_dead_mask)?;
+                    (plo_eval::HeroInput::Range(range), plo_cards::HandMask::EMPTY)
+                } else if !trimmed.contains(',')
+                    && !trimmed.contains('\n')
+                    && !trimmed.contains(';')
+                    && !trimmed.contains(':')
+                {
+                    let cards = Card::parse_n::<4>(trimmed)?;
+                    let mask = plo_cards::HandMask::from_cards(&cards);
+                    (plo_eval::HeroInput::Hand(cards), mask)
+                } else {
+                    let range = parse_range_value(h_val)?;
+                    (plo_eval::HeroInput::Range(range), plo_cards::HandMask::EMPTY)
+                }
+            }
+            _ => {
+                let range = parse_range_or_random(h_val, board_mask | extra_dead_mask)?;
+                (plo_eval::HeroInput::Range(range), plo_cards::HandMask::EMPTY)
+            }
+        }
+    } else {
+        return Err(SolveError::JsonError(
+            "missing required hero field (\"hero\", \"hero_hand\", or \"hero_range\")".to_string(),
+        ));
+    };
+
+    // 4. Parse opponents (1..=4 weighted ranges)
+    let opps_val = root
+        .get("opponents")
+        .or_else(|| root.get("opponent_ranges"))
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| {
+            SolveError::JsonError(
+                "missing required array field \"opponents\" (1..4 opponent ranges)".to_string(),
+            )
+        })?;
+    if opps_val.is_empty() || opps_val.len() > plo_eval::MAX_MULTIWAY_OPPONENTS {
+        return Err(SolveError::Equity(
+            plo_eval::EquityError::InvalidOpponentCount(opps_val.len()),
+        ));
+    }
+
+    let opp_dead_mask = board_mask | extra_dead_mask | hero_fixed_mask;
+    let mut opponents = Vec::with_capacity(opps_val.len());
+    let mut opponent_labels = Vec::with_capacity(opps_val.len());
+    let mut cached_random: Option<PloRange> = None;
+
+    for (idx, item) in opps_val.iter().enumerate() {
+        let default_label = format!("Opponent {}", idx + 1);
+        let label = item
+            .get("label")
+            .or_else(|| item.get("name"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or(default_label);
+        opponent_labels.push(label);
+
+        let range_node = item.get("range").unwrap_or(item);
+        if let JsonValue::String(s) = range_node {
+            if is_random_preset_str(s) {
+                let r = match &cached_random {
+                    Some(existing) => existing.clone(),
+                    None => {
+                        let built = PloRange::all_unblocked(opp_dead_mask)?;
+                        cached_random = Some(built.clone());
+                        built
+                    }
+                };
+                opponents.push(r);
+                continue;
+            }
+        }
+        opponents.push(parse_range_or_random(range_node, opp_dead_mask)?);
+    }
+
+    // 5. Optional mode, samples, seed
+    let mode = match root.get("mode").and_then(|v| v.as_str()) {
+        None | Some("auto") | Some("AUTO") => MultiwayModeRequest::Auto,
+        Some("exact") | Some("EXACT") => MultiwayModeRequest::Exact,
+        Some("mc") | Some("MC") | Some("monte_carlo") | Some("MONTE_CARLO") => {
+            MultiwayModeRequest::MonteCarlo
+        }
+        Some(other) => {
+            return Err(SolveError::JsonError(format!(
+                "unsupported mode \"{other}\" (expected \"auto\", \"exact\", or \"monte_carlo\")"
+            )))
+        }
+    };
+
+    let samples = match root.get("samples").or_else(|| root.get("mc_samples")) {
+        None | Some(JsonValue::Null) => plo_eval::DEFAULT_MULTIWAY_MC_SAMPLES,
+        Some(v) => {
+            let n = v.as_f64().ok_or_else(|| {
+                SolveError::JsonError("\"samples\" must be a positive integer".to_string())
+            })?;
+            if !n.is_finite() || n < 1.0 {
+                return Err(SolveError::Equity(
+                    plo_eval::EquityError::ZeroMonteCarloSamples,
+                ));
+            }
+            n as usize
+        }
+    };
+
+    let seed = match root.get("seed") {
+        None | Some(JsonValue::Null) => plo_eval::DEFAULT_MULTIWAY_MC_SEED,
+        Some(v) => {
+            let n = v.as_f64().ok_or_else(|| {
+                SolveError::JsonError("\"seed\" must be a non-negative integer".to_string())
+            })?;
+            if !n.is_finite() || n < 0.0 {
+                return Err(SolveError::JsonError(
+                    "\"seed\" must be a non-negative integer".to_string(),
+                ));
+            }
+            n as u64
+        }
+    };
+
+    Ok(MultiwayEquityRequest {
+        board,
+        dead_cards,
+        hero,
+        opponents,
+        opponent_labels,
+        mode,
+        samples,
+        seed,
+    })
+}
+
+/// Executes a parsed [`MultiwayEquityRequest`] and returns the [`plo_eval::MultiwayEquityResult`].
+pub fn run_multiway_equity_request(
+    req: &MultiwayEquityRequest,
+) -> Result<plo_eval::MultiwayEquityResult, SolveError> {
+    let res = match req.mode {
+        MultiwayModeRequest::Auto => plo_eval::compute_multiway_equity_auto(
+            &req.hero,
+            &req.opponents,
+            &req.board,
+            &req.dead_cards,
+            req.samples,
+            req.seed,
+        )?,
+        MultiwayModeRequest::Exact => plo_eval::compute_multiway_equity(
+            &req.hero,
+            &req.opponents,
+            &req.board,
+            &req.dead_cards,
+            plo_eval::EquityMode::Exact,
+        )?,
+        MultiwayModeRequest::MonteCarlo => plo_eval::compute_multiway_equity(
+            &req.hero,
+            &req.opponents,
+            &req.board,
+            &req.dead_cards,
+            plo_eval::EquityMode::MonteCarlo {
+                samples: req.samples,
+                seed: req.seed,
+            },
+        )?,
+    };
+    Ok(res)
+}
+
+/// Formats a [`plo_eval::MultiwayEquityResult`] into JSON.
+pub fn format_multiway_equity_result_json(
+    req: &MultiwayEquityRequest,
+    res: &plo_eval::MultiwayEquityResult,
+) -> String {
+    let street = match req.board.len() {
+        3 => "flop",
+        4 => "turn",
+        5 => "river",
+        _ => "unknown",
+    };
+
+    let mut out = String::with_capacity(4096);
+    out.push_str("{\n");
+    out.push_str(&format!(
+        "  \"board\": \"{}\",\n",
+        format_cards(&req.board)
+    ));
+    out.push_str(&format!("  \"street\": \"{street}\",\n"));
+
+    match res.mode {
+        plo_eval::EquityMode::Exact => {
+            out.push_str("  \"mode\": \"exact\",\n");
+            out.push_str("  \"badge\": \"EXACT\",\n");
+            out.push_str("  \"is_exact\": true,\n");
+            out.push_str("  \"samples\": null,\n");
+            out.push_str("  \"seed\": null,\n");
+        }
+        plo_eval::EquityMode::MonteCarlo { samples, seed } => {
+            out.push_str("  \"mode\": \"monte_carlo\",\n");
+            out.push_str("  \"badge\": \"MONTE CARLO\",\n");
+            out.push_str("  \"is_exact\": false,\n");
+            out.push_str(&format!("  \"samples\": {samples},\n"));
+            out.push_str(&format!("  \"seed\": {seed},\n"));
+        }
+    }
+
+    out.push_str(&format!(
+        "  \"exact_max_showdowns\": {},\n",
+        plo_eval::EXACT_MAX_SHOWDOWNS
+    ));
+    out.push_str(&format!(
+        "  \"estimated_showdowns\": {},\n",
+        res.estimated_showdowns
+    ));
+    out.push_str(&format!("  \"total_weight\": {:.6},\n", res.total_weight));
+
+    let dead_vec = res.dead_mask.to_canonical_vec();
+    out.push_str("  \"dead_cards\": [");
+    for (i, c) in dead_vec.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(&format!("\"{}\"", format_cards(&[*c])));
+    }
+    out.push_str("],\n");
+
+    match &req.hero {
+        plo_eval::HeroInput::Hand(cards) => {
+            out.push_str("  \"hero_kind\": \"hand\",\n");
+            out.push_str(&format!(
+                "  \"hero_hand\": \"{}\",\n",
+                format_cards(cards)
+            ));
+        }
+        plo_eval::HeroInput::Range(_) => {
+            out.push_str("  \"hero_kind\": \"range\",\n");
+            out.push_str("  \"hero_hand\": null,\n");
+        }
+    }
+
+    out.push_str(&format!("  \"hero_equity\": {:.6},\n", res.hero_equity));
+
+    out.push_str("  \"players\": [\n");
+    for (i, p) in res.players.iter().enumerate() {
+        let role = if p.player_index == 0 {
+            "hero"
+        } else {
+            "opponent"
+        };
+        let label = if p.player_index == 0 {
+            "Hero".to_string()
+        } else {
+            req.opponent_labels
+                .get(p.player_index - 1)
+                .cloned()
+                .unwrap_or_else(|| format!("Opponent {}", p.player_index))
+        };
+        let comma = if i + 1 < res.players.len() { "," } else { "" };
+        out.push_str(&format!(
+            "    {{\"player_index\": {}, \"role\": \"{}\", \"label\": \"{}\", \"equity\": {:.6}, \"win_prob\": {:.6}, \"tie_prob\": {:.6}, \"tie_equity\": {:.6}, \"loss_prob\": {:.6}, \"std_error\": {:.6}}}{}\n",
+            p.player_index,
+            role,
+            escape_json_str(&label),
+            p.equity,
+            p.win_prob,
+            p.tie_prob,
+            p.tie_equity,
+            p.loss_prob,
+            p.std_error,
+            comma
+        ));
+    }
+    out.push_str("  ],\n");
+
+    match &res.hero_range_distribution {
+        None => {
+            out.push_str("  \"hero_range_distribution\": null\n");
+        }
+        Some(dist) => {
+            out.push_str("  \"hero_range_distribution\": {\n");
+            out.push_str(&format!("    \"combo_count\": {},\n", dist.combo_count));
+            out.push_str(&format!("    \"total_weight\": {:.6},\n", dist.total_weight));
+            out.push_str(&format!("    \"mean\": {:.6},\n", dist.mean));
+            out.push_str(&format!("    \"min\": {:.6},\n", dist.min));
+            out.push_str(&format!("    \"q25\": {:.6},\n", dist.q25));
+            out.push_str(&format!("    \"median\": {:.6},\n", dist.median));
+            out.push_str(&format!("    \"q75\": {:.6},\n", dist.q75));
+            out.push_str(&format!("    \"max\": {:.6},\n", dist.max));
+            out.push_str(&format!(
+                "    \"quartiles\": [{:.6}, {:.6}, {:.6}, {:.6}, {:.6}],\n",
+                dist.quartiles[0],
+                dist.quartiles[1],
+                dist.quartiles[2],
+                dist.quartiles[3],
+                dist.quartiles[4]
+            ));
+            out.push_str("    \"top_decile\": [\n");
+            for (i, c) in dist.top_decile.iter().enumerate() {
+                let comma = if i + 1 < dist.top_decile.len() {
+                    ","
+                } else {
+                    ""
+                };
+                out.push_str(&format!(
+                    "      {{\"combo\": \"{}\", \"weight\": {:.6}, \"equity\": {:.6}, \"win_prob\": {:.6}, \"tie_prob\": {:.6}}}{}\n",
+                    format_cards(&c.cards),
+                    c.weight,
+                    c.equity,
+                    c.win_prob,
+                    c.tie_prob,
+                    comma
+                ));
+            }
+            out.push_str("    ],\n");
+            out.push_str("    \"bottom_decile\": [\n");
+            for (i, c) in dist.bottom_decile.iter().enumerate() {
+                let comma = if i + 1 < dist.bottom_decile.len() {
+                    ","
+                } else {
+                    ""
+                };
+                out.push_str(&format!(
+                    "      {{\"combo\": \"{}\", \"weight\": {:.6}, \"equity\": {:.6}, \"win_prob\": {:.6}, \"tie_prob\": {:.6}}}{}\n",
+                    format_cards(&c.cards),
+                    c.weight,
+                    c.equity,
+                    c.win_prob,
+                    c.tie_prob,
+                    comma
+                ));
+            }
+            out.push_str("    ]\n");
+            out.push_str("  }\n");
+        }
+    }
+
     out.push_str("}\n");
     out
 }

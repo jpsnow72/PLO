@@ -100,3 +100,75 @@ export interface AuthState {
    */
   authEnabled: boolean;
 }
+
+// ---------- Multiway equity (POST /api/multiway/equity) ----------
+
+export interface MultiwayPlayerEquity {
+  player_index: number;
+  role: 'hero' | 'opponent';
+  label: string;
+  equity: number;
+  win_prob: number;
+  tie_prob: number;
+  tie_equity: number;
+  loss_prob: number;
+  std_error: number;
+}
+
+export interface MultiwayComboEquity {
+  combo: string;
+  weight: number;
+  equity: number;
+  win_prob: number;
+  tie_prob: number;
+}
+
+export interface MultiwayHeroRangeDistribution {
+  combo_count: number;
+  total_weight: number;
+  mean: number;
+  min: number;
+  q25: number;
+  median: number;
+  q75: number;
+  max: number;
+  quartiles: [number, number, number, number, number];
+  top_decile: MultiwayComboEquity[];
+  bottom_decile: MultiwayComboEquity[];
+}
+
+export interface MultiwayEquityResponse {
+  board: string;
+  street: 'flop' | 'turn' | 'river';
+  mode: 'exact' | 'monte_carlo';
+  badge: 'EXACT' | 'MONTE CARLO';
+  is_exact: boolean;
+  samples: number | null;
+  seed: number | null;
+  exact_max_showdowns: number;
+  estimated_showdowns: number;
+  total_weight: number;
+  dead_cards: string[];
+  hero_kind: 'hand' | 'range';
+  hero_hand: string | null;
+  hero_equity: number;
+  players: MultiwayPlayerEquity[];
+  hero_range_distribution: MultiwayHeroRangeDistribution | null;
+}
+
+export interface MultiwayOpponentSpec {
+  label?: string;
+  range?: string | string[];
+  preset?: string;
+  range_set?: string;
+}
+
+export interface MultiwayEquityRequest {
+  board: string | string[];
+  hero_hand?: string | string[];
+  hero_range?: string | string[];
+  opponents: Array<string | string[] | MultiwayOpponentSpec>;
+  mode?: 'auto' | 'exact' | 'monte_carlo';
+  samples?: number;
+  seed?: number;
+}

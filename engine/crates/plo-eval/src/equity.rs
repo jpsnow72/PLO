@@ -86,6 +86,53 @@ impl PloRange {
         Ok(())
     }
 
+    /// Creates a uniform (`weight = 1.0`) [`PloRange`] containing all 4-card combinations
+    /// from the 52-card deck that do not overlap `dead`.
+    pub fn all_unblocked(dead: HandMask) -> Result<Self, EquityError> {
+        let remaining: Vec<Card> = (HandMask::FULL_DECK - dead).iter().collect();
+        let n = remaining.len();
+        if n < 4 {
+            return Err(EquityError::AllRangeCombosBlocked);
+        }
+        let cap = n * (n - 1) * (n - 2) * (n - 3) / 24;
+        let mut combos = Vec::with_capacity(cap);
+        for a in 0..(n - 3) {
+            let ca = remaining[a];
+            let ba = ca.bit();
+            for b in (a + 1)..(n - 2) {
+                let cb = remaining[b];
+                let bb = cb.bit();
+                let ab = ba | bb;
+                for c in (b + 1)..(n - 1) {
+                    let cc = remaining[c];
+                    let bc = cc.bit();
+                    let abc = ab | bc;
+                    let ac = ba | bc;
+                    let bc_pair = bb | bc;
+                    for d in (c + 1)..n {
+                        let cd = remaining[d];
+                        let bd = cd.bit();
+                        let mask = HandMask(abc | bd);
+                        let hole_pairs = [ab, ac, ba | bd, bc_pair, bb | bd, bc | bd];
+                        combos.push(WeightedCombo {
+                            cards: [ca, cb, cc, cd],
+                            mask,
+                            hole_pairs,
+                            weight: 1.0,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(Self { combos })
+    }
+
+    /// Creates a uniform (`weight = 1.0`) [`PloRange`] containing all $\binom{52}{4} = 270,725$
+    /// 4-card combinations.
+    pub fn all_combos() -> Self {
+        Self::all_unblocked(HandMask::EMPTY).expect("full deck has 270,725 combos")
+    }
+
     /// Returns the combinations in this range.
     #[inline]
     pub fn combos(&self) -> &[WeightedCombo] {
@@ -199,6 +246,7 @@ pub enum EquityError {
     ParseError(CardParseError),
     InvalidHandCardCount(usize),
     InvalidBoardCardCount(usize),
+    InvalidOpponentCount(usize),
     CardCollision,
     EmptyRange,
     AllRangeCombosBlocked,
@@ -215,6 +263,9 @@ impl fmt::Display for EquityError {
             }
             EquityError::InvalidBoardCardCount(n) => {
                 write!(f, "board must have between 0 and 5 distinct cards, got {n}")
+            }
+            EquityError::InvalidOpponentCount(n) => {
+                write!(f, "multiway equity requires between 1 and 4 opponents, got {n}")
             }
             EquityError::CardCollision => {
                 write!(f, "duplicate/colliding cards between hands and/or board")

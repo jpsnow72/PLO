@@ -22,6 +22,8 @@
 //   PUT|DELETE /api/heuristics/:id                    [admin] (study.mjs)
 //   POST /api/study/review-events  Quick Review outcomes [admin] (study.mjs)
 //   GET  /api/study/progress    review-outcome summary [admin] (study.mjs)
+//   POST /api/multiway/equity   exact or seeded MC multiway equity (hero hand
+//                               or range vs 1..4 opponent ranges on 3/4/5-card board)
 //   POST /api/auth/login        password -> admin session cookie
 //   POST /api/auth/logout       clear the admin session
 //   GET  /api/auth/me           { admin: true } or 401
@@ -72,6 +74,7 @@ import {
   RangeExpandError,
   createRangeExpander,
   fnv1a32,
+  formatWeight,
 } from './ranges-expand.mjs';
 import { attemptUpload, loadRunnerConfig } from './uploader.mjs';
 import { createStudyApi } from './study.mjs';
@@ -91,6 +94,7 @@ const ENGINE_BIN =
 const UI_DIR = process.env.UI_DIR ?? path.resolve(HERE, '..', 'ui', 'dist');
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 const JOB_TIMEOUT_MS = Number(process.env.JOB_TIMEOUT_MS ?? 30 * 60 * 1000);
+const MULTIWAY_TIMEOUT_MS = Number(process.env.MULTIWAY_TIMEOUT_MS ?? 30 * 1000);
 const INGEST_MAX_BYTES = Number(process.env.INGEST_MAX_MB ?? 512) * 1024 * 1024;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? '';
 
@@ -424,6 +428,453 @@ async function expandRangeSetCapped(opts) {
     return await rangeExpander.expandRangeSetCapped(opts);
   } catch (err) {
     throw asHttpError(err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Multiway equity validation & binary invocation (MW-1)
+// ---------------------------------------------------------------------------
+
+const VALID_CARD_RANKS = new Set(['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']);
+const VALID_CARD_SUITS = new Set(['s', 'h', 'd', 'c']);
+const MAX_MULTIWAY_OPPONENTS = 4;
+
+/**
+ * Parse a string or array of card tokens into canonical two-char card labels
+ * ("As", "Td", ...). Supports both whitespace/comma-separated ("As Ks Qs")
+ * and packed ("AsKsQs") card strings. Rejects invalid tokens and duplicates
+ * within the same list.
+ */
+function parseCardTokens(input, fieldLabel) {
+  let rawText = '';
+  if (typeof input === 'string') {
+    rawText = input.trim();
+  } else if (Array.isArray(input)) {
+    if (input.some((item) => typeof item !== 'string')) {
+      throw new HttpError(400, `${fieldLabel} array elements must be card strings.`);
+    }
+    rawText = input.join(' ').trim();
+  } else {
+    throw new HttpError(400, `${fieldLabel} must be a card string or array of card strings.`);
+  }
+
+  if (rawText.length === 0) return [];
+
+  const cleaned = rawText.replace(/,/g, ' ');
+  const cards = [];
+  const seen = new Set();
+  let i = 0;
+  while (i < cleaned.length) {
+    while (i < cleaned.length && /\s/.test(cleaned[i])) i += 1;
+    if (i >= cleaned.length) break;
+    if (i + 1 >= cleaned.length) {
+      throw new HttpError(400, `${fieldLabel}: unexpected card token in "${rawText}".`);
+    }
+    const r = cleaned[i].toUpperCase();
+    const s = cleaned[i + 1].toLowerCase();
+    if (!VALID_CARD_RANKS.has(r) || !VALID_CARD_SUITS.has(s)) {
+      throw new HttpError(
+        400,
+        `${fieldLabel}: invalid card "${cleaned.slice(i, i + 2)}" in "${rawText}".`,
+      );
+    }
+    // After a 2-char card, the next char must be whitespace or another valid rank (packed format)
+    const label = `${r}${s}`;
+    if (seen.has(label)) {
+      throw new HttpError(400, `${fieldLabel} contains duplicate card "${label}".`);
+    }
+    seen.add(label);
+    cards.push(label);
+    i += 2;
+  }
+  return cards;
+}
+
+function isRandomPreset(val) {
+  if (typeof val !== 'string') return false;
+  const t = val.trim().toLowerCase();
+  return t === 'random' || t === 'all' || t === 'any' || t === '*' || t === '100%';
+}
+
+/**
+ * Parse a single combo specification ("Ts 9s 3c 4c" or "Ts 9s 3c 4c:0.5").
+ * Returns { cards: string[4], combo: string, weight: number }.
+ */
+function parseWeightedComboEntry(specText, fieldLabel) {
+  const trimmed = specText.trim();
+  const colonIdx = trimmed.lastIndexOf(':');
+  let handPart = trimmed;
+  let weight = 1;
+  if (colonIdx >= 0) {
+    const wText = trimmed.slice(colonIdx + 1).trim();
+    const w = Number(wText);
+    if (wText.length === 0 || !Number.isFinite(w) || w <= 0) {
+      throw new HttpError(400, `${fieldLabel}: invalid combo weight in "${trimmed}".`);
+    }
+    weight = w;
+    handPart = trimmed.slice(0, colonIdx).trim();
+  }
+  const cards = parseCardTokens(handPart, fieldLabel);
+  if (cards.length !== 4) {
+    throw new HttpError(
+      400,
+      `${fieldLabel}: PLO combo must have 4 distinct cards, got ${cards.length} in "${trimmed}".`,
+    );
+  }
+  return {
+    cards,
+    combo: cards.join(' '),
+    weight,
+  };
+}
+
+/**
+ * Parse a range input (Solver textarea string, array of strings/objects/pairs,
+ * object map, "random" preset, or { range, range_set, label }) into
+ * { isRandom: boolean, entries: {cards: string[], combo: string, weight: number}[], label: string|null }.
+ */
+async function parseMultiwayRangeInput(rawInput, fieldLabel) {
+  let label = null;
+  let target = rawInput;
+
+  if (rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)) {
+    if (typeof rawInput.label === 'string' && rawInput.label.trim().length > 0) {
+      label = rawInput.label.trim();
+    } else if (typeof rawInput.name === 'string' && rawInput.name.trim().length > 0) {
+      label = rawInput.name.trim();
+    }
+    if (typeof rawInput.range_set === 'string' && rawInput.range_set.trim().length > 0) {
+      const expanded = await expandRangeSet(rawInput.range_set.trim());
+      target = expanded.range;
+    } else if ('range' in rawInput) {
+      target = rawInput.range;
+    }
+  }
+
+  if (typeof target === 'string') {
+    if (isRandomPreset(target)) {
+      return { isRandom: true, entries: [], label };
+    }
+    const parts = target
+      .split(/[\n,;]+/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+    if (parts.length === 0) {
+      throw new HttpError(400, `${fieldLabel} cannot be empty.`);
+    }
+    const entries = parts.map((part) => parseWeightedComboEntry(part, fieldLabel));
+    return { isRandom: false, entries, label };
+  }
+
+  if (Array.isArray(target)) {
+    if (target.length === 0) {
+      throw new HttpError(400, `${fieldLabel} cannot be an empty array.`);
+    }
+    const entries = [];
+    for (const item of target) {
+      if (typeof item === 'string') {
+        entries.push(parseWeightedComboEntry(item, fieldLabel));
+      } else if (Array.isArray(item) && item.length === 2 && typeof item[0] === 'string') {
+        const w = Number(item[1]);
+        if (!Number.isFinite(w) || w <= 0) {
+          throw new HttpError(400, `${fieldLabel}: invalid combo weight "${item[1]}".`);
+        }
+        const parsed = parseWeightedComboEntry(item[0], fieldLabel);
+        entries.push({ ...parsed, weight: w });
+      } else if (item && typeof item === 'object' && !Array.isArray(item)) {
+        const comboStr = item.combo ?? item.hand;
+        if (typeof comboStr !== 'string') {
+          throw new HttpError(400, `${fieldLabel}: range object must have a "combo" string.`);
+        }
+        const w = item.weight === undefined ? 1 : Number(item.weight);
+        if (!Number.isFinite(w) || w <= 0) {
+          throw new HttpError(400, `${fieldLabel}: invalid combo weight "${item.weight}".`);
+        }
+        const parsed = parseWeightedComboEntry(comboStr, fieldLabel);
+        entries.push({ ...parsed, weight: w });
+      } else {
+        throw new HttpError(400, `${fieldLabel}: unsupported range element format.`);
+      }
+    }
+    return { isRandom: false, entries, label };
+  }
+
+  if (target && typeof target === 'object') {
+    const keys = Object.keys(target);
+    if (keys.length === 0) {
+      throw new HttpError(400, `${fieldLabel} cannot be an empty object.`);
+    }
+    const entries = [];
+    for (const [k, v] of Object.entries(target)) {
+      const w = Number(v);
+      if (!Number.isFinite(w) || w <= 0) {
+        throw new HttpError(400, `${fieldLabel}: invalid weight for "${k}".`);
+      }
+      const parsed = parseWeightedComboEntry(k, fieldLabel);
+      entries.push({ ...parsed, weight: w });
+    }
+    return { isRandom: false, entries, label };
+  }
+
+  throw new HttpError(400, `${fieldLabel} must be a range string, array, or "random".`);
+}
+
+/**
+ * Validate a POST /api/multiway/equity request body and build the normalized
+ * JSON payload for the `multiway-equity` engine binary.
+ */
+async function buildMultiwayEnginePayload(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new HttpError(400, 'Request body must be a JSON object.');
+  }
+
+  if (body.board === undefined || body.board === null) {
+    throw new HttpError(400, 'Missing required field "board" (3, 4, or 5 cards).');
+  }
+  const boardCards = parseCardTokens(body.board, 'Board');
+  if (![3, 4, 5].includes(boardCards.length)) {
+    throw new HttpError(
+      400,
+      `Board must have 3, 4, or 5 distinct cards, got ${boardCards.length}.`,
+    );
+  }
+  const boardSet = new Set(boardCards);
+
+  const deadInput = body.dead_cards ?? body.dead ?? null;
+  const deadCards = deadInput !== null ? parseCardTokens(deadInput, 'Dead cards') : [];
+
+  // Hero: hero_hand, hero_range, hero_range_set, or hero
+  let heroKind = null;
+  let heroHandCards = null;
+  let heroRangeParsed = null;
+
+  if (body.hero_hand !== undefined && body.hero_hand !== null) {
+    heroHandCards = parseCardTokens(body.hero_hand, 'Hero hand');
+    if (heroHandCards.length !== 4) {
+      throw new HttpError(
+        400,
+        `Hero hand must have 4 distinct cards, got ${heroHandCards.length}.`,
+      );
+    }
+    heroKind = 'hand';
+  } else if (typeof body.hero_range_set === 'string' && body.hero_range_set.trim().length > 0) {
+    heroRangeParsed = await parseMultiwayRangeInput(
+      { range_set: body.hero_range_set.trim() },
+      'Hero range',
+    );
+    heroKind = 'range';
+  } else if (body.hero_range !== undefined && body.hero_range !== null) {
+    heroRangeParsed = await parseMultiwayRangeInput(body.hero_range, 'Hero range');
+    heroKind = 'range';
+  } else if (body.hero !== undefined && body.hero !== null) {
+    if (
+      typeof body.hero === 'string' &&
+      !isRandomPreset(body.hero) &&
+      !body.hero.includes(',') &&
+      !body.hero.includes('\n') &&
+      !body.hero.includes(';') &&
+      !body.hero.includes(':')
+    ) {
+      heroHandCards = parseCardTokens(body.hero, 'Hero hand');
+      if (heroHandCards.length !== 4) {
+        throw new HttpError(
+          400,
+          `Hero hand must have 4 distinct cards, got ${heroHandCards.length}.`,
+        );
+      }
+      heroKind = 'hand';
+    } else {
+      heroRangeParsed = await parseMultiwayRangeInput(body.hero, 'Hero range');
+      heroKind = 'range';
+    }
+  } else {
+    throw new HttpError(
+      400,
+      'Missing required hero field ("hero", "hero_hand", or "hero_range").',
+    );
+  }
+
+  // Fixed card collision check (board + hero_hand + single-hand opponents)
+  const fixedUsedCards = new Map();
+  for (const c of boardCards) {
+    fixedUsedCards.set(c, 'board');
+  }
+  for (const c of deadCards) {
+    if (!fixedUsedCards.has(c)) {
+      fixedUsedCards.set(c, 'dead_cards');
+    }
+  }
+
+  if (heroKind === 'hand') {
+    for (const c of heroHandCards) {
+      const existing = fixedUsedCards.get(c);
+      if (existing) {
+        throw new HttpError(400, `Duplicate card "${c}" between ${existing} and hero hand.`);
+      }
+    }
+    for (const c of heroHandCards) {
+      fixedUsedCards.set(c, 'hero hand');
+    }
+  } else if (heroRangeParsed && !heroRangeParsed.isRandom) {
+    const unblockedHero = heroRangeParsed.entries.filter((e) =>
+      e.cards.every((c) => !fixedUsedCards.has(c)),
+    );
+    if (unblockedHero.length === 0) {
+      throw new HttpError(400, 'All combos in Hero range collide with board/dead cards.');
+    }
+  }
+
+  const rawOpponents = body.opponents ?? body.opponent_ranges;
+  if (!Array.isArray(rawOpponents)) {
+    throw new HttpError(400, 'Missing required array field "opponents" (1..4 opponent ranges).');
+  }
+  if (rawOpponents.length < 1 || rawOpponents.length > MAX_MULTIWAY_OPPONENTS) {
+    throw new HttpError(
+      400,
+      `Multiway equity requires between 1 and ${MAX_MULTIWAY_OPPONENTS} opponents, got ${rawOpponents.length}.`,
+    );
+  }
+
+  const parsedOpponents = [];
+  for (let i = 0; i < rawOpponents.length; i += 1) {
+    const oppLabel = `Opponent ${i + 1}`;
+    const parsed = await parseMultiwayRangeInput(rawOpponents[i], oppLabel);
+    if (!parsed.isRandom) {
+      if (parsed.entries.length === 1) {
+        for (const c of parsed.entries[0].cards) {
+          const existing = fixedUsedCards.get(c);
+          if (existing) {
+            throw new HttpError(400, `Duplicate card "${c}" between ${existing} and ${oppLabel}.`);
+          }
+        }
+        for (const c of parsed.entries[0].cards) {
+          fixedUsedCards.set(c, oppLabel);
+        }
+      } else {
+        const unblocked = parsed.entries.filter((e) =>
+          e.cards.every((c) => !fixedUsedCards.has(c)),
+        );
+        if (unblocked.length === 0) {
+          throw new HttpError(400, `All combos in ${oppLabel} range collide with board/dead cards.`);
+        }
+      }
+    }
+    parsedOpponents.push({
+      label: parsed.label ?? oppLabel,
+      range: parsed.isRandom
+        ? 'random'
+        : parsed.entries.map((e) => `${e.combo}:${formatWeight(e.weight)}`),
+    });
+  }
+
+  const payload = {
+    board: boardCards.join(' '),
+    opponents: parsedOpponents,
+  };
+  if (deadCards.length > 0) {
+    payload.dead_cards = deadCards.join(' ');
+  }
+  if (heroKind === 'hand') {
+    payload.hero_hand = heroHandCards.join(' ');
+  } else if (heroRangeParsed.isRandom) {
+    payload.hero_range = 'random';
+  } else {
+    payload.hero_range = heroRangeParsed.entries.map(
+      (e) => `${e.combo}:${formatWeight(e.weight)}`,
+    );
+  }
+
+  if (body.mode !== undefined && body.mode !== null) {
+    if (
+      typeof body.mode !== 'string' ||
+      !['auto', 'exact', 'mc', 'monte_carlo'].includes(body.mode.toLowerCase())
+    ) {
+      throw new HttpError(400, 'mode must be "auto", "exact", or "monte_carlo".');
+    }
+    payload.mode = body.mode.toLowerCase();
+  }
+  const samples = body.samples ?? body.mc_samples;
+  if (samples !== undefined && samples !== null) {
+    if (!Number.isInteger(samples) || samples < 1 || samples > 5_000_000) {
+      throw new HttpError(400, 'samples must be an integer between 1 and 5,000,000.');
+    }
+    payload.samples = samples;
+  }
+  if (body.seed !== undefined && body.seed !== null) {
+    if (!Number.isInteger(body.seed) || body.seed < 0) {
+      throw new HttpError(400, 'seed must be a non-negative integer.');
+    }
+    payload.seed = body.seed;
+  }
+
+  return payload;
+}
+
+/**
+ * Invoke the `multiway-equity` binary with a JSON request on stdin and a
+ * wall-clock timeout, returning the parsed JSON response.
+ */
+async function runMultiwayEquityBinary(payload) {
+  const exeName = process.platform === 'win32' ? 'multiway-equity.exe' : 'multiway-equity';
+  let binary = path.join(ENGINE_BIN, exeName);
+  try {
+    await fs.access(binary);
+  } catch {
+    const fallback = path.join(ENGINE_BIN, 'multiway-equity');
+    try {
+      await fs.access(fallback);
+      binary = fallback;
+    } catch {
+      throw new HttpError(
+        503,
+        `Engine binary not found at ${binary}. Build the engine (cargo build --release) or set ENGINE_BIN.`,
+      );
+    }
+  }
+
+  const inputJson = JSON.stringify(payload);
+  const outcome = await new Promise((resolve) => {
+    const child = spawn(binary, [], { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+
+    child.stdout.on('data', (chunk) => {
+      stdout += String(chunk);
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += String(chunk);
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, MULTIWAY_TIMEOUT_MS);
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      resolve({ code: -1, stdout, stderr: err.message, timedOut });
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({ code: code ?? -1, stdout, stderr, timedOut });
+    });
+    child.stdin.on('error', () => undefined);
+    child.stdin.end(inputJson);
+  });
+
+  if (outcome.timedOut) {
+    throw new HttpError(
+      504,
+      `Multiway equity calculation timed out after ${MULTIWAY_TIMEOUT_MS} ms.`,
+    );
+  }
+  if (outcome.code !== 0) {
+    const detail = outcome.stderr.trim() || `Engine exited with code ${outcome.code}`;
+    throw new HttpError(422, detail);
+  }
+  try {
+    return JSON.parse(outcome.stdout);
+  } catch {
+    throw new HttpError(500, 'Engine returned malformed JSON.');
   }
 }
 
@@ -1611,6 +2062,28 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === 'POST' && url.pathname === '/api/multiway/equity') {
+      try {
+        const text = await readBody(req);
+        let body;
+        try {
+          body = JSON.parse(text);
+        } catch {
+          throw new HttpError(400, 'Body must be valid JSON.');
+        }
+        const payload = await buildMultiwayEnginePayload(body);
+        const result = await runMultiwayEquityBinary(payload);
+        sendJson(req, res, 200, result);
+      } catch (err) {
+        if (err instanceof HttpError) {
+          sendJson(req, res, err.status, { error: err.message });
+          return;
+        }
+        throw err;
+      }
+      return;
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/health') {
       sendJson(req, res, 200, {
         ok: true,
@@ -1642,54 +2115,68 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-await fs.mkdir(JOBS_DIR, { recursive: true });
-await fs.mkdir(LIBRARY_DIR, { recursive: true });
-await loadQueue();
-await quizStore.load();
-server.listen(PORT, HOST, () => {
-  console.log(`plo-api listening on http://${HOST}:${PORT}`);
-  console.log(`  ENGINE_BIN=${ENGINE_BIN}`);
-  console.log(`  DATA_DIR=${DATA_DIR}`);
-  console.log(`  UI_DIR=${UI_DIR} (served for non-API paths when a build exists there)`);
-  console.log(
-    `  Queue: ${QUEUE_ENABLED ? 'ENABLED' : 'disabled (set QUEUE_ENABLED=1 to run catalog spots)'}` +
-      ` — ${queueState.items.length} item(s), concurrency ${queueState.concurrency}` +
-      `${queueState.paused ? ', PAUSED' : ''}`,
-  );
-  if (QUEUE_ENABLED) {
-    // Kick once at startup (retries any uploads left pending by a crash,
-    // then starts working the queue), then tick every second and retry
-    // uploads on the configured interval.
-    void retryPendingUploads().then(() => queueTick());
-    const tickTimer = setInterval(() => void queueTick(), QUEUE_TICK_MS);
-    tickTimer.unref();
-    if (QUEUE_UPLOAD_RETRY_MIN > 0) {
-      const retryTimer = setInterval(
-        () => void retryPendingUploads(),
-        QUEUE_UPLOAD_RETRY_MIN * 60 * 1000,
-      );
-      retryTimer.unref();
+export {
+  server,
+  buildMultiwayEnginePayload,
+  runMultiwayEquityBinary,
+  parseMultiwayRangeInput,
+  HttpError,
+};
+
+const isMainModule =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMainModule) {
+  await fs.mkdir(JOBS_DIR, { recursive: true });
+  await fs.mkdir(LIBRARY_DIR, { recursive: true });
+  await loadQueue();
+  await quizStore.load();
+  server.listen(PORT, HOST, () => {
+    console.log(`plo-api listening on http://${HOST}:${PORT}`);
+    console.log(`  ENGINE_BIN=${ENGINE_BIN}`);
+    console.log(`  DATA_DIR=${DATA_DIR}`);
+    console.log(`  UI_DIR=${UI_DIR} (served for non-API paths when a build exists there)`);
+    console.log(
+      `  Queue: ${QUEUE_ENABLED ? 'ENABLED' : 'disabled (set QUEUE_ENABLED=1 to run catalog spots)'}` +
+        ` — ${queueState.items.length} item(s), concurrency ${queueState.concurrency}` +
+        `${queueState.paused ? ', PAUSED' : ''}`,
+    );
+    if (QUEUE_ENABLED) {
+      // Kick once at startup (retries any uploads left pending by a crash,
+      // then starts working the queue), then tick every second and retry
+      // uploads on the configured interval.
+      void retryPendingUploads().then(() => queueTick());
+      const tickTimer = setInterval(() => void queueTick(), QUEUE_TICK_MS);
+      tickTimer.unref();
+      if (QUEUE_UPLOAD_RETRY_MIN > 0) {
+        const retryTimer = setInterval(
+          () => void retryPendingUploads(),
+          QUEUE_UPLOAD_RETRY_MIN * 60 * 1000,
+        );
+        retryTimer.unref();
+      }
     }
-  }
-  if (!AUTH_ENABLED) {
-    console.log('');
-    console.log('  ************************************************************');
-    console.log('  * WARNING: ADMIN AUTH IS DISABLED                          *');
-    console.log('  * ADMIN_PASSWORD_HASH is not set, so every write endpoint  *');
-    console.log('  * (POST /api/solves, POST /api/library/ingest) is OPEN to  *');
-    console.log('  * anyone who can reach this port. This is local dev mode   *');
-    console.log('  * only — set ADMIN_PASSWORD_HASH (see README.md) before    *');
-    console.log('  * exposing this service beyond localhost.                  *');
-    console.log('  ************************************************************');
-    console.log('');
-  } else if (!AUTH_HASH_OK) {
-    console.log('');
-    console.log('  *** ERROR: ADMIN_PASSWORD_HASH is set but is not a parseable');
-    console.log('  *** scrypt hash (generate one with: node hash-password.mjs).');
-    console.log('  *** Failing CLOSED: write endpoints stay gated and all logins');
-    console.log('  *** will fail until the value is fixed.');
-    console.log('');
-  } else {
-    console.log('  Admin auth: enabled (write endpoints require a session)');
-  }
-});
+    if (!AUTH_ENABLED) {
+      console.log('');
+      console.log('  ************************************************************');
+      console.log('  * WARNING: ADMIN AUTH IS DISABLED                          *');
+      console.log('  * ADMIN_PASSWORD_HASH is not set, so every write endpoint  *');
+      console.log('  * (POST /api/solves, POST /api/library/ingest) is OPEN to  *');
+      console.log('  * anyone who can reach this port. This is local dev mode   *');
+      console.log('  * only — set ADMIN_PASSWORD_HASH (see README.md) before    *');
+      console.log('  * exposing this service beyond localhost.                  *');
+      console.log('  ************************************************************');
+      console.log('');
+    } else if (!AUTH_HASH_OK) {
+      console.log('');
+      console.log('  *** ERROR: ADMIN_PASSWORD_HASH is set but is not a parseable');
+      console.log('  *** scrypt hash (generate one with: node hash-password.mjs).');
+      console.log('  *** Failing CLOSED: write endpoints stay gated and all logins');
+      console.log('  *** will fail until the value is fixed.');
+      console.log('');
+    } else {
+      console.log('  Admin auth: enabled (write endpoints require a session)');
+    }
+  });
+}

@@ -37,8 +37,10 @@ pub use game::{
     CHIP_EPS,
 };
 pub use json::{
-    format_flop_solve_result_json, format_solve_result_json, format_turn_solve_result_json,
-    parse_flop_spot_json, parse_spot_json, parse_turn_spot_json, JsonValue,
+    format_flop_solve_result_json, format_multiway_equity_result_json, format_solve_result_json,
+    format_turn_solve_result_json, parse_flop_spot_json, parse_multiway_equity_request_json,
+    parse_spot_json, parse_turn_spot_json, run_multiway_equity_request, JsonValue,
+    MultiwayEquityRequest, MultiwayModeRequest,
 };
 pub use turn::{
     solve_turn, solve_turn_with_threads, ChanceNode, Street, TurnDecisionNode, TurnGame, TurnNode,
