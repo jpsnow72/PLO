@@ -5,15 +5,11 @@ import { DashboardPage } from './pages/Dashboard';
 import { ExplorerPage } from './pages/Explorer';
 import { LoginPage } from './pages/Login';
 import { PreflopPage } from './pages/Preflop';
+import { QuizPage } from './pages/Quiz';
 import { RunnerPage } from './pages/Runner';
 import { SolverPage } from './pages/Solver';
 import { SpotPickerPage } from './pages/SpotPicker';
-import {
-  HeuristicsPage,
-  QuickReviewPage,
-  QuizPage,
-  SettingsPage,
-} from './pages/Stubs';
+import { HeuristicsPage, QuickReviewPage, SettingsPage } from './pages/Stubs';
 import { useStore } from './store/useStore';
 
 const NAV: { to: string; label: string; end?: boolean }[] = [

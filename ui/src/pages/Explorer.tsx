@@ -4,6 +4,7 @@ import { AccuracyBadge, ApproximationBadge } from '../components/AccuracyBadge';
 import { ActionList } from '../components/ActionList';
 import { actionColor, prettyAction } from '../components/actionStyle';
 import { CardRow } from '../components/CardChip';
+import { ExplainPanel } from '../components/ExplainPanel';
 import { HandDetail } from '../components/HandDetail';
 import { PathBar } from '../components/PathBar';
 import { RangeGrid } from '../components/RangeGrid';
@@ -257,6 +258,13 @@ export function ExplorerPage() {
               Hand detail
             </h3>
             <HandDetail data={solve} node={node} combo={selectedCombo} />
+          </div>
+
+          <div className="border-t border-navy-700 pt-3">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+              GTO Insight &amp; Rationale
+            </h3>
+            <ExplainPanel data={solve} node={node} combo={selectedCombo} />
           </div>
         </section>
       </div>

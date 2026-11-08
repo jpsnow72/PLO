@@ -50,20 +50,6 @@ export function QuickReviewPage() {
   );
 }
 
-export function QuizPage() {
-  return (
-    <StubShell
-      title="Quiz"
-      blurb="Self-testing graded by EV lost against the solver, plus quizzes built from your own heuristics log, with spaced repetition."
-      bullets={[
-        'Questions are generated from real solved spots in your library.',
-        'Grading shows the EV cost of each answer, not just right/wrong.',
-        'Per-topic accuracy feeds the leak-ranked dashboard (V2 list).',
-      ]}
-    />
-  );
-}
-
 export function HeuristicsPage() {
   return (
     <StubShell
