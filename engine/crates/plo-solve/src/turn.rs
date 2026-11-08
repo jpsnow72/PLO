@@ -898,6 +898,127 @@ impl TurnKernels {
     }
 }
 
+/// Precomputed node-subtree spans used by the parallel chance fork
+/// (Ticket E5a).
+///
+/// `TreeBuilder` creates nodes in DFS pre-order and numbers decision nodes in
+/// creation order, so the decision nodes of any subtree form one contiguous
+/// range of decision ids. The prefix tables turn "the buffers owned by the
+/// subtree rooted at node `n`" into an O(1) range lookup:
+/// `decision_prefix[n]..decision_prefix[n + node_subtree_len[n]]`, with
+/// `slot_prefix` the same prefix summed over action slots
+/// (`combos x actions` per decision node) instead of node counts.
+#[derive(Clone, Debug)]
+struct ForkTables {
+    /// `node_subtree_len[n]` = number of nodes in the subtree rooted at `n`
+    /// (including `n`). Children always have larger node ids than their
+    /// parent, so a reverse sweep computes this exactly.
+    node_subtree_len: Vec<usize>,
+    /// `decision_prefix[n]` = number of decision nodes among `nodes[0..n]`.
+    decision_prefix: Vec<usize>,
+    /// `slot_prefix[n]` = action slots of decision nodes among `nodes[0..n]`.
+    slot_prefix: Vec<usize>,
+}
+
+impl ForkTables {
+    fn build(game: &TurnGame) -> Self {
+        let n = game.nodes.len();
+        let mut decision_prefix = vec![0usize; n + 1];
+        let mut slot_prefix = vec![0usize; n + 1];
+        for (i, node) in game.nodes.iter().enumerate() {
+            let (is_decision, slots) = match node {
+                TurnNode::Decision(d) => (
+                    1usize,
+                    game.combos[d.player.index()].len() * d.actions.len(),
+                ),
+                _ => (0, 0),
+            };
+            decision_prefix[i + 1] = decision_prefix[i] + is_decision;
+            slot_prefix[i + 1] = slot_prefix[i] + slots;
+        }
+        let mut node_subtree_len = vec![1usize; n];
+        for i in (0..n).rev() {
+            let children: &[NodeId] = match &game.nodes[i] {
+                TurnNode::Decision(d) => &d.children,
+                TurnNode::Chance(c) => &c.children,
+                TurnNode::Terminal(_) => &[],
+            };
+            node_subtree_len[i] = 1 + children.iter().map(|&c| node_subtree_len[c]).sum::<usize>();
+        }
+        Self {
+            node_subtree_len,
+            decision_prefix,
+            slot_prefix,
+        }
+    }
+
+    /// The buffer range owned by the subtree rooted at `node_id`:
+    /// `(first_decision_id, one_past_last_decision_id, total_action_slots)`.
+    #[inline]
+    fn subtree_span(&self, node_id: NodeId) -> (usize, usize, usize) {
+        let end_node = node_id + self.node_subtree_len[node_id];
+        (
+            self.decision_prefix[node_id],
+            self.decision_prefix[end_node],
+            self.slot_prefix[end_node] - self.slot_prefix[node_id],
+        )
+    }
+}
+
+/// One contiguous group of chance children assigned to a single worker
+/// thread, with the buffer range the group owns. Groups are ordered,
+/// non-overlapping, and together cover every child exactly once; their
+/// buffer ranges are disjoint and ascending (children of a chance node are
+/// built back-to-back, so sibling subtree ranges are adjacent — and the
+/// planner only relies on each child's range lying inside its group's
+/// range, which holds by construction of the prefix tables).
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+struct ChanceGroup {
+    /// First child index (into `ChanceNode::children`) of the group.
+    child_start: usize,
+    /// One past the last child index of the group.
+    child_end: usize,
+    /// First decision id owned by the group.
+    buf_lo: usize,
+    /// One past the last decision id owned by the group.
+    buf_hi: usize,
+}
+
+/// Partitions chance children into at most `threads` contiguous groups,
+/// greedily balancing total action slots: children accumulate into the
+/// current group until its slot count reaches the fair share
+/// `ceil(total / threads)`, then a new group starts. The final group takes
+/// the remainder, so the group count never exceeds `threads`.
+fn plan_chance_groups(spans: &[(usize, usize, usize)], threads: usize) -> Vec<ChanceGroup> {
+    debug_assert!(threads >= 1);
+    debug_assert!(!spans.is_empty());
+    let total: usize = spans.iter().map(|s| s.2).sum();
+    let target = total.div_ceil(threads).max(1);
+    let mut groups = Vec::new();
+    let mut start = 0usize;
+    let mut acc = 0usize;
+    for (i, span) in spans.iter().enumerate() {
+        acc += span.2;
+        if acc >= target && i + 1 < spans.len() {
+            groups.push(ChanceGroup {
+                child_start: start,
+                child_end: i + 1,
+                buf_lo: spans[start].0,
+                buf_hi: span.1,
+            });
+            start = i + 1;
+            acc = 0;
+        }
+    }
+    groups.push(ChanceGroup {
+        child_start: start,
+        child_end: spans.len(),
+        buf_lo: spans[start].0,
+        buf_hi: spans[spans.len() - 1].1,
+    });
+    groups
+}
+
 /// Persistent Discounted-CFR state for one [`TurnGame`]: shared kernels plus the
 /// per-decision-node regret / cumulative-strategy / current-strategy buffers.
 ///
@@ -909,6 +1030,12 @@ impl TurnKernels {
 pub struct TurnSolverState {
     kernels: Rc<TurnKernels>,
     buffers: Vec<TurnNodeBuffer>,
+    /// Worker threads used by the chance-node fork in
+    /// [`traverse_root`](Self::traverse_root) (Ticket E5a). Resolved from
+    /// `PLO_SOLVER_THREADS` at construction; `1` disables forking.
+    threads: usize,
+    /// Node-subtree spans for buffer partitioning (Ticket E5a).
+    fork_tables: ForkTables,
 }
 
 impl TurnSolverState {
@@ -927,12 +1054,30 @@ impl TurnSolverState {
                 TurnNodeBuffer::new(d.player, d.actions.len(), num_combos)
             })
             .collect();
-        Self { kernels, buffers }
+        Self {
+            kernels,
+            buffers,
+            threads: crate::parallel::solver_threads(),
+            fork_tables: ForkTables::build(game),
+        }
     }
 
     /// The kernels this state traverses with.
     pub fn kernels(&self) -> &TurnKernels {
         &self.kernels
+    }
+
+    /// Overrides the worker-thread count used by the chance-node fork
+    /// (values `< 1` are clamped to `1`). [`solve_turn`] and [`solve_flop`]
+    /// resolve this from `PLO_SOLVER_THREADS`; the `*_with_threads` entry
+    /// points and embedders that manage their own pool sizing use this.
+    pub fn set_threads(&mut self, threads: usize) {
+        self.threads = threads.max(1);
+    }
+
+    /// The worker-thread count currently configured for this state.
+    pub fn threads(&self) -> usize {
+        self.threads
     }
 
     /// Recomputes the current (regret-matching) strategy for all of
@@ -973,6 +1118,9 @@ impl TurnSolverState {
             pos_discount,
             neg_discount,
             strat_weight,
+            &self.fork_tables,
+            self.threads,
+            0,
         )
     }
 
@@ -1002,9 +1150,31 @@ impl TurnSolverState {
 
 /// Solves a [`TurnGame`] using vectorised Discounted CFR (same parameters and
 /// alternating-update scheme as the E2 river solver, see [`crate::cfr`]).
+/// Chance-node subtrees are evaluated in parallel on
+/// [`crate::parallel::solver_threads`] worker threads (from
+/// `PLO_SOLVER_THREADS`; `1` = the pre-E5a single-thread behaviour, with
+/// bit-identical results — see [`turn_traverse`]).
 pub fn solve_turn(game: &TurnGame, config: &DcfrConfig) -> TurnSolveResult {
-    let mut state = TurnSolverState::new(game);
+    solve_turn_impl(game, config, TurnSolverState::new(game))
+}
 
+/// Like [`solve_turn`], with an explicit worker-thread count for the
+/// chance-node fork (`1` = single-threaded), ignoring `PLO_SOLVER_THREADS`.
+pub fn solve_turn_with_threads(
+    game: &TurnGame,
+    config: &DcfrConfig,
+    threads: usize,
+) -> TurnSolveResult {
+    let mut state = TurnSolverState::new(game);
+    state.set_threads(threads);
+    solve_turn_impl(game, config, state)
+}
+
+fn solve_turn_impl(
+    game: &TurnGame,
+    config: &DcfrConfig,
+    mut state: TurnSolverState,
+) -> TurnSolveResult {
     let init_oop_reach: Vec<f64> = game.combos[0].iter().map(|c| c.weight).collect();
     let init_ip_reach: Vec<f64> = game.combos[1].iter().map(|c| c.weight).collect();
 
@@ -1091,6 +1261,27 @@ pub fn solve_turn(game: &TurnGame, config: &DcfrConfig) -> TurnSolveResult {
     }
 }
 
+/// One DCFR traversal of the two-street tree.
+///
+/// Parallelism (Ticket E5a): at a chance node the runout subtrees may be
+/// evaluated on scoped worker threads. The argument rests on three facts:
+/// (1) within a half-iteration, `current_strategy` is fixed (recomputed only
+/// by `begin_update`, between traversals) and every decision node is visited
+/// exactly once, so each node's regret / cumulative-strategy update is
+/// computed by exactly one worker with exactly the sequential operation
+/// order; (2) the subtree rooted at any node owns the contiguous buffer
+/// range given by [`ForkTables`], and sibling ranges are disjoint, so
+/// workers write to disjoint `buffers` partitions; (3) this frame combines
+/// the returned child counterfactual values in ascending runout order, the
+/// same order the sequential loop adds them. The multithreaded traversal
+/// therefore performs the identical floating-point operations as the
+/// single-threaded one and produces bit-identical results at any thread
+/// count (verified by `tests/e5_threading.rs`).
+///
+/// `buffers` is the partition this call may touch: `buffers[i]` holds
+/// decision id `buf_base + i`. Non-forking recursion passes both through
+/// unchanged; a chance fork hands each worker its group's sub-slice with
+/// `buf_base` set to the group's first decision id.
 #[allow(clippy::too_many_arguments)]
 fn turn_traverse(
     game: &TurnGame,
@@ -1104,6 +1295,9 @@ fn turn_traverse(
     pos_discount: f64,
     neg_discount: f64,
     strat_weight: f64,
+    fork: &ForkTables,
+    threads: usize,
+    buf_base: usize,
 ) -> Vec<f64> {
     let p_idx = traverser.index();
     let q_idx = traverser.opponent().index();
@@ -1144,35 +1338,117 @@ fn turn_traverse(
         }
         TurnNode::Chance(chance) => {
             let mut node_cfv = vec![0.0f64; num_my];
-            for (r, &child_id) in chance.children.iter().enumerate() {
-                let child_cfv = turn_traverse(
-                    game,
-                    kernels,
-                    buffers,
-                    child_id,
-                    traverser,
-                    Some(r),
-                    my_reach,
-                    opp_reach,
-                    pos_discount,
-                    neg_discount,
-                    strat_weight,
-                );
-                for i in 0..num_my {
-                    node_cfv[i] += RIVER_DEAL_PROB * child_cfv[i];
+            // Total action slots of the runout subtrees, from the
+            // precomputed prefix tables (the fork decision).
+            let total_slots: usize = chance
+                .children
+                .iter()
+                .map(|&child_id| fork.subtree_span(child_id).2)
+                .sum();
+
+            if !crate::parallel::should_fork(threads, total_slots) {
+                for (r, &child_id) in chance.children.iter().enumerate() {
+                    let child_cfv = turn_traverse(
+                        game,
+                        kernels,
+                        buffers,
+                        child_id,
+                        traverser,
+                        Some(r),
+                        my_reach,
+                        opp_reach,
+                        pos_discount,
+                        neg_discount,
+                        strat_weight,
+                        fork,
+                        threads,
+                        buf_base,
+                    );
+                    for i in 0..num_my {
+                        node_cfv[i] += RIVER_DEAL_PROB * child_cfv[i];
+                    }
+                }
+                return node_cfv;
+            }
+
+            // Fork: partition the children into contiguous slot-balanced
+            // groups, carve the matching disjoint partitions out of
+            // `buffers`, and evaluate each group on a scoped thread. The
+            // gap slices before/between groups belong to subtrees outside
+            // this chance node and stay untouched until the scope joins.
+            crate::parallel::note_fork_event();
+            let spans: Vec<(usize, usize, usize)> = chance
+                .children
+                .iter()
+                .map(|&child_id| fork.subtree_span(child_id))
+                .collect();
+            let groups = plan_chance_groups(&spans, threads);
+            let mut group_slices: Vec<&mut [TurnNodeBuffer]> = Vec::with_capacity(groups.len());
+            {
+                let mut rest: &mut [TurnNodeBuffer] = buffers;
+                let mut rest_base = buf_base;
+                for group in &groups {
+                    let skip = group.buf_lo - rest_base;
+                    let cur = std::mem::replace(&mut rest, &mut []);
+                    let (_gap, after) = cur.split_at_mut(skip);
+                    let (slice, new_rest) = after.split_at_mut(group.buf_hi - group.buf_lo);
+                    group_slices.push(slice);
+                    rest = new_rest;
+                    rest_base = group.buf_hi;
                 }
             }
+            std::thread::scope(|scope| {
+                let mut handles = Vec::with_capacity(groups.len());
+                for (group, slice) in groups.iter().copied().zip(group_slices) {
+                    handles.push(scope.spawn(move || {
+                        let mut slice = slice;
+                        let mut cfvs = Vec::with_capacity(group.child_end - group.child_start);
+                        for r in group.child_start..group.child_end {
+                            cfvs.push(turn_traverse(
+                                game,
+                                kernels,
+                                &mut *slice,
+                                chance.children[r],
+                                traverser,
+                                Some(r),
+                                my_reach,
+                                opp_reach,
+                                pos_discount,
+                                neg_discount,
+                                strat_weight,
+                                fork,
+                                threads,
+                                group.buf_lo,
+                            ));
+                        }
+                        cfvs
+                    }));
+                }
+                // Join in spawn order and combine in ascending runout
+                // order — the identical summation order to the sequential
+                // loop above.
+                for handle in handles {
+                    let cfvs = handle.join().expect("chance-fork worker panicked");
+                    for child_cfv in &cfvs {
+                        for i in 0..num_my {
+                            node_cfv[i] += RIVER_DEAL_PROB * child_cfv[i];
+                        }
+                    }
+                }
+            });
             node_cfv
         }
         TurnNode::Decision(d) => {
             let decision_id = d.decision_id;
+            // Index into this call's buffer partition (see the fn docs).
+            let buf_idx = decision_id - buf_base;
             let num_actions = d.actions.len();
 
             if d.player == traverser {
-                let cur_strat = buffers[decision_id].current_strategy.clone();
+                let cur_strat = buffers[buf_idx].current_strategy.clone();
 
                 {
-                    let cum_strat = &mut buffers[decision_id].cum_strategy;
+                    let cum_strat = &mut buffers[buf_idx].cum_strategy;
                     for i in 0..num_my {
                         let w = strat_weight * my_reach[i];
                         if w > 0.0 {
@@ -1205,6 +1481,9 @@ fn turn_traverse(
                         pos_discount,
                         neg_discount,
                         strat_weight,
+                        fork,
+                        threads,
+                        buf_base,
                     );
                     for i in 0..num_my {
                         node_cfv[i] += cur_strat[i * num_actions + a] * child_cfv[i];
@@ -1212,7 +1491,7 @@ fn turn_traverse(
                     action_cfvs.push(child_cfv);
                 }
 
-                let regrets = &mut buffers[decision_id].regrets;
+                let regrets = &mut buffers[buf_idx].regrets;
                 for i in 0..num_my {
                     let base = i * num_actions;
                     let ev_i = node_cfv[i];
@@ -1229,7 +1508,7 @@ fn turn_traverse(
 
                 node_cfv
             } else {
-                let opp_strat = buffers[decision_id].current_strategy.clone();
+                let opp_strat = buffers[buf_idx].current_strategy.clone();
                 let mut node_cfv = vec![0.0f64; num_my];
                 let mut next_opp_reach = vec![0.0f64; num_opp];
 
@@ -1258,6 +1537,9 @@ fn turn_traverse(
                         pos_discount,
                         neg_discount,
                         strat_weight,
+                        fork,
+                        threads,
+                        buf_base,
                     );
                     for i in 0..num_my {
                         node_cfv[i] += child_cfv[i];
@@ -1266,6 +1548,155 @@ fn turn_traverse(
 
                 node_cfv
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod e5_fork_tests {
+    use super::*;
+
+    /// Fabricates spans for `n` children with the given per-child slot
+    /// counts, laid out as adjacent buffer ranges starting at `base`.
+    fn spans_from_slots(slots: &[usize], base: usize) -> Vec<(usize, usize, usize)> {
+        let mut out = Vec::with_capacity(slots.len());
+        let mut lo = base;
+        for (k, &s) in slots.iter().enumerate() {
+            // Give child k a distinct non-empty decision range unless it
+            // models an all-in terminal child (0 slots -> empty range).
+            let width = if s == 0 { 0 } else { 1 + k };
+            out.push((lo, lo + width, s));
+            lo += width;
+        }
+        out
+    }
+
+    fn assert_partition(spans: &[(usize, usize, usize)], groups: &[ChanceGroup], threads: usize) {
+        assert!(!groups.is_empty());
+        assert!(groups.len() <= threads.max(1));
+        // Children covered exactly once, in order.
+        assert_eq!(groups[0].child_start, 0);
+        assert_eq!(groups[groups.len() - 1].child_end, spans.len());
+        for w in groups.windows(2) {
+            assert_eq!(w[0].child_end, w[1].child_start);
+        }
+        for g in groups {
+            assert!(g.child_start < g.child_end);
+            // The group's buffer range contains every child's range.
+            assert_eq!(g.buf_lo, spans[g.child_start].0);
+            assert_eq!(g.buf_hi, spans[g.child_end - 1].1);
+            // Groups are disjoint and ascending in buffer space.
+            assert!(g.buf_lo < g.buf_hi || spans[g.child_start].2 == 0);
+        }
+        for w in groups.windows(2) {
+            assert!(w[0].buf_hi <= w[1].buf_lo);
+        }
+    }
+
+    #[test]
+    fn planner_partitions_48_equal_children() {
+        let spans = spans_from_slots(&[100usize; 48], 7);
+        for threads in [2usize, 3, 4, 6, 8, 48, 64] {
+            let groups = plan_chance_groups(&spans, threads);
+            assert_partition(&spans, &groups, threads);
+        }
+    }
+
+    #[test]
+    fn planner_handles_skewed_and_empty_children() {
+        // One heavy child, several all-in terminal children (0 slots).
+        let mut slots = vec![0usize; 48];
+        slots[0] = 5_000;
+        slots[10] = 300;
+        slots[47] = 100;
+        let spans = spans_from_slots(&slots, 0);
+        for threads in [2usize, 4, 8] {
+            let groups = plan_chance_groups(&spans, threads);
+            assert_partition(&spans, &groups, threads);
+            // The heavy child must not be merged with everything else:
+            // the planner closes a group as soon as the fair share is met.
+            assert!(groups[0].child_end < spans.len());
+        }
+    }
+
+    #[test]
+    fn planner_single_thread_is_one_group() {
+        let spans = spans_from_slots(&[50usize; 48], 3);
+        let groups = plan_chance_groups(&spans, 1);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].child_start, 0);
+        assert_eq!(groups[0].child_end, 48);
+        assert_eq!(groups[0].buf_lo, spans[0].0);
+        assert_eq!(groups[0].buf_hi, spans[47].1);
+    }
+
+    #[test]
+    fn fork_tables_spans_are_contiguous_and_cover_all_decisions() {
+        // Small real game: build a TurnGame and verify the span of the
+        // root covers every decision node, and the spans of a chance
+        // node's children are adjacent (the fork's partitioning premise).
+        let spot = TurnSpot {
+            board: Card::parse_n::<4>("As Ks Qs 7d").unwrap(),
+            oop_range: PloRange::from_str_specs(&[
+                ("Kc 9c 3d 4d", 1.0),
+                ("Ah Ad 5h 6h", 0.7),
+                ("Ts 9s 8c 9d", 1.0),
+            ])
+            .unwrap(),
+            ip_range: PloRange::from_str_specs(&[
+                ("Jh Th 8h 9h", 1.0),
+                ("2c 3c 4h 5d", 0.5),
+            ])
+            .unwrap(),
+            starting_pot: 100.0,
+            effective_stack: 100.0,
+            turn_config: TreeConfig {
+                bet_sizes: vec![1.0],
+                include_all_in_bet: false,
+                raise_sizes: vec![],
+                include_all_in_raise: false,
+                max_raises: 0,
+            },
+            river_config: TreeConfig {
+                bet_sizes: vec![1.0],
+                include_all_in_bet: false,
+                raise_sizes: vec![],
+                include_all_in_raise: false,
+                max_raises: 0,
+            },
+        };
+        let game = TurnGame::new(spot).unwrap();
+        let tables = ForkTables::build(&game);
+
+        let (lo, hi, slots) = tables.subtree_span(0);
+        assert_eq!(lo, 0);
+        assert_eq!(hi, game.num_decision_nodes());
+        let expected_slots: usize = (0..game.num_decision_nodes())
+            .map(|did| {
+                let d = game.decision_node(did);
+                game.combos[d.player.index()].len() * d.actions.len()
+            })
+            .sum();
+        assert_eq!(slots, expected_slots);
+
+        assert!(!game.chance_node_ids.is_empty());
+        for &cn in &game.chance_node_ids {
+            let chance = match &game.nodes[cn] {
+                TurnNode::Chance(c) => c,
+                _ => unreachable!(),
+            };
+            let child_spans: Vec<_> = chance
+                .children
+                .iter()
+                .map(|&cid| tables.subtree_span(cid))
+                .collect();
+            for w in child_spans.windows(2) {
+                assert_eq!(w[0].1, w[1].0, "sibling subtree ranges must be adjacent");
+            }
+            // Sum of child decision counts = chance subtree decision count.
+            let (clo, chi, _) = tables.subtree_span(cn);
+            let child_total: usize = child_spans.iter().map(|s| s.1 - s.0).sum();
+            assert_eq!(chi - clo, child_total);
         }
     }
 }
