@@ -66,8 +66,8 @@ export function DashboardPage() {
     };
   }, [setApiOnline]);
 
-  const openRaw = (raw: unknown, name: string, source: 'library' | 'job') => {
-    if (loadRawSolve(raw, name, source)) {
+  const openRaw = (raw: unknown, name: string, source: 'library' | 'job', id: string) => {
+    if (loadRawSolve(raw, name, source, id)) {
       navigate('/explorer');
     } else {
       setOpenError(`"${name}" could not be parsed by the UI.`);
@@ -77,7 +77,7 @@ export function DashboardPage() {
   const openLibraryItem = async (item: LibraryItem) => {
     try {
       const raw = await fetchLibrarySolve(item.id);
-      openRaw(raw, item.name, 'library');
+      openRaw(raw, item.name, 'library', item.id);
     } catch {
       setOpenError('Could not fetch that solve from the job service.');
     }
@@ -86,7 +86,7 @@ export function DashboardPage() {
   const openJob = async (job: JobRecord) => {
     try {
       const raw = await fetchJobResult(job.id);
-      openRaw(raw, `Custom solve · ${job.board}`, 'job');
+      openRaw(raw, `Custom solve · ${job.board}`, 'job', job.id);
     } catch {
       setOpenError('Could not fetch that job result.');
     }

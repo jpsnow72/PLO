@@ -36,20 +36,6 @@ function StubShell({
   );
 }
 
-export function QuickReviewPage() {
-  return (
-    <StubShell
-      title="Quick Review"
-      blurb="Phone-first flash review: your saved spots, tap to reveal the solver answer and the one-line why. Built for two-minute sessions."
-      bullets={[
-        'Saved spots come from the Explorer (bookmark any node).',
-        'Streak counter included when this lands (V2 list).',
-        'Designed as a true 390px mobile layout, per the approved design.',
-      ]}
-    />
-  );
-}
-
 export function QuizPage() {
   return (
     <StubShell
@@ -59,20 +45,6 @@ export function QuizPage() {
         'Questions are generated from real solved spots in your library.',
         'Grading shows the EV cost of each answer, not just right/wrong.',
         'Per-topic accuracy feeds the leak-ranked dashboard (V2 list).',
-      ]}
-    />
-  );
-}
-
-export function HeuristicsPage() {
-  return (
-    <StubShell
-      title="My Heuristics"
-      blurb="Your personal rules of thumb, tagged by texture, street and spot, each linked to the solver spots that support it."
-      bullets={[
-        'The Explorer’s explain-why panel will propose candidate heuristics from real node data.',
-        'Heuristics sync across devices under your login.',
-        'Nothing here is solver output — it is your own distilled playbook.',
       ]}
     />
   );

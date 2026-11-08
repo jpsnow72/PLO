@@ -5,6 +5,7 @@ import { ActionList } from '../components/ActionList';
 import { actionColor, prettyAction } from '../components/actionStyle';
 import { CardRow } from '../components/CardChip';
 import { HandDetail } from '../components/HandDetail';
+import { LinkToHeuristic } from '../components/LinkToHeuristic';
 import { PathBar } from '../components/PathBar';
 import { RangeGrid } from '../components/RangeGrid';
 import { RunoutPicker } from '../components/RunoutPicker';
@@ -23,6 +24,7 @@ export function ExplorerPage() {
   const solve = useStore((s) => s.solve);
   const solveName = useStore((s) => s.solveName);
   const solveSource = useStore((s) => s.solveSource);
+  const solveId = useStore((s) => s.solveId);
   const loadStatus = useStore((s) => s.loadStatus);
   const loadError = useStore((s) => s.loadError);
   const loadSample = useStore((s) => s.loadSample);
@@ -257,6 +259,13 @@ export function ExplorerPage() {
               Hand detail
             </h3>
             <HandDetail data={solve} node={node} combo={selectedCombo} />
+          </div>
+
+          <div className="border-t border-navy-700 pt-3">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+              Link to heuristic
+            </h3>
+            <LinkToHeuristic spotId={solveId} />
           </div>
         </section>
       </div>

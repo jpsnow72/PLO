@@ -3,17 +3,14 @@ import { NavLink, Route, Routes } from 'react-router-dom';
 import { AdminPage } from './pages/Admin';
 import { DashboardPage } from './pages/Dashboard';
 import { ExplorerPage } from './pages/Explorer';
+import { HeuristicsPage } from './pages/Heuristics';
 import { LoginPage } from './pages/Login';
 import { PreflopPage } from './pages/Preflop';
+import { QuickReviewPage } from './pages/QuickReview';
 import { RunnerPage } from './pages/Runner';
 import { SolverPage } from './pages/Solver';
 import { SpotPickerPage } from './pages/SpotPicker';
-import {
-  HeuristicsPage,
-  QuickReviewPage,
-  QuizPage,
-  SettingsPage,
-} from './pages/Stubs';
+import { QuizPage, SettingsPage } from './pages/Stubs';
 import { useStore } from './store/useStore';
 
 const NAV: { to: string; label: string; end?: boolean }[] = [
