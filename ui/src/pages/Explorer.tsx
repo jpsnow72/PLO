@@ -4,6 +4,7 @@ import { AccuracyBadge, ApproximationBadge } from '../components/AccuracyBadge';
 import { ActionList } from '../components/ActionList';
 import { actionColor, prettyAction } from '../components/actionStyle';
 import { CardRow } from '../components/CardChip';
+import { ExplainPanel } from '../components/ExplainPanel';
 import { HandDetail } from '../components/HandDetail';
 import { LinkToHeuristic } from '../components/LinkToHeuristic';
 import { PathBar } from '../components/PathBar';
@@ -266,6 +267,13 @@ export function ExplorerPage() {
               Link to heuristic
             </h3>
             <LinkToHeuristic spotId={solveId} />
+          </div>
+
+          <div className="border-t border-navy-700 pt-3">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+              GTO Insight &amp; Rationale
+            </h3>
+            <ExplainPanel data={solve} node={node} combo={selectedCombo} />
           </div>
         </section>
       </div>

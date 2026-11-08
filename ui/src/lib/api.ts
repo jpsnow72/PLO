@@ -11,6 +11,12 @@ import {
   type PreflopSetDoc,
 } from './preflop';
 import {
+  parseQuizProgress,
+  type GradingMode,
+  type QuizProgress,
+  type QuizTopic,
+} from './quiz';
+import {
   parseCatalogResponse,
   parseEnqueueResult,
   parseQueueResponse,
@@ -223,6 +229,43 @@ export async function enqueueSpots(spotIds: string[]): Promise<EnqueueResult> {
   const parsed = parseEnqueueResult(body);
   if (!parsed) throw new ApiError(0, 'Malformed enqueue response');
   return parsed;
+}
+
+// ---------- Quiz progress (S2; api/quiz.mjs) ----------
+
+/**
+ * SRS progress + per-topic accuracy. Gated by the admin session
+ * server-side: throws ApiError(401) when signed out.
+ */
+export async function fetchQuizProgress(): Promise<QuizProgress> {
+  const body = await requestJson('/api/quiz/progress');
+  const parsed = parseQuizProgress(body);
+  if (!parsed) throw new ApiError(0, 'Malformed quiz progress response');
+  return parsed;
+}
+
+export interface QuizAnswerRecord {
+  item_key: string;
+  kind: 'spot' | 'heuristic';
+  topic: QuizTopic;
+  score: number;
+  grading: GradingMode;
+  ev_lost_pct?: number | null;
+}
+
+/** Record one graded answer; returns the updated progress when parseable. */
+export async function recordQuizAnswer(
+  record: QuizAnswerRecord,
+): Promise<QuizProgress | null> {
+  await requestJson('/api/quiz/answer', {
+    method: 'POST',
+    body: JSON.stringify(record),
+  });
+  try {
+    return await fetchQuizProgress();
+  } catch {
+    return null;
+  }
 }
 
 export type QueueControlAction =

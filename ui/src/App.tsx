@@ -7,10 +7,11 @@ import { HeuristicsPage } from './pages/Heuristics';
 import { LoginPage } from './pages/Login';
 import { PreflopPage } from './pages/Preflop';
 import { QuickReviewPage } from './pages/QuickReview';
+import { QuizPage } from './pages/Quiz';
 import { RunnerPage } from './pages/Runner';
 import { SolverPage } from './pages/Solver';
 import { SpotPickerPage } from './pages/SpotPicker';
-import { QuizPage, SettingsPage } from './pages/Stubs';
+import { SettingsPage } from './pages/Stubs';
 import { useStore } from './store/useStore';
 
 const NAV: { to: string; label: string; end?: boolean }[] = [

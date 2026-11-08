@@ -54,6 +54,8 @@ Configuration (environment variables):
 | GET    | `/api/queue`            | `{ items, concurrency, paused, enabled }` — the persistent catalog queue. |
 | POST   | `/api/queue`            | **[admin]** Body = `{ spot_ids: [...] }`. Unknown ids → `400` listing them. New spots are appended; already queued/running/done ids are reported in `skipped`, not duplicated; re-adding a `failed` spot resets it to `queued` (the retry path). |
 | POST   | `/api/queue/control`    | **[admin]** Body = `{ action: "pause" \| "resume" \| "remove", spot_id? }` or `{ action: "set_concurrency", value: 1..8 }`. Removing a `running` item is refused (`409`). |
+| GET    | `/api/quiz/progress`    | **[admin]** Quiz SRS state: `{ items, topics, intervals_days }` from `DATA_DIR/quiz-progress.json` (see "Quiz progress" below). |
+| POST   | `/api/quiz/answer`      | **[admin]** Body = `{ item_key, kind, topic: { texture, street, spot_type }, score, grading }`. Records one client-graded answer and advances the item's spaced-repetition ladder. Returns the updated `{ item, topic }`. |
 | POST   | `/api/auth/login`       | Body = `{ password }`. On success: `200 { admin: true }` + `plo_admin` session cookie. Wrong password: generic `401` after a small constant delay. |
 | POST   | `/api/auth/logout`      | Deletes the session (if any) and clears the cookie. Always `200`.          |
 | GET    | `/api/auth/me`          | `200 { admin: true, auth_enabled }` with a valid session (or when auth is disabled), else `401`. |
@@ -165,6 +167,24 @@ How it works:
   `GET /api/auth/me` reports `{ admin: true, auth_enabled: false }` so
   the UI can warn too. If the variable is set but malformed, the server
   fails **closed** (writes stay gated, all logins fail) and logs an error.
+
+## Quiz progress (S2)
+
+The Quiz Trainer grades answers in the browser, from solve data (the
+server has no poker knowledge), and persists them here:
+
+- `DATA_DIR/quiz-progress.json` holds per-item spaced-repetition state
+  and per-topic accuracy (`<texture>|<street>|<spot_type>`), written
+  atomically (temp + rename) by `quiz.mjs`.
+- The ladder is deliberately simple: intervals `[0, 1, 2, 4, 7, 15, 30]`
+  days. Score ≥ 0.85 climbs one rung; 0.40–0.85 repeats in 1 day;
+  below 0.40 resets to rung 0 — due immediately.
+- `grading` (`ev` | `frequency` | `match`) is stored with every answer
+  so the history never pretends a frequency-match grade was an EV
+  measurement. Today's engine JSON carries no per-action EVs, so in
+  practice spot answers are graded `frequency` (see `ui/src/lib/quiz.ts`).
+- Both endpoints require the admin session: quiz history is personal
+  study state, synced under the same login as the heuristics log.
 
 ## Ingesting finished solves
 
