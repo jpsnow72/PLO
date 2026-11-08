@@ -98,7 +98,7 @@ export function SpotPickerPage() {
     if (!s.libraryId) return;
     try {
       const raw = await fetchLibrarySolve(s.libraryId);
-      if (loadRawSolve(raw, s.name, 'library')) navigate('/explorer');
+      if (loadRawSolve(raw, s.name, 'library', s.libraryId)) navigate('/explorer');
       else setError(`"${s.name}" could not be parsed by the UI.`);
     } catch {
       setError('Could not fetch that solve from the job service.');

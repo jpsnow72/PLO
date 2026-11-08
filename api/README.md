@@ -58,6 +58,12 @@ Configuration (environment variables):
 | POST   | `/api/auth/logout`      | Deletes the session (if any) and clears the cookie. Always `200`.          |
 | GET    | `/api/auth/me`          | `200 { admin: true, auth_enabled }` with a valid session (or when auth is disabled), else `401`. |
 | GET    | `/api/runner/status`    | `{ queue_enabled, concurrency, paused, upload_configured, central_url }` for the admin runner UI. `central_url` is the configured central base URL from `runner-config.json` (or `null`); the session cookie is never exposed. |
+| GET    | `/api/heuristics`       | **[admin]** `{ heuristics: [...] }` — the personal heuristics log, oldest first. Stored in `DATA_DIR/heuristics.json` (see "Study layer" below). |
+| POST   | `/api/heuristics`       | **[admin]** Create a heuristic. Body: `{ text (required, non-empty), source?, tags?, linked_spot_ids?, status?, support_n?, mean_freq?, spread? }`. Unknown fields are stripped; ids are server-generated. `201` + the record. |
+| PUT    | `/api/heuristics/:id`   | **[admin]** Partial update (same field rules; a support-stat field set to `null` clears it). `404` for an unknown id. |
+| DELETE | `/api/heuristics/:id`   | **[admin]** Delete a heuristic. `200 { deleted: true, id }`; `404` for an unknown id. |
+| POST   | `/api/study/review-events` | **[admin]** Record Quick Review outcomes. Body: `{ events: [{ grade: "got" \| "missed", spot_id?, source?, board?, street?, player?, node_history?, hero_combo?, session_id? }] }` (max 100 per post). Appended to `DATA_DIR/study-progress.json` (capped at the newest 10,000). `201 { recorded, total }`. |
+| GET    | `/api/study/progress`   | **[admin]** `{ total_events, got, missed, sessions, last_session_at, by_street }` — the aggregate over the stored review events. Deliberately minimal: spaced repetition belongs to the Quiz work, not this log. |
 | GET    | `/api/health`           | `{ ok, engine_bin, data_dir, preflop_dir, auth_enabled }`.                |
 | GET    | *(any non-API path)*    | The built UI from `UI_DIR` when a build exists there, with SPA fallback to `index.html` for client-side routes; JSON `404` otherwise. |
 
@@ -260,11 +266,43 @@ POSIX; sessions expire after 30 days, then re-run the login). A `401`
 from the central ingest means the session died: the item records that,
 and re-running the login + the retry loop recovers it.
 
+## Study layer (heuristics + review outcomes)
+
+Implemented in `study.mjs`, routed from `server.mjs`. Unlike the library
+(which is public-read by design), the study data is **personal**, so
+every endpoint below — reads included — sits behind the same admin
+session as the writes.
+
+A heuristic record:
+
+```json
+{
+  "id": "server-generated uuid",
+  "text": "On paired boards, check back more of the raiser's range…",
+  "source": "manual | ai-suggested | mined",
+  "tags": { "texture": "paired", "street": "flop", "spot_type": "SRP BTN vs BB" },
+  "linked_spot_ids": ["<library solve id>", "..."],
+  "status": "active | retired",
+  "support_n": 12, "mean_freq": 0.63, "spread": 0.21,
+  "created_at": "…", "updated_at": "…"
+}
+```
+
+`support_n` / `mean_freq` / `spread` are the mined-heuristic support
+stats — present only on records a mining pass wrote with measured
+support; the API stores them verbatim and never derives them. Records
+persist in `DATA_DIR/heuristics.json`; Quick Review events persist in
+`DATA_DIR/study-progress.json`. Both files use the queue's persistence
+discipline (serialised atomic temp + rename saves; a corrupt file starts
+empty and is logged, never fatal).
+
 ## Security note
 
 With `ADMIN_PASSWORD_HASH` set, the write surface is gated by the admin
 session described above; reads stay public by design (the library is
-meant to be browsable). Still run the service on localhost or a private
+meant to be browsable) — the one exception is the study layer above:
+heuristics and review outcomes are personal, so their reads are gated
+too. Still run the service on localhost or a private
 network (e.g. the VPS's Tailscale interface) unless the deployment has
 been deliberately set up for public access — it holds no other accounts,
 rate limits, or audit trail yet.

@@ -38,13 +38,19 @@ interface AppState {
   solve: SolveData | null;
   solveName: string;
   solveSource: SolveSource | null;
+  /**
+   * Library item id / job id of the loaded solve, when it has one (the
+   * bundled sample has none). The Explorer's "link to heuristic"
+   * affordance records this id in a heuristic's linked_spot_ids.
+   */
+  solveId: string | null;
   loadStatus: 'idle' | 'loading' | 'ready' | 'error';
   loadError: string | null;
   path: PathStep[];
   pendingRunout: RunoutOption[] | null;
   terminalAction: string | null;
   loadSample: () => Promise<void>;
-  loadRawSolve: (raw: unknown, name: string, source: SolveSource) => boolean;
+  loadRawSolve: (raw: unknown, name: string, source: SolveSource, id?: string | null) => boolean;
   chooseAction: (actionLabel: string) => void;
   chooseRunout: (card: string) => void;
   dismissRunout: () => void;
@@ -96,6 +102,7 @@ export const useStore = create<AppState>((set, get) => ({
   solve: null,
   solveName: '',
   solveSource: null,
+  solveId: null,
   loadStatus: 'idle',
   loadError: null,
   path: [ROOT_STEP],
@@ -116,7 +123,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  loadRawSolve: (raw, name, source) => {
+  loadRawSolve: (raw, name, source, id) => {
     const data = parseSolve(raw);
     if (!data) {
       set({ loadStatus: 'error', loadError: `"${name}" is not a valid engine solve` });
@@ -126,6 +133,7 @@ export const useStore = create<AppState>((set, get) => ({
       solve: data,
       solveName: name,
       solveSource: source,
+      solveId: id ?? null,
       loadStatus: 'ready',
       loadError: null,
       path: [ROOT_STEP],

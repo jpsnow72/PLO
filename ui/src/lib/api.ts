@@ -20,6 +20,15 @@ import {
   type QueueResponse,
   type RunnerStatus,
 } from './runner';
+import {
+  parseHeuristic,
+  parseHeuristicsResponse,
+  parseStudyProgress,
+  type Heuristic,
+  type HeuristicInput,
+  type ReviewEventInput,
+  type StudyProgress,
+} from './study';
 import type { AuthState, JobRecord, LibraryItem } from './types';
 
 export class ApiError extends Error {
@@ -230,5 +239,61 @@ export async function queueControl(action: QueueControlAction): Promise<QueueRes
   });
   const parsed = parseQueueResponse(body);
   if (!parsed) throw new ApiError(0, 'Malformed queue control response');
+  return parsed;
+}
+
+// ---------- Study layer: heuristics log + Quick Review outcomes ----------
+// All of these are admin-gated server-side (personal data), so a 401
+// ApiError means "log in first" — callers render that state explicitly.
+
+/** The full heuristics log. Throws ApiError(401) when not signed in. */
+export async function fetchHeuristics(): Promise<Heuristic[]> {
+  const body = await requestJson('/api/heuristics');
+  const parsed = parseHeuristicsResponse(body);
+  if (!parsed) throw new ApiError(0, 'Malformed heuristics response');
+  return parsed;
+}
+
+/** Create a heuristic [admin]. Returns the stored record. */
+export async function createHeuristic(input: HeuristicInput): Promise<Heuristic> {
+  const body = await requestJson('/api/heuristics', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  const parsed = parseHeuristic(body);
+  if (!parsed) throw new ApiError(0, 'Malformed heuristic response');
+  return parsed;
+}
+
+/** Partially update a heuristic [admin]. Returns the stored record. */
+export async function updateHeuristic(id: string, input: HeuristicInput): Promise<Heuristic> {
+  const body = await requestJson(`/api/heuristics/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+  const parsed = parseHeuristic(body);
+  if (!parsed) throw new ApiError(0, 'Malformed heuristic response');
+  return parsed;
+}
+
+/** Delete a heuristic [admin]. */
+export async function deleteHeuristic(id: string): Promise<void> {
+  await requestJson(`/api/heuristics/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** Record a finished Quick Review session's graded cards [admin]. */
+export async function postReviewEvents(events: ReviewEventInput[]): Promise<void> {
+  if (events.length === 0) return;
+  await requestJson('/api/study/review-events', {
+    method: 'POST',
+    body: JSON.stringify({ events }),
+  });
+}
+
+/** Aggregate Quick Review outcomes. Throws ApiError(401) when not signed in. */
+export async function fetchStudyProgress(): Promise<StudyProgress> {
+  const body = await requestJson('/api/study/progress');
+  const parsed = parseStudyProgress(body);
+  if (!parsed) throw new ApiError(0, 'Malformed study progress response');
   return parsed;
 }
