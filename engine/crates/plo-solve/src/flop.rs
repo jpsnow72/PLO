@@ -874,7 +874,24 @@ impl FlopNodeBuffer {
 /// `config.max_iterations` iterations (early stopping is disabled — see the
 /// module docs) and measures exploitability once at the end with the
 /// independent checker in the unabstracted game.
+///
+/// Parallelism (Ticket E5a): the per-subtree traversals fork internally at
+/// their chance nodes on [`crate::parallel::solver_threads`] worker threads
+/// (from `PLO_SOLVER_THREADS`); the flop-street traversal itself stays
+/// sequential, which is also what keeps the 49 subtrees' contributions
+/// summed in a fixed order. Results are bit-identical at any thread count.
 pub fn solve_flop(game: &FlopGame, config: &DcfrConfig) -> FlopSolveResult {
+    solve_flop_with_threads(game, config, crate::parallel::solver_threads())
+}
+
+/// Like [`solve_flop`], with an explicit worker-thread count for the
+/// subtree chance forks (`1` = single-threaded), ignoring
+/// `PLO_SOLVER_THREADS`.
+pub fn solve_flop_with_threads(
+    game: &FlopGame,
+    config: &DcfrConfig,
+    threads: usize,
+) -> FlopSolveResult {
     // One solver state per live subtree; kernels shared per turn card.
     let mut kernel_cache: HashMap<u8, Rc<TurnKernels>> = HashMap::new();
     let mut states: Vec<Option<TurnSolverState>> = game
@@ -886,7 +903,9 @@ pub fn solve_flop(game: &FlopGame, config: &DcfrConfig) -> FlopSolveResult {
                     .entry(sub.turn_card.id())
                     .or_insert_with(|| Rc::new(TurnKernels::new(g)))
                     .clone();
-                TurnSolverState::with_kernels(g, rc)
+                let mut state = TurnSolverState::with_kernels(g, rc);
+                state.set_threads(threads);
+                state
             })
         })
         .collect();
