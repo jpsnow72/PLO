@@ -345,6 +345,8 @@ export async function fetchStudyProgress(): Promise<StudyProgress> {
   const parsed = parseStudyProgress(body);
   if (!parsed) throw new ApiError(0, 'Malformed study progress response');
   return parsed;
+}
+
 // ---------- Multiway equity (MW-1) ----------
 
 /**
