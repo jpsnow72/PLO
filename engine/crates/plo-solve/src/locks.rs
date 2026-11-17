@@ -163,6 +163,13 @@ fn turn_node_views(game: &TurnGame) -> impl Iterator<Item = NodeView<'_>> {
     })
 }
 
+fn flop_node_views(game: &FlopGame) -> impl Iterator<Item = NodeView<'_>> {
+    (0..game.num_decision_nodes()).map(move |did| {
+        let d = game.decision_node(did);
+        (did, d.history.as_str(), d.player, d.actions.len())
+    })
+}
+
 /// Resolves river locks to per-decision-id frequency vectors (`None` =
 /// unlocked), validating every lock against the tree.
 pub fn resolve_locks_river(
@@ -220,11 +227,11 @@ pub struct FlopLockPlan {
 /// is malformed.
 fn split_subtree_key(key: &str) -> Option<(&str, &str, String)> {
     let (flop_history, rest) = key.split_once("|t:")?;
-    // Turn cards are two characters (rank + suit, e.g. "As", "Td").
-    if rest.len() < 2 {
-        return None;
-    }
-    let (card_token, suffix) = rest.split_at(2);
+    // Turn cards are two characters (rank + suit, e.g. "As", "Td"). Use
+    // `get` so non-ASCII lock input is a clean "malformed" instead of a
+    // char-boundary panic.
+    let card_token = rest.get(..2)?;
+    let suffix = rest.get(2..)?;
     let local = if suffix.is_empty() {
         "root".to_string()
     } else if let Some(river) = suffix.strip_prefix("|r:") {
@@ -256,15 +263,6 @@ pub fn resolve_locks_flop(
                 None => Vec::new(),
             })
             .collect(),
-    };
-
-    // Flop decision-node histories by string, for the plain (non-subtree)
-    // dispatch and for ambiguity detection in place_lock.
-    let flop_views = |game: &FlopGame| {
-        (0..game.num_decision_nodes()).map(move |did| {
-            let d = game.decision_node(did);
-            (did, d.history.as_str(), d.player, d.actions.len())
-        })
     };
 
     for lock in locks {
@@ -326,7 +324,7 @@ pub fn resolve_locks_flop(
                 )));
             }
         } else {
-            place_lock(flop_views(game), &mut plan.flop, lock)?;
+            place_lock(flop_node_views(game), &mut plan.flop, lock)?;
         }
     }
     Ok(plan)
