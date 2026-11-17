@@ -7,7 +7,9 @@ use std::fs;
 use std::io::{self, Read};
 use std::process;
 
-use plo_solve::{format_solve_result_json, parse_spot_json, solve_river, RiverGame};
+use plo_solve::{
+    format_solve_result_json, parse_spot_json, solve_river, validate_locks_river, RiverGame,
+};
 
 fn main() {
     if let Err(err) = run() {
@@ -69,6 +71,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let (spot, dcfr_config) = parse_spot_json(&raw_json)?;
     let game = RiverGame::new(spot)?;
+    // Nodelocks are validated against the built tree before any iteration
+    // runs: a bad lock is a hard error and no solve is started.
+    validate_locks_river(&game, &dcfr_config.locks)?;
     let result = solve_river(&game, &dcfr_config);
     let out_json = format_solve_result_json(&game, &result);
 

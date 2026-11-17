@@ -9,7 +9,9 @@ use std::fs;
 use std::io::{self, Read};
 use std::process;
 
-use plo_solve::{format_flop_solve_result_json, parse_flop_spot_json, solve_flop, FlopGame};
+use plo_solve::{
+    format_flop_solve_result_json, parse_flop_spot_json, solve_flop, validate_locks_flop, FlopGame,
+};
 
 fn main() {
     if let Err(err) = run() {
@@ -71,6 +73,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let (spot, dcfr_config) = parse_flop_spot_json(&raw_json)?;
     let game = FlopGame::new(spot)?;
+    // Nodelocks are validated against the built tree before any iteration
+    // runs: a bad lock is a hard error and no solve is started.
+    validate_locks_flop(&game, &dcfr_config.locks)?;
     let result = solve_flop(&game, &dcfr_config);
     let out_json = format_flop_solve_result_json(&game, &result);
 
