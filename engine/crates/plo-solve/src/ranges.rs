@@ -34,6 +34,18 @@
 //! empty provenance `sources` list and state the construction — and that
 //! status — in their `derivation`.
 //!
+//! v1.2 extension (config `ranges-config-v1.2`): the RAKE DIMENSION. Every
+//! emitted set records `rake`: the v1/v1.1 family is the `"raked"` variant
+//! (its targets were anchored on raked-game published totals — PLO.com and
+//! the Upswing guide) and gains a sibling `"no-rake"` 6-max family built from
+//! the config's `norake_6max` section, anchored on GTO Wizard cEV (no-rake)
+//! totals. Construction models no rake in either variant (the equities are
+//! rake-free); the dimension records which game's totals the targets
+//! describe. The no-rake family reuses the same machinery via
+//! [`build_rfi_set_styled`] / [`build_response_set_styled`] /
+//! [`build_continuation_set_styled`] with a different [`FamilySpec`] and
+//! target maps; the v1 entry points keep their signatures as raked wrappers.
+//!
 //! Equity note: exact preflop hand-vs-range equity would need
 //! C(48,4) opponent combos x C(44,5) boards per class, which is not feasible to
 //! enumerate, so equities are Monte Carlo estimates with a fixed seed (fully
@@ -489,22 +501,137 @@ pub struct ContinuationsConfig {
     pub samples_vs_three_bettor: usize,
     pub cross_check_status: String,
     pub matchups: Vec<ContinuationMatchup>,
+    /// Set-id stem for this section's sets: `constructed-v1.1-6max` for the
+    /// raked family's `continuations_v11` section,
+    /// `constructed-v1.2-6max-norake` for the no-rake family's section.
+    pub id_prefix: String,
 }
 
 impl ContinuationsConfig {
-    /// The emitted set id for a matchup, per the v1.1 naming rule
-    /// `constructed-v1.1-6max-<continuer>-vs-<three-bettor>-3bet`.
-    pub fn set_id(m: &ContinuationMatchup) -> String {
+    /// The emitted set id for a matchup, per the naming rule
+    /// `<id_prefix>-<continuer>-vs-<three-bettor>-3bet` (the raked family's
+    /// prefix reproduces the v1.1 ids exactly).
+    pub fn set_id(&self, m: &ContinuationMatchup) -> String {
         format!(
-            "constructed-v1.1-6max-{}-vs-{}-3bet",
+            "{}-{}-vs-{}-3bet",
+            self.id_prefix,
             slug(&m.continuer),
             slug(&m.three_bettor)
         )
     }
 
     pub fn matchup_for_set_id(&self, id: &str) -> Option<&ContinuationMatchup> {
-        self.matchups.iter().find(|m| Self::set_id(m) == id)
+        self.matchups.iter().find(|m| self.set_id(m) == id)
     }
+}
+
+/// `rake` value recorded on the v1/v1.1 family: targets anchored on
+/// raked-game published totals.
+pub const RAKE_RAKED: &str = "raked";
+/// `rake` value recorded on the v1.2 6-max family: targets anchored on
+/// no-rake (cEV) published totals.
+pub const RAKE_NO_RAKE: &str = "no-rake";
+
+/// The config's `norake_6max` section (v1.2): the no-rake variant of the
+/// 6-max family. Same construction machinery as the raked family — only the
+/// targets, the cross-check source and the rake note differ. Anchors are
+/// GTO Wizard cEV totals (see the config's `_comment_norake_6max`); entries
+/// without an anchor are labelled `interpolated` there, exactly as in v1.
+#[derive(Clone, Debug)]
+pub struct NoRakeConfig {
+    pub rake_note: String,
+    pub cross_check_source: SourceBlock,
+    /// RFI targets by position (6-max seats; GTO Wizard's "HJ" is "MP").
+    pub rfi_targets: BTreeMap<String, RfiTarget>,
+    /// Response targets by responder, then opener (6-max).
+    pub response_targets: BTreeMap<String, BTreeMap<String, PairTarget>>,
+    /// Continuation matchups against the no-rake input sets; same internal
+    /// construction parameters as the raked family's `continuations_v11`.
+    pub continuations: Option<ContinuationsConfig>,
+}
+
+/// Everything that distinguishes one emitted family of sets from another:
+/// the recorded `rake` variant, its rake note, the set-id stem, and the
+/// provenance shape (cross-check `sources`, whether the first source is
+/// also emitted as the top-level `source` block, and the `derivation`
+/// text used when the family cites no sources). The raked 9-max family
+/// carries the seat-mapping derivation; continuation sets override
+/// `derivation` with their own construction text.
+#[derive(Clone, Debug)]
+pub struct FamilySpec {
+    pub rake: String,
+    pub rake_note: String,
+    /// Set-id stem before `-<position>-...`: `constructed-v1-6max`,
+    /// `constructed-v1-9max`, or `constructed-v1.2-6max-norake`.
+    pub id_prefix: String,
+    pub sources: Vec<SourceBlock>,
+    pub top_source: bool,
+    pub derivation: Option<String>,
+}
+
+/// Parses one continuations section (`continuations_v11`, or the no-rake
+/// section's `continuations`) into a [`ContinuationsConfig`] with the
+/// given set-id prefix. Mirrors the v1.1 section's validation rules.
+fn parse_continuations_section(sec: &JsonValue, id_prefix: &str) -> Result<ContinuationsConfig, String> {
+    let obj_num = |obj: &JsonValue, key: &str| {
+        let v = obj.get(key).ok_or_else(|| format!("continuations object missing '{key}'"))?;
+        v.as_f64().ok_or_else(|| format!("continuations field '{key}' must be a number"))
+    };
+    let obj_str = |obj: &JsonValue, key: &str| {
+        let v = obj.get(key).ok_or_else(|| format!("continuations object missing '{key}'"))?;
+        v.as_str().map(|s| s.to_string()).ok_or_else(|| format!("continuations field '{key}' must be a string"))
+    };
+    let method = obj_str(sec, "method")?;
+    if method != METHOD_V11 {
+        return Err(format!("continuations.method must be '{METHOD_V11}', got '{method}'"));
+    }
+    let continue_fraction_of_open = obj_num(sec, "continue_fraction_of_open")?;
+    let call_fraction_of_continue = obj_num(sec, "call_fraction_of_continue")?;
+    let four_bet_fraction_of_continue = obj_num(sec, "four_bet_fraction_of_continue")?;
+    if !(0.0 < continue_fraction_of_open && continue_fraction_of_open < 1.0) {
+        return Err("continuations.continue_fraction_of_open must be in (0, 1)".to_string());
+    }
+    if (call_fraction_of_continue + four_bet_fraction_of_continue - 1.0).abs() > 1e-9 {
+        return Err("continuations call/four_bet fractions of continue must sum to 1".to_string());
+    }
+    let mut matchups = Vec::new();
+    let arr = sec
+        .get("matchups")
+        .and_then(|v| v.as_array())
+        .ok_or("continuations.matchups must be an array")?;
+    if arr.is_empty() {
+        return Err("continuations.matchups must not be empty".to_string());
+    }
+    for m in arr {
+        let continuer = obj_str(m, "continuer")?;
+        let three_bettor = obj_str(m, "three_bettor")?;
+        if !POSITIONS_6MAX.contains(&continuer.as_str())
+            || !POSITIONS_6MAX.contains(&three_bettor.as_str())
+        {
+            return Err(format!(
+                "continuations matchup {continuer} vs {three_bettor}: continuations are 6max only"
+            ));
+        }
+        if continuer == three_bettor {
+            return Err("continuations matchup: continuer and three_bettor must differ".to_string());
+        }
+        matchups.push(ContinuationMatchup {
+            continuer,
+            three_bettor,
+            opener_rfi_set: obj_str(m, "opener_rfi_set")?,
+            three_bettor_set: obj_str(m, "three_bettor_set")?,
+        });
+    }
+    Ok(ContinuationsConfig {
+        method,
+        continue_fraction_of_open,
+        call_fraction_of_continue,
+        four_bet_fraction_of_continue,
+        samples_vs_three_bettor: obj_num(sec, "samples_vs_three_bettor")? as usize,
+        cross_check_status: obj_str(sec, "cross_check")?,
+        matchups,
+        id_prefix: id_prefix.to_string(),
+    })
 }
 
 #[derive(Clone, Debug)]
@@ -539,6 +666,9 @@ pub struct RangesConfig {
     pub response_targets: BTreeMap<String, BTreeMap<String, BTreeMap<String, PairTarget>>>,
     /// Optional v1.1 section (`continuations_v11`); absent = v1 behaviour only.
     pub continuations: Option<ContinuationsConfig>,
+    /// Optional v1.2 section (`norake_6max`): the no-rake 6-max family.
+    /// Absent (the v1 config) = raked family only, exactly as before.
+    pub norake: Option<NoRakeConfig>,
     /// FNV-1a 64-bit hash of the raw config file bytes (identification only).
     pub config_hash: String,
 }
@@ -737,6 +867,98 @@ impl RangesConfig {
                     samples_vs_three_bettor: obj_num(sec, "samples_vs_three_bettor")? as usize,
                     cross_check_status: obj_str(sec, "cross_check")?,
                     matchups,
+                    id_prefix: "constructed-v1.1-6max".to_string(),
+                })
+            }
+            None => None,
+        };
+        // Optional v1.2 section: the no-rake 6-max family. Parsing it must
+        // not disturb any v1/v1.1 field: every value above is read exactly
+        // as before, and the raked generation path never consults it.
+        let norake = match root.get("norake_6max") {
+            Some(sec) => {
+                let nsrc = sec
+                    .get("cross_check_source")
+                    .ok_or("norake_6max missing 'cross_check_source'")?;
+                let cross_check_source = SourceBlock {
+                    name: obj_str(nsrc, "name")?,
+                    url: Some(obj_str(nsrc, "url")?),
+                    licence: obj_str(nsrc, "licence")?,
+                    retrieved: obj_str(nsrc, "retrieved")?,
+                };
+                let mut nr_rfi: BTreeMap<String, RfiTarget> = BTreeMap::new();
+                if let JsonValue::Object(pos_entries) =
+                    sec.get("rfi_targets").ok_or("norake_6max missing 'rfi_targets'")?
+                {
+                    for (pos, t) in pos_entries {
+                        if !POSITIONS_6MAX.contains(&pos.as_str()) || pos == "BB" {
+                            return Err(format!(
+                                "norake_6max RFI target for '{pos}': not a 6max non-BB position"
+                            ));
+                        }
+                        let band = t
+                            .get("band")
+                            .and_then(|b| b.as_array())
+                            .ok_or("norake rfi target missing 'band'")?;
+                        if band.len() != 2 {
+                            return Err("norake rfi target 'band' must have 2 entries".to_string());
+                        }
+                        nr_rfi.insert(
+                            pos.clone(),
+                            RfiTarget {
+                                target: obj_num(t, "target")?,
+                                band: [
+                                    band[0].as_f64().ok_or("band[0] must be a number")?,
+                                    band[1].as_f64().ok_or("band[1] must be a number")?,
+                                ],
+                                kind: obj_str(t, "kind")?,
+                            },
+                        );
+                    }
+                } else {
+                    return Err("norake_6max 'rfi_targets' must be an object".to_string());
+                }
+                let mut nr_resp: BTreeMap<String, BTreeMap<String, PairTarget>> = BTreeMap::new();
+                if let JsonValue::Object(resp_entries) = sec
+                    .get("response_targets")
+                    .ok_or("norake_6max missing 'response_targets'")?
+                {
+                    for (resp, openers) in resp_entries {
+                        let mut omap = BTreeMap::new();
+                        if let JsonValue::Object(op_entries) = openers {
+                            for (op, t) in op_entries {
+                                omap.insert(
+                                    op.clone(),
+                                    PairTarget {
+                                        three_bet: obj_num(t, "three_bet")?,
+                                        call: obj_num(t, "call")?,
+                                        kind: obj_str(t, "kind")?,
+                                    },
+                                );
+                            }
+                        }
+                        nr_resp.insert(resp.clone(), omap);
+                    }
+                } else {
+                    return Err("norake_6max 'response_targets' must be an object".to_string());
+                }
+                let nr_continuations = match sec.get("continuations") {
+                    Some(csec) => Some(parse_continuations_section(
+                        csec,
+                        "constructed-v1.2-6max-norake",
+                    )?),
+                    None => None,
+                };
+                Some(NoRakeConfig {
+                    rake_note: sec
+                        .get("rake_note")
+                        .and_then(|v| v.as_str())
+                        .ok_or("norake_6max 'rake_note' must be a string")?
+                        .to_string(),
+                    cross_check_source,
+                    rfi_targets: nr_rfi,
+                    response_targets: nr_resp,
+                    continuations: nr_continuations,
                 })
             }
             None => None,
@@ -782,8 +1004,73 @@ impl RangesConfig {
             rfi_targets,
             response_targets,
             continuations,
+            norake,
             config_hash: fnv1a64_hex(text.as_bytes()),
         })
+    }
+}
+
+impl RangesConfig {
+    /// The [`FamilySpec`] for the raked family at `table_size` — reproduces
+    /// the v1 provenance shapes exactly: 6-max sets cite the cross-check
+    /// sources (first also as the top-level `source`), 9-max sets carry the
+    /// seat-mapping derivation and cite nothing.
+    pub fn raked_family(&self, table_size: &str) -> FamilySpec {
+        if table_size == "9max" {
+            FamilySpec {
+                rake: RAKE_RAKED.to_string(),
+                rake_note: self.rake_note.clone(),
+                id_prefix: format!("constructed-v1-{table_size}"),
+                sources: Vec::new(),
+                top_source: false,
+                derivation: Some(self.derivation_note_9max.clone()),
+            }
+        } else {
+            let mut sources = vec![self.cross_check_source.clone()];
+            if let Some(s2) = &self.cross_check_source_2 {
+                sources.push(s2.clone());
+            }
+            FamilySpec {
+                rake: RAKE_RAKED.to_string(),
+                rake_note: self.rake_note.clone(),
+                id_prefix: format!("constructed-v1-{table_size}"),
+                sources,
+                top_source: true,
+                derivation: None,
+            }
+        }
+    }
+
+    /// The [`FamilySpec`] for the no-rake 6-max family, or `None` when the
+    /// config has no `norake_6max` section.
+    pub fn norake_family(&self) -> Option<FamilySpec> {
+        self.norake.as_ref().map(|nr| FamilySpec {
+            rake: RAKE_NO_RAKE.to_string(),
+            rake_note: nr.rake_note.clone(),
+            id_prefix: "constructed-v1.2-6max-norake".to_string(),
+            sources: vec![nr.cross_check_source.clone()],
+            top_source: true,
+            derivation: None,
+        })
+    }
+
+    /// Finds the continuations section + matchup that emits set `id`,
+    /// searching the raked family's section first, then the no-rake one.
+    pub fn continuation_matchup(
+        &self,
+        id: &str,
+    ) -> Option<(&ContinuationsConfig, &ContinuationMatchup)> {
+        if let Some(c) = &self.continuations {
+            if let Some(m) = c.matchup_for_set_id(id) {
+                return Some((c, m));
+            }
+        }
+        if let Some(c) = self.norake.as_ref().and_then(|nr| nr.continuations.as_ref()) {
+            if let Some(m) = c.matchup_for_set_id(id) {
+                return Some((c, m));
+            }
+        }
+        None
     }
 }
 
@@ -996,6 +1283,22 @@ pub struct RangeSetDoc {
     /// carry their construction description (naming the input sets). `None`
     /// (v1 6-max sets) keeps the cross-check-sources provenance shape.
     pub derivation: Option<String>,
+    /// The rake variant this set's targets describe (`RAKE_RAKED` for the
+    /// v1/v1.1 families, `RAKE_NO_RAKE` for the v1.2 6-max family), emitted
+    /// as the document's `rake` field.
+    pub rake: String,
+    /// This family's rake note, emitted as the document's `rake_note`
+    /// (the raked families use the config's `rake_note`; the no-rake
+    /// family uses its section's own note).
+    pub rake_note: String,
+    /// Provenance cross-check sources for this document, used when
+    /// `derivation` is `None` (raked 6-max: PLO.com + Upswing; no-rake
+    /// 6-max: GTO Wizard cEV).
+    pub sources: Vec<SourceBlock>,
+    /// When `true` and `sources` is non-empty, the first source is also
+    /// emitted as the document's top-level `source` block (the v1 6-max
+    /// shape, kept for the no-rake 6-max family too).
+    pub top_source: bool,
     /// When `Some`, this text replaces the generated `notes` string
     /// verbatim (v1.1 sets state their target units explicitly: fractions
     /// of the opener's raising range, not of all combos).
@@ -1067,7 +1370,8 @@ impl RangeSetDoc {
             let _ = writeln!(s, "  \"context_detail\": \"{}\",", json_escape(detail));
         }
         let _ = writeln!(s, "  \"stack_bb\": {},", fmt_num(cfg.stack_bb));
-        let _ = writeln!(s, "  \"rake_note\": \"{}\",", json_escape(&cfg.rake_note));
+        let _ = writeln!(s, "  \"rake\": \"{}\",", json_escape(&self.rake));
+        let _ = writeln!(s, "  \"rake_note\": \"{}\",", json_escape(&self.rake_note));
         let achieved_txt = self
             .achieved
             .iter()
@@ -1088,8 +1392,10 @@ impl RangeSetDoc {
             ),
         };
         let _ = writeln!(s, "  \"notes\": \"{}\",", json_escape(&notes));
-        if self.table_size == "6max" && self.derivation.is_none() {
-            let _ = writeln!(s, "  \"source\": {},", source_json(&cfg.cross_check_source, "  "));
+        if self.top_source {
+            if let Some(first) = self.sources.first() {
+                let _ = writeln!(s, "  \"source\": {},", source_json(first, "  "));
+            }
         }
         // Provenance block.
         s.push_str("  \"provenance\": {\n");
@@ -1101,16 +1407,14 @@ impl RangeSetDoc {
         if let Some(derivation) = &self.derivation {
             s.push_str("    \"sources\": [],\n");
             let _ = writeln!(s, "    \"derivation\": \"{}\"", json_escape(derivation));
-        } else if self.table_size == "6max" {
-            let mut sources = source_json(&cfg.cross_check_source, "    ");
-            if let Some(s2) = &cfg.cross_check_source_2 {
-                sources.push_str(",\n    ");
-                sources.push_str(&source_json(s2, "    "));
-            }
-            let _ = writeln!(s, "    \"sources\": [{sources}]");
         } else {
-            s.push_str("    \"sources\": [],\n");
-            let _ = writeln!(s, "    \"derivation\": \"{}\"", json_escape(&cfg.derivation_note_9max));
+            let sources = self
+                .sources
+                .iter()
+                .map(|src| source_json(src, "    "))
+                .collect::<Vec<_>>()
+                .join(",\n    ");
+            let _ = writeln!(s, "    \"sources\": [{sources}]");
         }
         s.push_str("  },\n");
         // Hands.
@@ -1172,6 +1476,12 @@ const SEED_TAG_OPENER_BASE: u64 = 3;
 /// Base tag for the v1.1 equity-vs-three-bettor streams (kept far from the
 /// opener tags, which stay below ~111,000, so streams never collide).
 const SEED_TAG_CONTINUATION_BASE: u64 = 900_000;
+/// Base tag for the v1.2 no-rake family's equity-vs-opener streams (its
+/// opener ranges differ from the raked family's, so the passes — and their
+/// seeds — are separate; kept clear of every other tag range).
+const SEED_TAG_NORAKE_OPENER_BASE: u64 = 500_000;
+/// Base tag for the no-rake family's equity-vs-three-bettor streams.
+const SEED_TAG_NORAKE_CONTINUATION_BASE: u64 = 700_000;
 
 /// Deterministic parallel map over `0..n` producing one f64 per index.
 /// Per-index results depend only on the index (each equity stream has its
@@ -1292,7 +1602,9 @@ fn achieved_total(classes: &[ScoredClass], freqs: &[f64], ranked_idx: &[usize]) 
         .sum()
 }
 
-/// Builds one RFI (or SB sb_play) set for `position`.
+/// Builds one RFI (or SB sb_play) set for `position` in the raked family
+/// (targets from the config's `rfi_targets`). The v1 entry point; the
+/// no-rake family is built by [`build_rfi_set_styled`].
 pub fn build_rfi_set(
     cfg: &RangesConfig,
     classes: &[ScoredClass],
@@ -1304,6 +1616,21 @@ pub fn build_rfi_set(
         .get(table_size)
         .and_then(|m| m.get(position))
         .ok_or_else(|| format!("no RFI target for {table_size} {position}"))?;
+    let family = cfg.raked_family(table_size);
+    build_rfi_set_styled(cfg, classes, table_size, position, target, &family)
+}
+
+/// Builds one RFI (or SB sb_play) set for `position` against an explicit
+/// target and family styling (the shared construction; only the target,
+/// id stem and provenance differ between the raked and no-rake families).
+pub fn build_rfi_set_styled(
+    cfg: &RangesConfig,
+    classes: &[ScoredClass],
+    table_size: &str,
+    position: &str,
+    target: &RfiTarget,
+    family: &FamilySpec,
+) -> Result<RangeSetDoc, String> {
     let (ranked, mass) = ranked_by(classes, |c| c.score);
     let capacity = vec![1.0f64; ranked.len()];
     let ranked_freq = fit_to_target(&mass, &capacity, target.target, cfg.ramp_band);
@@ -1334,7 +1661,7 @@ pub fn build_rfi_set(
     let mut achieved_map = BTreeMap::new();
     achieved_map.insert("raise".to_string(), achieved);
     Ok(RangeSetDoc {
-        id: format!("constructed-v1-{}-{}-{}", table_size, slug(position), if context == "sb_play" { "sbplay" } else { "rfi" }),
+        id: format!("{}-{}-{}", family.id_prefix, slug(position), if context == "sb_play" { "sbplay" } else { "rfi" }),
         table_size: table_size.to_string(),
         position: position.to_string(),
         context: context.to_string(),
@@ -1344,18 +1671,20 @@ pub fn build_rfi_set(
         achieved: achieved_map,
         hands,
         method: METHOD.to_string(),
-        derivation: if table_size == "9max" {
-            Some(cfg.derivation_note_9max.clone())
-        } else {
-            None
-        },
+        derivation: family.derivation.clone(),
+        rake: family.rake.clone(),
+        rake_note: family.rake_note.clone(),
+        sources: family.sources.clone(),
+        top_source: family.top_source,
         notes_override: None,
     })
 }
 
-/// Builds one vs_rfi response set: `responder` facing an open from `opener`,
-/// whose constructed RFI frequencies are `opener_freq` (per class index).
-/// `eq_vs_opener` is each class's equity vs that opener's range.
+/// Builds one vs_rfi response set in the raked family: `responder` facing
+/// an open from `opener`, whose constructed RFI frequencies are
+/// `opener_freq` (per class index). `eq_vs_opener` is each class's equity
+/// vs that opener's range. The v1 entry point; the no-rake family is built
+/// by [`build_response_set_styled`].
 pub fn build_response_set(
     cfg: &RangesConfig,
     classes: &[ScoredClass],
@@ -1370,6 +1699,23 @@ pub fn build_response_set(
         .and_then(|m| m.get(responder))
         .and_then(|m| m.get(opener))
         .ok_or_else(|| format!("no response target for {table_size} {responder} vs {opener}"))?;
+    let family = cfg.raked_family(table_size);
+    build_response_set_styled(cfg, classes, eq_vs_opener, table_size, responder, opener, target, &family)
+}
+
+/// Builds one vs_rfi response set against an explicit target and family
+/// styling (the shared construction; only the target, id stem and
+/// provenance differ between the raked and no-rake families).
+pub fn build_response_set_styled(
+    cfg: &RangesConfig,
+    classes: &[ScoredClass],
+    eq_vs_opener: &[f64],
+    table_size: &str,
+    responder: &str,
+    opener: &str,
+    target: &PairTarget,
+    family: &FamilySpec,
+) -> Result<RangeSetDoc, String> {
     // 3-bet slice: rank by response score (equity vs opener in the
     // equity_vs_reference weight slot).
     let resp_score: Vec<f64> = classes
@@ -1462,8 +1808,8 @@ pub fn build_response_set(
     achieved_map.insert("call".to_string(), achieved_call);
     Ok(RangeSetDoc {
         id: format!(
-            "constructed-v1-{}-{}-vs-{}",
-            table_size,
+            "{}-{}-vs-{}",
+            family.id_prefix,
             slug(responder),
             slug(opener)
         ),
@@ -1476,11 +1822,11 @@ pub fn build_response_set(
         achieved: achieved_map,
         hands,
         method: METHOD.to_string(),
-        derivation: if table_size == "9max" {
-            Some(cfg.derivation_note_9max.clone())
-        } else {
-            None
-        },
+        derivation: family.derivation.clone(),
+        rake: family.rake.clone(),
+        rake_note: family.rake_note.clone(),
+        sources: family.sources.clone(),
+        top_source: family.top_source,
         notes_override: None,
     })
 }
@@ -1517,6 +1863,24 @@ pub fn build_continuation_set(
         .continuations
         .as_ref()
         .ok_or("config has no continuations_v11 section")?;
+    let family = cfg.raked_family("6max");
+    build_continuation_set_styled(cfg, classes, eq_vs_three_bettor, opener_freq, matchup, cont, &family)
+}
+
+/// Builds one continuation set against an explicit continuations section
+/// and family styling (the shared construction; the raked family passes
+/// `continuations_v11`, the no-rake family its own section whose matchups
+/// name the no-rake input sets). Continuation sets never cite sources:
+/// provenance is the construction `derivation` for both families.
+pub fn build_continuation_set_styled(
+    cfg: &RangesConfig,
+    classes: &[ScoredClass],
+    eq_vs_three_bettor: &[f64],
+    opener_freq: &[f64],
+    matchup: &ContinuationMatchup,
+    cont: &ContinuationsConfig,
+    family: &FamilySpec,
+) -> Result<RangeSetDoc, String> {
     let continuer = matchup.continuer.as_str();
     let three_bettor = matchup.three_bettor.as_str();
     let share: Vec<f64> = classes
@@ -1632,7 +1996,7 @@ pub fn build_continuation_set(
         cont.cross_check_status
     );
     Ok(RangeSetDoc {
-        id: ContinuationsConfig::set_id(matchup),
+        id: cont.set_id(matchup),
         table_size: "6max".to_string(),
         position: continuer.to_string(),
         context: "vs_three_bet".to_string(),
@@ -1645,6 +2009,10 @@ pub fn build_continuation_set(
         hands,
         method: METHOD_V11.to_string(),
         derivation: Some(derivation),
+        rake: family.rake.clone(),
+        rake_note: family.rake_note.clone(),
+        sources: Vec::new(),
+        top_source: false,
         notes_override: Some(notes),
     })
 }
@@ -1858,6 +2226,130 @@ pub fn generate(cfg: &RangesConfig) -> Result<Generation, String> {
             sets.push(doc);
         }
     }
+    // v1.2 no-rake family (6max only): the same three stages against the
+    // norake_6max targets and family styling, with its own seeded equity
+    // passes (the no-rake opener ranges differ from the raked ones, so no
+    // equity pass or pool is shared across families).
+    if let Some(norake) = &cfg.norake {
+        let family = cfg.norake_family().expect("norake section present");
+        let table = "6max";
+        let positions = positions_for(table).unwrap();
+        let mut nr_rfi_docs: BTreeMap<String, RangeSetDoc> = BTreeMap::new();
+        for &pos in positions {
+            if pos == "BB" {
+                continue;
+            }
+            let target = norake
+                .rfi_targets
+                .get(pos)
+                .ok_or_else(|| format!("no no-rake RFI target for 6max {pos}"))?;
+            let doc = build_rfi_set_styled(cfg, &classes, table, pos, target, &family)?;
+            nr_rfi_docs.insert(pos.to_string(), doc);
+        }
+        for doc in nr_rfi_docs.values() {
+            sets.push(doc.clone());
+        }
+        let mut nr_response_docs: BTreeMap<(String, String), RangeSetDoc> = BTreeMap::new();
+        let mut nr_opener_eq: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+        let responders: Vec<(&str, Vec<&str>)> = {
+            let mut v: Vec<(&str, Vec<&str>)> = Vec::new();
+            v.push(("BB", positions.iter().copied().filter(|&p| p != "BB").collect()));
+            v.push((
+                "SB",
+                positions.iter().copied().filter(|&p| p != "SB" && p != "BB").collect(),
+            ));
+            let btn_openers: Vec<&str> = cfg
+                .btn_vs
+                .get(table)
+                .map(|list| list.iter().map(|s| s.as_str()).collect())
+                .unwrap_or_default();
+            v.push(("BTN", btn_openers));
+            v
+        };
+        for (responder, openers) in responders {
+            for opener in openers {
+                if !nr_opener_eq.contains_key(opener) {
+                    let rfi = nr_rfi_docs
+                        .get(opener)
+                        .ok_or_else(|| format!("missing no-rake RFI doc for 6max {opener}"))?;
+                    let ofreq = action_freqs(rfi, &classes, "raise");
+                    let pool = opener_pool(&classes, &ofreq);
+                    let tag = SEED_TAG_NORAKE_OPENER_BASE + opener_seed_tag(table, opener);
+                    let eq = par_map(classes.len(), &|i| {
+                        equity_vs_pool(
+                            &classes[i].class.representative,
+                            &pool,
+                            cfg.samples_vs_opener,
+                            derive_seed(cfg.seed, tag, i),
+                        )
+                    });
+                    nr_opener_eq.insert(opener.to_string(), eq);
+                }
+                let eq = &nr_opener_eq[opener];
+                let target = norake
+                    .response_targets
+                    .get(responder)
+                    .and_then(|m| m.get(opener))
+                    .ok_or_else(|| {
+                        format!("no no-rake response target for 6max {responder} vs {opener}")
+                    })?;
+                let doc = build_response_set_styled(
+                    cfg, &classes, eq, table, responder, opener, target, &family,
+                )?;
+                nr_response_docs.insert((responder.to_string(), opener.to_string()), doc.clone());
+                sets.push(doc);
+            }
+        }
+        if let Some(cont) = &norake.continuations {
+            for (mi, matchup) in cont.matchups.iter().enumerate() {
+                let rfi = nr_rfi_docs.get(&matchup.continuer).ok_or_else(|| {
+                    format!("missing no-rake RFI doc for 6max {}", matchup.continuer)
+                })?;
+                if rfi.id != matchup.opener_rfi_set {
+                    return Err(format!(
+                        "norake continuations matchup {} vs {}: opener_rfi_set '{}' does not match the generated no-rake RFI set '{}'",
+                        matchup.continuer, matchup.three_bettor, matchup.opener_rfi_set, rfi.id
+                    ));
+                }
+                let tb_doc = nr_response_docs
+                    .get(&(matchup.three_bettor.clone(), matchup.continuer.clone()))
+                    .ok_or_else(|| {
+                        format!(
+                            "missing no-rake response doc for 6max {} vs {}",
+                            matchup.three_bettor, matchup.continuer
+                        )
+                    })?;
+                if tb_doc.id != matchup.three_bettor_set {
+                    return Err(format!(
+                        "norake continuations matchup {} vs {}: three_bettor_set '{}' does not match the generated no-rake response set '{}'",
+                        matchup.continuer, matchup.three_bettor, matchup.three_bettor_set, tb_doc.id
+                    ));
+                }
+                let opener_freq = action_freqs(rfi, &classes, "raise");
+                let tb_freq = action_freqs(tb_doc, &classes, "three_bet");
+                let pool = opener_pool(&classes, &tb_freq);
+                if pool.is_empty() {
+                    return Err(format!(
+                        "no-rake continuation {} vs {}: three-bettor's three_bet slice is empty",
+                        matchup.continuer, matchup.three_bettor
+                    ));
+                }
+                let tag = SEED_TAG_NORAKE_CONTINUATION_BASE + (mi as u64) * 10_000;
+                let eq = par_map(classes.len(), &|i| {
+                    equity_vs_pool(
+                        &classes[i].class.representative,
+                        &pool,
+                        cont.samples_vs_three_bettor,
+                        derive_seed(cfg.seed, tag, i),
+                    )
+                });
+                let doc = build_continuation_set_styled(
+                    cfg, &classes, &eq, &opener_freq, matchup, cont, &family,
+                )?;
+                sets.push(doc);
+            }
+        }
+    }
     sets.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(Generation { classes, sets })
 }
@@ -1967,6 +2459,18 @@ pub fn validate_rangeset(doc: &JsonValue) -> Vec<String> {
     }
     if doc.get("rake_note").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
         errors.push("rake_note is required".to_string());
+    }
+    // Rake dimension (v1.2): when present, `rake` must be one of the two
+    // variants; constructed sets (id prefix `constructed-`) must record it.
+    // Transcribed/legacy documents predate the field and may omit it.
+    match doc.get("rake").and_then(|v| v.as_str()) {
+        Some(RAKE_RAKED) | Some(RAKE_NO_RAKE) => {}
+        Some(other) => errors.push(format!("rake '{other}' must be '{RAKE_RAKED}' or '{RAKE_NO_RAKE}'")),
+        None => {
+            if id.starts_with("constructed-") {
+                errors.push("constructed sets must record 'rake'".to_string());
+            }
+        }
     }
     // Amended provenance rule: `source` is required unless a `provenance`
     // block is present (constructed sets always carry one).
@@ -2093,8 +2597,11 @@ pub fn index_entry_json(doc: &RangeSetDoc, cfg: &RangesConfig) -> String {
     let _ = writeln!(s, "      \"position\": \"{}\",", doc.position);
     let _ = writeln!(s, "      \"context\": \"{}\",", doc.context);
     let _ = writeln!(s, "      \"stack_bb\": {},", fmt_num(cfg.stack_bb));
-    if doc.table_size == "6max" && doc.derivation.is_none() {
-        let _ = writeln!(s, "      \"source\": {},", source_json(&cfg.cross_check_source, "      "));
+    let _ = writeln!(s, "      \"rake\": \"{}\",", json_escape(&doc.rake));
+    if doc.top_source {
+        if let Some(first) = doc.sources.first() {
+            let _ = writeln!(s, "      \"source\": {},", source_json(first, "      "));
+        }
     }
     s.push_str("      \"provenance\": {\n");
     let _ = writeln!(s, "        \"method\": \"{}\",", doc.method);
@@ -2143,6 +2650,8 @@ pub fn parse_opener(context_detail: &str) -> String {
 /// OPENING-RANGE-WEIGHTED totals from [`opening_weighted_totals`] (the
 /// config's continuation targets are fractions of the opener's raising
 /// range, not of all combos); callers are responsible for passing those.
+/// `rake` selects the target family: `"no-rake"` sets check against the
+/// `norake_6max` targets, everything else against the raked maps.
 pub fn check_doc_totals(
     cfg: &RangesConfig,
     id: &str,
@@ -2151,12 +2660,18 @@ pub fn check_doc_totals(
     context: &str,
     opener: Option<&str>,
     totals: &BTreeMap<String, f64>,
+    rake: &str,
 ) -> (Vec<String>, usize) {
     let mut lines = Vec::new();
     let mut failures = 0usize;
     if context == "rfi" || context == "sb_play" {
         let achieved = totals.get("raise").copied().unwrap_or(0.0);
-        match cfg.rfi_targets.get(table_size).and_then(|m| m.get(position)) {
+        let target = if rake == RAKE_NO_RAKE {
+            cfg.norake.as_ref().and_then(|nr| nr.rfi_targets.get(position))
+        } else {
+            cfg.rfi_targets.get(table_size).and_then(|m| m.get(position))
+        };
+        match target {
             Some(t) => {
                 let in_band = achieved >= t.band[0] - 1e-9 && achieved <= t.band[1] + 1e-9;
                 if !in_band {
@@ -2172,7 +2687,9 @@ pub fn check_doc_totals(
                     t.kind,
                     if in_band { "OK" } else { "OUT OF BAND" }
                 ));
-                if table_size == "6max" {
+                // The Upswing totals describe a raked game: the delta is
+                // informational for the raked 6-max family only.
+                if rake == RAKE_RAKED && table_size == "6max" {
                     if let Some(u) = cfg.upswing_rfi.get(position) {
                         lines.push(format!(
                             "{}:   vs Upswing owner-provided total {:.1}% -> delta {:+.2}pp (informational)",
@@ -2190,12 +2707,18 @@ pub fn check_doc_totals(
         }
     } else if context == "vs_rfi" {
         let opener = opener.unwrap_or("");
-        match cfg
-            .response_targets
-            .get(table_size)
-            .and_then(|m| m.get(position))
-            .and_then(|m| m.get(opener))
-        {
+        let target = if rake == RAKE_NO_RAKE {
+            cfg.norake
+                .as_ref()
+                .and_then(|nr| nr.response_targets.get(position))
+                .and_then(|m| m.get(opener))
+        } else {
+            cfg.response_targets
+                .get(table_size)
+                .and_then(|m| m.get(position))
+                .and_then(|m| m.get(opener))
+        };
+        match target {
             Some(t) => {
                 for (action, want) in [("three_bet", t.three_bet), ("call", t.call)] {
                     let achieved = totals.get(action).copied().unwrap_or(0.0);
@@ -2226,9 +2749,8 @@ pub fn check_doc_totals(
         // Internal construction contract (no published anchor): the
         // opening-range-weighted totals must land on the configured
         // internal targets within the same 0.5pp fit tolerance as v1.
-        match cfg.continuations.as_ref().and_then(|c| {
-            c.matchup_for_set_id(id).map(|m| (c, m))
-        }) {
+        // The matchup may live in either family's continuations section.
+        match cfg.continuation_matchup(id) {
             Some((cont, _m)) => {
                 let want_call = cont.continue_fraction_of_open * cont.call_fraction_of_continue;
                 let want_fb = cont.continue_fraction_of_open * cont.four_bet_fraction_of_continue;
@@ -2252,7 +2774,7 @@ pub fn check_doc_totals(
                 }
             }
             None => {
-                lines.push(format!("{id}: no continuations_v11 matchup in config for this set"));
+                lines.push(format!("{id}: no continuations matchup in config for this set"));
                 failures += 1;
             }
         }
@@ -2295,10 +2817,8 @@ pub fn cross_check(
             // the totals weighted by the opener's RFI set (also present in
             // `docs`), round-tripped the same way.
             let opener_doc = cfg
-                .continuations
-                .as_ref()
-                .and_then(|c| c.matchup_for_set_id(&doc.id))
-                .and_then(|m| docs.iter().find(|d| d.id == m.opener_rfi_set));
+                .continuation_matchup(&doc.id)
+                .and_then(|(_, m)| docs.iter().find(|d| d.id == m.opener_rfi_set));
             match opener_doc {
                 Some(od) => match JsonValue::parse(&od.to_json(cfg)) {
                     Ok(op) => opening_weighted_totals(&parsed, &op, multiplicity),
@@ -2329,6 +2849,7 @@ pub fn cross_check(
             &doc.context,
             opener.as_deref(),
             &totals,
+            &doc.rake,
         );
         lines.append(&mut dl);
         failures += df;
