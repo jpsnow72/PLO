@@ -30,8 +30,11 @@ target frequencies in `ranges-config-v1.json`. Constructed sets:
 - cite **cross-check sources only** — published totals our construction was
   validated against. No range data from any source is transcribed into a
   constructed set. Current cross-check sources: PLO.com's published solver
-  totals (free to cite with a link back) and the owner-provided Upswing
-  Advanced PLO Preflop Guide (personal use). ThinkGTO totals were compared
+  totals (free to cite with a link back), the owner-provided Upswing
+  Advanced PLO Preflop Guide (personal use), and GTO Wizard solution
+  totals viewed under the owner's subscription (cEV no-rake for the
+  no-rake family; PLO100 raked as an additional informational anchor for
+  the raked family — see the v1.2 section below). ThinkGTO totals were compared
   in research notes only — its terms prohibit copying/derivative works, so
   it is never recorded as a source here;
 - 9-max constructed sets are **derived-by-mapping** from the 6-max targets
