@@ -765,15 +765,25 @@ export function PreflopPage() {
                   <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
                     Suitedness
                   </span>
-                  {SUITEDNESS_FILTERS.map((f) => (
-                    <Pill
-                      key={f.id}
-                      active={suitFilter === f.id}
-                      onClick={() => setSuitFilter(f.id)}
-                    >
-                      {f.label}
-                    </Pill>
-                  ))}
+                  {SUITEDNESS_FILTERS.map((f) =>
+                    suitFiltersEnabled ? (
+                      <Pill
+                        key={f.id}
+                        active={suitFilter === f.id}
+                        onClick={() => setSuitFilter(f.id)}
+                      >
+                        {f.label}
+                      </Pill>
+                    ) : (
+                      <span
+                        key={f.id}
+                        aria-disabled="true"
+                        className="rounded-full bg-navy-850 px-2.5 py-1 text-xs text-ink-faint opacity-50"
+                      >
+                        {f.label}
+                      </span>
+                    ),
+                  )}
                   {!suitFiltersEnabled ? (
                     <span className="text-xs text-ink-faint">
                       Suitedness filters need the class table, which is not loaded — showing all
