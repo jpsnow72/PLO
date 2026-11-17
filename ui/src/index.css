@@ -3,30 +3,40 @@
 @tailwind utilities;
 
 :root {
-  /* Design tokens (mirror tailwind.config.ts) */
-  --plo-navy-950: #0a1628;
-  --plo-navy-900: #0e1e38;
-  --plo-navy-800: #13294b;
-  --plo-navy-700: #1b3a66;
-  --plo-green: #2e9e6b;
+  /* Design tokens (mirror tailwind.config.ts) — Figma redesign, SHIP-1 */
+  --bg-base: #0a1628;
+  --bg-panel: #12233c;
+  --bg-panel2: #182c49;
+  --bg-line: #24405f;
+  --text-primary: #e9eff7;
+  --text-dim: #93a5bc;
+  --accent-green: #2e9e6b;
+  --accent-amber: #f5a623;
+  --action-bet: #b4463f;
+  --action-call: #3e7cb1;
+  --action-fold: #5b7290;
+
+  --plo-navy-950: var(--bg-base);
+  --plo-navy-900: var(--bg-panel);
+  --plo-navy-800: var(--bg-panel2);
+  --plo-navy-700: var(--bg-line);
+  --plo-green: var(--accent-green);
   --plo-green-dark: #248457;
-  --plo-amber: #f5a623;
-  --plo-ink: #e8eef6;
-  --plo-ink-dim: #9fb2c8;
-  --plo-ink-faint: #647d99;
+  --plo-amber: var(--accent-amber);
+  --plo-ink: var(--text-primary);
+  --plo-ink-dim: var(--text-dim);
+  --plo-ink-faint: #5f748e;
 
   /* Four-colour deck */
-  --suit-spades: #dbe4f0;
-  --suit-hearts: #e5484d;
-  --suit-diamonds: #4c9be8;
-  --suit-clubs: #35b57f;
+  --suit-spades: #c7d0dc;
+  --suit-hearts: #e05b4b;
+  --suit-diamonds: #4e9be0;
+  --suit-clubs: #43b581;
 
-  /* Action colours (strategy bars / grid) */
-  --action-check: #5b84b8;
-  --action-bet: #2e9e6b;
-  --action-call: #2aa198;
-  --action-raise: #f5a623;
-  --action-fold: #8a4b57;
+  /* Action colours (strategy bars / grid / tables):
+     check = green, bet/raise = red family, call = blue, fold = slate */
+  --action-check: #2e9e6b;
+  --action-raise: #de6b4f;
 }
 
 html,
@@ -44,6 +54,11 @@ body {
   outline: 2px solid var(--plo-amber);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* Tabular numerals for data-dense tables (frequencies, EVs, weights) */
+.num {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Thin scrollbars for the dark panels */
