@@ -25,6 +25,7 @@ use plo_eval::{eval_omaha_pairs_triples, extract_board_triples, HandRank, PloRan
 
 use crate::br::{compute_exploitability_turn, ExploitabilityReport};
 use crate::cfr::{ComboEv, DcfrConfig, NodeStrategy};
+use crate::locks::{resolve_locks_turn, NodeLock};
 use crate::game::{
     legal_bet_sizes, legal_raise_sizes, Action, NodeId, Player, SolveError, TerminalNode,
     TreeConfig, CHIP_EPS,
@@ -622,8 +623,12 @@ pub struct TurnSolveResult {
     /// Total number of DCFR iterations executed.
     pub iterations: usize,
     /// Exact exploitability report measured by the independent checker
-    /// ([`compute_exploitability_turn`]).
+    /// ([`compute_exploitability_turn`]). For a locked solve this prices
+    /// the lock (the locked profile's true exploitability).
     pub exploitability: ExploitabilityReport,
+    /// The nodelocks this solve ran under (empty = unlocked). A locked
+    /// profile is not an equilibrium; consumers must badge it LOCKED.
+    pub locks: Vec<NodeLock>,
 }
 
 /// CSR lookup table of unblocked opponent combo indices partitioned into
@@ -743,6 +748,10 @@ struct TurnNodeBuffer {
     regrets: Vec<f64>,
     cum_strategy: Vec<f64>,
     current_strategy: Vec<f64>,
+    /// Nodelock vector for this node (see `NodeBuffer` in `cfr.rs` for the
+    /// semantics: pinned strategy, no regret updates, no cumulative
+    /// accumulation, verbatim output).
+    lock: Option<Vec<f64>>,
 }
 
 impl TurnNodeBuffer {
@@ -760,11 +769,31 @@ impl TurnNodeBuffer {
             regrets: vec![0.0; len],
             cum_strategy: vec![0.0; len],
             current_strategy: vec![uniform; len],
+            lock: None,
         }
+    }
+
+    /// Pins this node's strategy to `frequencies` for the whole solve.
+    fn set_lock(&mut self, frequencies: &[f64]) {
+        debug_assert_eq!(frequencies.len(), self.num_actions);
+        for i in 0..self.num_combos {
+            let base = i * self.num_actions;
+            self.current_strategy[base..base + self.num_actions].copy_from_slice(frequencies);
+        }
+        self.lock = Some(frequencies.to_vec());
+    }
+
+    /// Whether this node's strategy is locked.
+    #[inline]
+    fn is_locked(&self) -> bool {
+        self.lock.is_some()
     }
 
     #[inline]
     fn recompute_current_strategy(&mut self) {
+        if self.is_locked() {
+            return;
+        }
         let num_actions = self.num_actions;
         let uniform = 1.0 / (num_actions as f64);
         for i in 0..self.num_combos {
@@ -792,6 +821,24 @@ impl TurnNodeBuffer {
     fn to_node_strategy(&self, game: &TurnGame, decision_id: usize) -> NodeStrategy {
         let d = game.decision_node(decision_id);
         let num_actions = self.num_actions;
+        if let Some(lock) = &self.lock {
+            // Locked: the output strategy is the lock vector verbatim for
+            // every combo (nothing was accumulated to normalize).
+            let mut frequencies = vec![0.0f64; num_actions * self.num_combos];
+            for i in 0..self.num_combos {
+                let base = i * num_actions;
+                frequencies[base..base + num_actions].copy_from_slice(lock);
+            }
+            return NodeStrategy {
+                decision_id,
+                node_id: d.node_id,
+                player: d.player,
+                history: d.history.clone(),
+                actions: d.actions.clone(),
+                num_combos: self.num_combos,
+                frequencies,
+            };
+        }
         let uniform = 1.0 / (num_actions as f64);
         let mut frequencies = vec![0.0f64; num_actions * self.num_combos];
         for i in 0..self.num_combos {
@@ -1080,6 +1127,20 @@ impl TurnSolverState {
         self.threads
     }
 
+    /// Applies resolved nodelocks (per decision id, `None` = unlocked;
+    /// produced by [`crate::locks::resolve_locks_turn`] or the flop
+    /// resolver for this subtree's game) by pinning the locked buffers.
+    /// Call before the first traversal: a lock is a constraint on the game
+    /// from iteration 0.
+    pub fn apply_locks(&mut self, resolved: &[Option<Vec<f64>>]) {
+        debug_assert_eq!(resolved.len(), self.buffers.len());
+        for (did, slot) in resolved.iter().enumerate() {
+            if let Some(frequencies) = slot {
+                self.buffers[did].set_lock(frequencies);
+            }
+        }
+    }
+
     /// Recomputes the current (regret-matching) strategy for all of
     /// `traverser`'s decision nodes. Call once per half-iteration, before
     /// [`traverse_root`](Self::traverse_root).
@@ -1175,6 +1236,12 @@ fn solve_turn_impl(
     config: &DcfrConfig,
     mut state: TurnSolverState,
 ) -> TurnSolveResult {
+    // Pin nodelocks before iteration 0 (invalid locks are a caller bug;
+    // validate_locks_turn exposes the error as a value beforehand).
+    let resolved_locks = resolve_locks_turn(game, &config.locks)
+        .expect("invalid node lock in DcfrConfig (validate locks before solving)");
+    state.apply_locks(&resolved_locks);
+
     let init_oop_reach: Vec<f64> = game.combos[0].iter().map(|c| c.weight).collect();
     let init_ip_reach: Vec<f64> = game.combos[1].iter().map(|c| c.weight).collect();
 
@@ -1258,6 +1325,7 @@ fn solve_turn_impl(
         ip_game_ev: exploitability.ip_strategy_ev,
         iterations: iterations_done,
         exploitability,
+        locks: config.locks.clone(),
     }
 }
 
@@ -1446,8 +1514,11 @@ fn turn_traverse(
 
             if d.player == traverser {
                 let cur_strat = buffers[buf_idx].current_strategy.clone();
+                let locked = buffers[buf_idx].is_locked();
 
-                {
+                // Locked nodes accumulate no average strategy (their output
+                // is the lock vector itself).
+                if !locked {
                     let cum_strat = &mut buffers[buf_idx].cum_strategy;
                     for i in 0..num_my {
                         let w = strat_weight * my_reach[i];
@@ -1491,18 +1562,23 @@ fn turn_traverse(
                     action_cfvs.push(child_cfv);
                 }
 
-                let regrets = &mut buffers[buf_idx].regrets;
-                for i in 0..num_my {
-                    let base = i * num_actions;
-                    let ev_i = node_cfv[i];
-                    for a in 0..num_actions {
-                        let inst_regret = action_cfvs[a][i] - ev_i;
-                        let updated = regrets[base + a] + inst_regret;
-                        regrets[base + a] = if updated >= 0.0 {
-                            updated * pos_discount
-                        } else {
-                            updated * neg_discount
-                        };
+                // Locked nodes update no regrets (their strategy is the
+                // lock vector, not regret matching); the node CFV above is
+                // still computed under the locked strategy.
+                if !locked {
+                    let regrets = &mut buffers[buf_idx].regrets;
+                    for i in 0..num_my {
+                        let base = i * num_actions;
+                        let ev_i = node_cfv[i];
+                        for a in 0..num_actions {
+                            let inst_regret = action_cfvs[a][i] - ev_i;
+                            let updated = regrets[base + a] + inst_regret;
+                            regrets[base + a] = if updated >= 0.0 {
+                                updated * pos_discount
+                            } else {
+                                updated * neg_discount
+                            };
+                        }
                     }
                 }
 
