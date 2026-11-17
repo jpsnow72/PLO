@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { AccuracyBadge } from '../components/AccuracyBadge';
 import { actionColor, prettyAction } from '../components/actionStyle';
 import { CardRow } from '../components/CardChip';
@@ -19,8 +19,10 @@ import {
   buildHeuristicQuestions,
   collectSpotQuestions,
   dueItemKeys,
+  explorerPathFor,
   gradeHeuristicAnswer,
   gradeSpotAnswer,
+  nodeHistoryOf,
   shuffle,
   topicKey,
   topicLabel,
@@ -32,6 +34,7 @@ import {
   type SpotQuestion,
 } from '../lib/quiz';
 import { parseSolve } from '../lib/solveTree';
+import { useStore } from '../store/useStore';
 
 type SyncState = 'checking' | 'synced' | 'locked' | 'offline';
 type HeuristicsState = 'checking' | 'available' | 'unavailable' | 'locked';
@@ -65,6 +68,208 @@ function topicStatsChips(
   return weakTopics(topics, 1);
 }
 
+/** Trailing run of "solid" grades (score >= 0.85) — the session streak. */
+function currentStreak(answered: AnsweredEntry[]): number {
+  let streak = 0;
+  for (let i = answered.length - 1; i >= 0; i -= 1) {
+    if (answered[i]?.grade.band === 'solid') streak += 1;
+    else break;
+  }
+  return streak;
+}
+
+function bandIcon(band: GradeResult['band']): string {
+  return band === 'solid' ? '✓' : band === 'partial' ? '◐' : '✗';
+}
+
+function bandTextClass(band: GradeResult['band']): string {
+  return band === 'solid'
+    ? 'text-table-light'
+    : band === 'partial'
+      ? 'text-accent'
+      : 'text-red-400';
+}
+
+/** "Bet 75" -> "bets", "Check" -> "checks", for the feedback banner. */
+function actionVerb(label: string): string {
+  const p = prettyAction(label).toLowerCase();
+  if (p.startsWith('check')) return 'checks';
+  if (p.startsWith('fold')) return 'folds';
+  if (p.startsWith('call')) return 'calls';
+  if (p.startsWith('bet')) return 'bets';
+  if (p.startsWith('raise')) return 'raises';
+  return 'takes this action';
+}
+
+interface TopicChip {
+  key: string;
+  accuracy: number;
+  attempts: number;
+}
+
+function TopicBars({ chips, limit }: { chips: TopicChip[]; limit: number }) {
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {chips.slice(0, limit).map((chip) => {
+        const [texture = '', street = '', spotType = ''] = chip.key.split('|');
+        const label = topicLabel({ texture, street, spot_type: spotType });
+        return (
+          <li key={chip.key} className="flex items-center gap-2 text-xs">
+            <span className="w-40 shrink-0 truncate text-ink-dim" title={label}>
+              {label}
+            </span>
+            <div className="flex-1">
+              <FrequencyBar
+                fraction={chip.accuracy}
+                color={chip.accuracy >= 0.7 ? '#2E9E6B' : '#F5A623'}
+                height="h-2"
+              />
+            </div>
+            <span className="w-10 text-right font-mono text-ink-dim">
+              {(chip.accuracy * 100).toFixed(0)}%
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * The trainer's right rail (Figma frame): live session stats, topic
+ * accuracy bars and the session history. Every number derives from
+ * this session's graded answers or the synced progress topics — the
+ * "Avg EV loss" row only exists once an answer was actually graded in
+ * EV mode (per-action EVs present), never in frequency mode.
+ */
+function SessionRail({
+  answered,
+  chips,
+  dueCount,
+  syncState,
+  openingKey,
+  openError,
+  onOpenExplorer,
+}: {
+  answered: AnsweredEntry[];
+  chips: TopicChip[];
+  dueCount: number;
+  syncState: SyncState;
+  openingKey: string | null;
+  openError: string | null;
+  onOpenExplorer: (q: SpotQuestion) => void;
+}) {
+  const hands = answered.length;
+  const accuracy =
+    hands > 0 ? answered.reduce((a, r) => a + r.grade.score, 0) / hands : null;
+  const streak = currentStreak(answered);
+  const evLossPcts: number[] = [];
+  for (const r of answered) {
+    if (r.entry.type === 'spot' && r.grade.evLostChips !== null && r.entry.q.pot > 0) {
+      evLossPcts.push((r.grade.evLostChips / r.entry.q.pot) * 100);
+    }
+  }
+  const avgEvLossPct =
+    evLossPcts.length > 0
+      ? evLossPcts.reduce((a, v) => a + v, 0) / evLossPcts.length
+      : null;
+
+  const statRow = (label: string, value: string, note?: string) => (
+    <div className="flex items-baseline justify-between gap-2">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+        {label}
+        {note ? <span className="ml-1.5 font-normal normal-case text-ink-faint">{note}</span> : null}
+      </dt>
+      <dd className="font-mono text-xl text-ink">{value}</dd>
+    </div>
+  );
+
+  return (
+    <aside
+      aria-label="Session"
+      className="flex h-fit flex-col gap-4 rounded-lg border border-navy-700 bg-navy-900 p-4 shadow-panel"
+    >
+      <section>
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Session</h2>
+        <dl className="mt-2 flex flex-col gap-2.5">
+          {statRow('Hands', String(hands))}
+          {statRow(
+            'Accuracy',
+            accuracy !== null ? `${(accuracy * 100).toFixed(0)}%` : '—',
+            'avg grade score',
+          )}
+          {avgEvLossPct !== null
+            ? statRow('Avg EV loss', `${avgEvLossPct.toFixed(1)}% of pot`, 'EV-graded answers')
+            : null}
+          {statRow('Streak', streak > 0 ? `🔥 ${streak}` : '—', 'solid answers in a row')}
+        </dl>
+      </section>
+
+      {chips.length > 0 ? (
+        <section>
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+            Accuracy by topic {syncState === 'synced' ? '(synced)' : '(this session)'}
+          </h2>
+          <TopicBars chips={chips} limit={6} />
+        </section>
+      ) : null}
+
+      <section>
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+          History
+        </h2>
+        {answered.length === 0 ? (
+          <p className="text-xs text-ink-faint">Answers you grade will land here.</p>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {[...answered].reverse().map((r, ri) => {
+              const key = `${r.entry.q.itemKey}-${answered.length - 1 - ri}`;
+              return (
+                <li key={key} className="flex items-center gap-2 text-xs">
+                  <span className={`font-bold ${bandTextClass(r.grade.band)}`} aria-hidden="true">
+                    {bandIcon(r.grade.band)}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-ink-dim">
+                    {r.entry.type === 'spot'
+                      ? `${r.entry.q.heroCombo} · ${r.entry.q.street}`
+                      : `Heuristic · ${topicLabel(r.entry.q.topic)}`}
+                  </span>
+                  <span className="font-mono text-ink-faint">
+                    {r.grade.evLostChips !== null
+                      ? `−${r.grade.evLostChips.toFixed(1)}`
+                      : `${(r.grade.score * 100).toFixed(0)}%`}
+                  </span>
+                  {r.entry.type === 'spot' ? (
+                    <button
+                      type="button"
+                      disabled={openingKey !== null}
+                      onClick={() => onOpenExplorer(r.entry.q)}
+                      className="shrink-0 text-table-light underline hover:text-table disabled:opacity-50"
+                    >
+                      {openingKey === r.entry.q.itemKey ? 'Opening…' : 'Open in Explorer'}
+                    </button>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {openError ? (
+          <p className="mt-1.5 text-xs text-red-300" role="alert">
+            {openError}
+          </p>
+        ) : null}
+      </section>
+
+      {syncState === 'synced' ? (
+        <p className="text-xs font-medium text-accent">
+          Due for review: {dueCount} card{dueCount === 1 ? '' : 's'} (spaced repetition)
+        </p>
+      ) : null}
+    </aside>
+  );
+}
+
 export function QuizPage() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [syncState, setSyncState] = useState<SyncState>('checking');
@@ -83,6 +288,48 @@ export function QuizPage() {
   const [answered, setAnswered] = useState<AnsweredEntry[]>([]);
   const [localTopics, setLocalTopics] = useState<Record<string, QuizTopicStats>>({});
   const repeatedRef = useRef<Set<string>>(new Set());
+
+  const navigate = useNavigate();
+  const [openingKey, setOpeningKey] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
+
+  /**
+   * "Open in Explorer": reload the question's solve into the shared
+   * store, rebuild the path to the exact node the question came from
+   * (explorerPathFor; root fallback when a step cannot be resolved),
+   * and navigate to the Tree Explorer.
+   */
+  const openInExplorer = useCallback(
+    async (q: SpotQuestion) => {
+      setOpeningKey(q.itemKey);
+      setOpenError(null);
+      try {
+        const raw =
+          q.solveSource === 'library'
+            ? await fetchLibrarySolve(q.solveId)
+            : await fetchSampleSolve();
+        const ok = useStore
+          .getState()
+          .loadRawSolve(raw, q.solveName, q.solveSource, q.solveSource === 'library' ? q.solveId : null);
+        if (!ok) {
+          setOpenError('That solve could not be loaded into the Explorer.');
+          return;
+        }
+        const data = useStore.getState().solve;
+        const history = nodeHistoryOf(q);
+        if (data && history !== 'root') {
+          const steps = explorerPathFor(data, history);
+          if (steps) useStore.getState().setPath(steps);
+        }
+        navigate('/explorer');
+      } catch {
+        setOpenError('Could not open that solve — the job service is unreachable.');
+      } finally {
+        setOpeningKey(null);
+      }
+    },
+    [navigate],
+  );
 
   // ----- Load progress, question sources and heuristics (once) -----
   useEffect(() => {
@@ -373,28 +620,11 @@ export function QuizPage() {
             <h2 className="mb-2 text-sm font-semibold text-ink">
               Topic accuracy {syncState === 'synced' ? '(synced)' : '(this session)'}
             </h2>
-            <div className="flex flex-wrap gap-1.5">
-              {chips.map((chip) => {
-                const [texture = '', street = '', spotType = ''] = chip.key.split('|');
-                const label = topicLabel({ texture, street, spot_type: spotType });
-                const weak = chip.accuracy < 0.7;
-                return (
-                  <span
-                    key={chip.key}
-                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs ${
-                      weak
-                        ? 'border border-accent font-semibold text-accent'
-                        : 'bg-navy-800 text-ink-dim'
-                    }`}
-                    title={`${chip.attempts} attempts`}
-                  >
-                    {label} · {(chip.accuracy * 100).toFixed(0)}%
-                  </span>
-                );
-              })}
+            <div className="max-w-xl">
+              <TopicBars chips={chips} limit={8} />
             </div>
             <p className="mt-1.5 text-xs text-ink-faint">
-              Weakest first; amber chips are below 70% — those topics’ questions keep resurfacing
+              Weakest first; amber bars are below 70% — those topics’ questions keep resurfacing
               through the ladder.
             </p>
           </section>
@@ -476,9 +706,24 @@ export function QuizPage() {
                 {' · '}
                 {topicLabel(r.entry.q.topic)}
               </span>
+              {r.entry.type === 'spot' ? (
+                <button
+                  type="button"
+                  disabled={openingKey !== null}
+                  onClick={() => void openInExplorer(r.entry.q)}
+                  className="text-xs text-table-light underline hover:text-table disabled:opacity-50"
+                >
+                  {openingKey === r.entry.q.itemKey ? 'Opening…' : 'Open in Explorer'}
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
+        {openError ? (
+          <p className="text-sm text-red-300" role="alert">
+            {openError}
+          </p>
+        ) : null}
         <div className="flex gap-2">
           <button
             type="button"
@@ -520,7 +765,8 @@ export function QuizPage() {
   if (current.type === 'heuristic') {
     const q = current.q;
     return (
-      <div className="flex flex-col gap-4">
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="flex flex-col gap-4">
         <p className="text-xs text-ink-faint">{progressText} · from your heuristics log</p>
         <section className="rounded-lg border border-navy-700 bg-navy-900 p-4 shadow-panel">
           <h1 className="text-lg font-semibold text-ink">Which heuristic applies here?</h1>
@@ -572,71 +818,85 @@ export function QuizPage() {
             </button>
           )}
         </section>
+        </div>
+        <SessionRail
+          answered={answered}
+          chips={chips}
+          dueCount={dueCount}
+          syncState={syncState}
+          openingKey={openingKey}
+          openError={openError}
+          onOpenExplorer={(sq) => void openInExplorer(sq)}
+        />
       </div>
     );
   }
 
   const q = current.q;
   return (
-    <div className="flex flex-col gap-4">
-      <p className="flex flex-wrap items-center gap-2 text-xs text-ink-faint">
-        {progressText} · {q.solveName}
-        {q.solveSource === 'sample' ? ' · bundled sample' : ''}
-        <span className="ml-auto">
-          <AccuracyBadge nashPct={q.nashPct} />
-        </span>
-      </p>
-      <section className="rounded-lg border border-navy-700 bg-navy-900 p-4 shadow-panel">
-        <div className="flex flex-wrap items-start gap-4">
-          <div>
-            <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ink-faint">
-              Board · {q.street}
-            </h2>
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="flex flex-col gap-4">
+        <p className="flex flex-wrap items-center gap-2 text-xs text-ink-faint">
+          {progressText} · {q.solveName}
+          {q.solveSource === 'sample' ? ' · bundled sample' : ''}
+          <span className="ml-auto font-medium text-accent">Topic: {topicLabel(q.topic)}</span>
+        </p>
+
+        {/* Stage (Figma trainer frame): pot, board, the line, hero hand. */}
+        <section
+          aria-label="Spot"
+          className="rounded-xl bg-table-dark px-4 py-5 shadow-panel ring-1 ring-table"
+        >
+          <p className="text-center text-sm font-bold uppercase tracking-widest text-white">
+            Pot {q.pot.toFixed(0)}
+            {q.toCall > 0 ? (
+              <span className="font-semibold text-white/75"> · {q.toCall.toFixed(0)} to call</span>
+            ) : null}
+          </p>
+          <div className="mt-3 flex justify-center">
             <CardRow cards={cardsOf(q.board)} size="lg" />
           </div>
-          <div>
-            <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ink-faint">
-              You hold · {q.player} to act
-            </h2>
+          <p className="mt-3 text-center text-sm text-white/85">
+            {q.line.length > 0 ? q.line.join(' → ') : 'First decision of the hand.'}
+          </p>
+          <p className="mt-4 text-center text-xs font-semibold uppercase tracking-wide text-white/65">
+            You are {q.player} · {q.street} · you hold
+          </p>
+          <div className="mt-1.5 flex justify-center">
             <CardRow cards={cardsOf(q.heroCards)} size="lg" />
           </div>
-          <dl className="grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-md bg-navy-850 px-2 py-1.5">
-              <dt className="text-ink-faint">Pot</dt>
-              <dd className="font-mono text-sm text-ink">{q.pot.toFixed(0)}</dd>
-            </div>
-            <div className="rounded-md bg-navy-850 px-2 py-1.5">
-              <dt className="text-ink-faint">To call</dt>
-              <dd className="font-mono text-sm text-ink">{q.toCall.toFixed(0)}</dd>
-            </div>
-          </dl>
-        </div>
+        </section>
 
-        {q.line.length > 0 ? (
-          <p className="mt-3 text-xs text-ink-dim">
-            Line so far: {q.line.join(' → ')}
-          </p>
-        ) : (
-          <p className="mt-3 text-xs text-ink-dim">First decision of the hand.</p>
-        )}
-        <p className="mt-1 text-xs text-ink-faint">Topic: {topicLabel(q.topic)}</p>
+        {grade ? (
+          <FeedbackBanner
+            q={q}
+            grade={grade}
+            pickedAction={pickedAction}
+            onNext={next}
+            isLast={index + 1 >= session.length}
+          />
+        ) : null}
 
-        <h1 className="mt-4 text-base font-semibold text-ink">
-          What does the solver do with this hand?
-        </h1>
-        <div className="mt-2 flex flex-col gap-2">
-          {q.actions.map((label, i) => {
-            const picked = pickedAction === i;
-            const isBest = grade !== null && i === grade.bestActionIdx;
-            const isPick = grade !== null && picked;
-            return (
-              <div key={label}>
+        <section
+          aria-label="Your answer"
+          className="rounded-lg border border-navy-700 bg-navy-900 p-4 shadow-panel"
+        >
+          <h1 className="text-base font-semibold text-ink">
+            What does the solver do with this hand?
+          </h1>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {q.actions.map((label, i) => {
+              const picked = pickedAction === i;
+              const isBest = grade !== null && i === grade.bestActionIdx;
+              const isPick = grade !== null && picked;
+              return (
                 <button
+                  key={label}
                   type="button"
                   disabled={grade !== null}
                   onClick={() => setPickedAction(i)}
                   aria-pressed={picked}
-                  className={`w-full rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                  className={`min-w-[8rem] flex-1 rounded-lg border px-3 py-2.5 text-left transition-colors ${
                     isBest
                       ? 'border-table bg-navy-800'
                       : isPick
@@ -647,7 +907,14 @@ export function QuizPage() {
                   }`}
                 >
                   <span className="flex items-baseline justify-between gap-2">
-                    <span className="font-semibold text-ink">{prettyAction(label)}</span>
+                    <span className="flex items-baseline gap-1.5 font-semibold text-ink">
+                      <span
+                        className="h-2 w-2 shrink-0 translate-y-[-1px] rounded-full"
+                        style={{ backgroundColor: actionColor(label) }}
+                        aria-hidden="true"
+                      />
+                      {prettyAction(label)}
+                    </span>
                     {grade ? (
                       <span className="font-mono text-sm text-ink-dim">
                         solver {pctText(q.frequencies[i] ?? 0)}
@@ -662,24 +929,108 @@ export function QuizPage() {
                     </span>
                   ) : null}
                 </button>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
 
-        {grade ? (
-          <GradePanel grade={grade} onNext={next} isLast={index + 1 >= session.length} />
-        ) : (
-          <button
-            type="button"
-            onClick={() => void submit()}
-            disabled={pickedAction === null}
-            className="mt-4 rounded-md bg-table px-4 py-2 text-sm font-semibold text-white hover:bg-table-dark disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Check answer
-          </button>
-        )}
-      </section>
+          {!grade ? (
+            <button
+              type="button"
+              onClick={() => void submit()}
+              disabled={pickedAction === null}
+              className="mt-4 rounded-md bg-table px-4 py-2 text-sm font-semibold text-white hover:bg-table-dark disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Check answer
+            </button>
+          ) : null}
+        </section>
+
+        <p className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide text-ink-faint">
+          Source: {q.solveSource === 'library' ? 'library solve' : 'bundled sample solve'} ·{' '}
+          {topicLabel(q.topic)} · <AccuracyBadge nashPct={q.nashPct} />
+        </p>
+      </div>
+
+      <SessionRail
+        answered={answered}
+        chips={chips}
+        dueCount={dueCount}
+        syncState={syncState}
+        openingKey={openingKey}
+        openError={openError}
+        onOpenExplorer={(sq) => void openInExplorer(sq)}
+      />
+    </div>
+  );
+}
+
+/**
+ * Instant feedback after a spot answer (Figma trainer frame): the
+ * verdict on your pick plus the solver's own frequency for that action
+ * with this exact hand. The grade's detail copy keeps naming the
+ * grading mode — frequency match today, EV lost only when the solve
+ * carries per-action EVs.
+ */
+function FeedbackBanner({
+  q,
+  grade,
+  pickedAction,
+  onNext,
+  isLast,
+}: {
+  q: SpotQuestion;
+  grade: GradeResult;
+  pickedAction: number | null;
+  onNext: () => void;
+  isLast: boolean;
+}) {
+  const chosenLabel = pickedAction !== null ? q.actions[pickedAction] : undefined;
+  const chosenFreq = pickedAction !== null ? (q.frequencies[pickedAction] ?? 0) : 0;
+  const bandClass =
+    grade.band === 'solid'
+      ? 'border-table bg-table/10'
+      : grade.band === 'partial'
+        ? 'border-accent/70 bg-accent/10'
+        : 'border-red-400/50 bg-red-500/10';
+  return (
+    <div className={`rounded-lg border px-4 py-3 ${bandClass}`} role="status">
+      <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="text-base font-bold text-ink">
+          <span className={bandTextClass(grade.band)} aria-hidden="true">
+            {bandIcon(grade.band)}{' '}
+          </span>
+          {chosenLabel
+            ? `${prettyAction(chosenLabel)} — the solver ${actionVerb(chosenLabel)} ${pctText(chosenFreq)} here`
+            : grade.headline}
+        </span>
+        <span className="ml-auto rounded-full border border-navy-600 px-2 py-0.5 text-xs text-ink-dim">
+          {grade.grading === 'ev'
+            ? 'Graded by EV lost'
+            : grade.grading === 'frequency'
+              ? 'Graded by frequency match'
+              : 'Graded by recall'}
+        </span>
+      </p>
+      <p className="mt-1 flex flex-wrap items-baseline gap-x-3 text-sm text-ink">
+        {grade.headline}
+        <span className="font-mono text-sm text-ink-dim">
+          score {(grade.score * 100).toFixed(0)}%
+        </span>
+      </p>
+      <p className="mt-1 text-xs leading-relaxed text-ink-dim">{grade.detail}</p>
+      {grade.band === 'miss' ? (
+        <p className="mt-1 text-xs text-ink-faint">
+          Missed items are due again immediately — this one will be re-asked at the end of the
+          session.
+        </p>
+      ) : null}
+      <button
+        type="button"
+        onClick={onNext}
+        className="mt-3 rounded-md bg-table px-4 py-2 text-sm font-semibold text-white hover:bg-table-dark"
+      >
+        {isLast ? 'See results' : 'Next hand'}
+      </button>
     </div>
   );
 }
@@ -694,9 +1045,23 @@ function GradePanel({
   isLast: boolean;
 }) {
   return (
-    <div className="mt-4 rounded-lg bg-navy-850 px-3 py-3" role="status">
+    <div
+      className={`mt-4 rounded-lg border px-3 py-3 ${
+        grade.band === 'solid'
+          ? 'border-table bg-table/10'
+          : grade.band === 'partial'
+            ? 'border-accent/70 bg-accent/10'
+            : 'border-red-400/50 bg-red-500/10'
+      }`}
+      role="status"
+    >
       <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-sm font-semibold text-ink">{grade.headline}</span>
+        <span className="text-sm font-semibold text-ink">
+          <span className={bandTextClass(grade.band)} aria-hidden="true">
+            {bandIcon(grade.band)}{' '}
+          </span>
+          {grade.headline}
+        </span>
         <span className="font-mono text-sm text-ink-dim">
           score {(grade.score * 100).toFixed(0)}%
         </span>
