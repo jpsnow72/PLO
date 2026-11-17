@@ -224,6 +224,7 @@ function SessionRail({
           <ul className="flex flex-col gap-1.5">
             {[...answered].reverse().map((r, ri) => {
               const key = `${r.entry.q.itemKey}-${answered.length - 1 - ri}`;
+              const spotQ = r.entry.type === 'spot' ? r.entry.q : null;
               return (
                 <li key={key} className="flex items-center gap-2 text-xs">
                   <span className={`font-bold ${bandTextClass(r.grade.band)}`} aria-hidden="true">
@@ -239,14 +240,14 @@ function SessionRail({
                       ? `−${r.grade.evLostChips.toFixed(1)}`
                       : `${(r.grade.score * 100).toFixed(0)}%`}
                   </span>
-                  {r.entry.type === 'spot' ? (
+                  {spotQ ? (
                     <button
                       type="button"
                       disabled={openingKey !== null}
-                      onClick={() => onOpenExplorer(r.entry.q)}
+                      onClick={() => onOpenExplorer(spotQ)}
                       className="shrink-0 text-table-light underline hover:text-table disabled:opacity-50"
                     >
-                      {openingKey === r.entry.q.itemKey ? 'Opening…' : 'Open in Explorer'}
+                      {openingKey === spotQ.itemKey ? 'Opening…' : 'Open in Explorer'}
                     </button>
                   ) : null}
                 </li>
@@ -710,10 +711,14 @@ export function QuizPage() {
                 <button
                   type="button"
                   disabled={openingKey !== null}
-                  onClick={() => void openInExplorer(r.entry.q)}
+                  onClick={() => {
+                    if (r.entry.type === 'spot') void openInExplorer(r.entry.q);
+                  }}
                   className="text-xs text-table-light underline hover:text-table disabled:opacity-50"
                 >
-                  {openingKey === r.entry.q.itemKey ? 'Opening…' : 'Open in Explorer'}
+                  {openingKey === (r.entry.type === 'spot' ? r.entry.q.itemKey : null)
+                    ? 'Opening…'
+                    : 'Open in Explorer'}
                 </button>
               ) : null}
             </li>
