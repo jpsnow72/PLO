@@ -23,6 +23,30 @@ import { RANK_ORDER, type Suit } from './cards';
 export type TableSize = '6max' | '9max';
 export type SetContext = 'rfi' | 'vs_rfi' | 'three_bet' | 'sb_play' | 'vs_three_bet';
 
+/**
+ * Rake variant (v1.2): which game's published totals a constructed set's
+ * targets describe. 'raked' sets are anchored on raked-game totals
+ * (PLO.com / Upswing); 'no-rake' sets on no-rake (cEV) totals (GTO
+ * Wizard). Construction models no rake in either variant.
+ */
+export type RakeVariant = 'raked' | 'no-rake';
+
+export const RAKE_VARIANTS: RakeVariant[] = ['raked', 'no-rake'];
+
+export const RAKE_LABEL: Record<RakeVariant, string> = {
+  raked: 'Raked',
+  'no-rake': 'No-rake',
+};
+
+/**
+ * The variant of an index entry or set document. Documents and index
+ * entries emitted before the v1.2 rake dimension have no `rake` field;
+ * every one of them belongs to the raked family.
+ */
+export function rakeOf(entry: { rake?: RakeVariant }): RakeVariant {
+  return entry.rake === 'no-rake' ? 'no-rake' : 'raked';
+}
+
 export interface PreflopSource {
   name: string;
   url?: string;
@@ -47,6 +71,8 @@ export interface PreflopSetIndexEntry {
   position: string;
   context: SetContext;
   stack_bb: number;
+  /** Rake variant (v1.2); absent on pre-v1.2 indexes = 'raked'. */
+  rake?: RakeVariant;
   source?: PreflopSource;
   provenance?: {
     method: string;
@@ -70,6 +96,8 @@ export interface PreflopSetDoc {
   context: SetContext;
   context_detail?: string;
   stack_bb: number;
+  /** Rake variant (v1.2); absent on pre-v1.2 documents = 'raked'. */
+  rake?: RakeVariant;
   rake_note: string;
   notes?: string;
   source?: PreflopSource;
@@ -132,6 +160,12 @@ const TABLE_SIZES: readonly string[] = ['6max', '9max'];
 // reject the whole index; it stays non-solve-compatible below (the
 // uncapped API expansion only loads rfi/vs_rfi sets into custom solves).
 const CONTEXTS: readonly string[] = ['rfi', 'vs_rfi', 'three_bet', 'sb_play', 'vs_three_bet'];
+
+// The v1.2 'rake' field is deliberately NOT gated on here: the guards
+// check the fields they consume and ignore extras, so a new optional
+// field can never reject the whole index (the failure mode the
+// vs_three_bet note above records). rakeOf() above interprets the value,
+// defaulting pre-v1.2 data to 'raked'.
 
 export function isPreflopIndex(v: unknown): v is PreflopIndex {
   if (!isRecord(v) || !Array.isArray(v.rangesets)) return false;
@@ -338,25 +372,35 @@ export function openerOf(doc: Pick<PreflopSetDoc, 'context_detail'>): string | n
 
 /** Human label for a set, used in pickers and headers. */
 export function setLabel(
-  entry: Pick<PreflopSetIndexEntry, 'table_size' | 'position' | 'context'> & {
+  entry: Pick<PreflopSetIndexEntry, 'table_size' | 'position' | 'context' | 'rake'> & {
     context_detail?: string;
   },
 ): string {
   const opener = openerOf(entry);
+  let base: string;
   switch (entry.context) {
     case 'rfi':
-      return `${entry.table_size} · ${entry.position} RFI`;
+      base = `${entry.table_size} · ${entry.position} RFI`;
+      break;
     case 'sb_play':
-      return `${entry.table_size} · ${entry.position} first-in (SB play)`;
+      base = `${entry.table_size} · ${entry.position} first-in (SB play)`;
+      break;
     case 'vs_rfi':
-      return `${entry.table_size} · ${entry.position} vs ${opener ?? '?'} open`;
+      base = `${entry.table_size} · ${entry.position} vs ${opener ?? '?'} open`;
+      break;
     case 'three_bet':
-      return `${entry.table_size} · ${entry.position} vs 3-bet`;
+      base = `${entry.table_size} · ${entry.position} vs 3-bet`;
+      break;
     case 'vs_three_bet':
-      return `${entry.table_size} · ${entry.position} vs 3-bet (continue)`;
+      base = `${entry.table_size} · ${entry.position} vs 3-bet (continue)`;
+      break;
     default:
-      return `${entry.table_size} · ${entry.position}`;
+      base = `${entry.table_size} · ${entry.position}`;
   }
+  // The rake variant is part of the set's identity once the data carries
+  // it (v1.2 indexes/documents); legacy data without the field keeps the
+  // historical label unchanged.
+  return entry.rake ? `${base} · ${RAKE_LABEL[rakeOf(entry)]}` : base;
 }
 
 /** Position display order per table size. */
