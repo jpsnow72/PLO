@@ -42,6 +42,7 @@ use plo_eval::{PloRange, WeightedCombo};
 use crate::br::{compute_exploitability_flop, ExploitabilityReport};
 use crate::buckets::{assign_buckets, BucketAssignment};
 use crate::cfr::{ComboEv, DcfrConfig, NodeStrategy};
+use crate::locks::{resolve_locks_flop, NodeLock};
 use crate::game::{
     legal_bet_sizes, legal_raise_sizes, Action, NodeId, Player, SolveError, TerminalNode,
     TreeConfig, CHIP_EPS,
@@ -732,8 +733,13 @@ pub struct FlopSolveResult {
     /// Total number of DCFR iterations executed.
     pub iterations: usize,
     /// Exact exploitability of the (bucketed) profile measured in the
-    /// unabstracted game by the independent checker.
+    /// unabstracted game by the independent checker. For a locked solve
+    /// this prices the lock (the locked profile's true exploitability).
     pub exploitability: ExploitabilityReport,
+    /// The nodelocks this solve ran under (empty = unlocked), named by
+    /// their output history keys. A locked profile is not an equilibrium;
+    /// consumers must badge it LOCKED.
+    pub locks: Vec<NodeLock>,
 }
 
 /// CSR table of unblocked opponent combo indices for flop fold evaluation.
@@ -790,6 +796,10 @@ struct FlopNodeBuffer {
     regrets: Vec<f64>,
     cum_strategy: Vec<f64>,
     current_strategy: Vec<f64>,
+    /// Nodelock vector for this node: every bucket's strategy is pinned to
+    /// it (a whole-node lock constrains the abstracted and exact games
+    /// alike — after bucket expansion every combo shows the lock vector).
+    lock: Option<Vec<f64>>,
 }
 
 impl FlopNodeBuffer {
@@ -807,10 +817,30 @@ impl FlopNodeBuffer {
             regrets: vec![0.0; len],
             cum_strategy: vec![0.0; len],
             current_strategy: vec![uniform; len],
+            lock: None,
         }
     }
 
+    /// Pins every bucket's strategy at this node to `frequencies`.
+    fn set_lock(&mut self, frequencies: &[f64]) {
+        debug_assert_eq!(frequencies.len(), self.num_actions);
+        for b in 0..self.num_buckets {
+            let base = b * self.num_actions;
+            self.current_strategy[base..base + self.num_actions].copy_from_slice(frequencies);
+        }
+        self.lock = Some(frequencies.to_vec());
+    }
+
+    /// Whether this node's strategy is locked.
+    #[inline]
+    fn is_locked(&self) -> bool {
+        self.lock.is_some()
+    }
+
     fn recompute_current_strategy(&mut self) {
+        if self.is_locked() {
+            return;
+        }
         let num_actions = self.num_actions;
         let uniform = 1.0 / num_actions as f64;
         for b in 0..self.num_buckets {
@@ -841,6 +871,24 @@ impl FlopNodeBuffer {
     fn to_node_strategy(&self, game: &FlopGame, decision_id: usize) -> NodeStrategy {
         let d = game.decision_node(decision_id);
         let num_actions = self.num_actions;
+        if let Some(lock) = &self.lock {
+            // Locked: every bucket's output strategy is the lock vector
+            // verbatim (nothing was accumulated to normalize).
+            let mut frequencies = vec![0.0f64; num_actions * self.num_buckets];
+            for b in 0..self.num_buckets {
+                let base = b * num_actions;
+                frequencies[base..base + num_actions].copy_from_slice(lock);
+            }
+            return NodeStrategy {
+                decision_id,
+                node_id: d.node_id,
+                player: d.player,
+                history: d.history.clone(),
+                actions: d.actions.clone(),
+                num_combos: self.num_buckets,
+                frequencies,
+            };
+        }
         let uniform = 1.0 / num_actions as f64;
         let mut frequencies = vec![0.0f64; num_actions * self.num_buckets];
         for b in 0..self.num_buckets {
@@ -921,6 +969,23 @@ pub fn solve_flop_with_threads(
             FlopNodeBuffer::new(d.player, d.actions.len(), game.num_buckets(d.player))
         })
         .collect();
+
+    // Pin nodelocks before iteration 0: flop-street locks into the flop
+    // buffers (every bucket), subtree locks into each subtree's solver
+    // state. Invalid locks are a caller bug (validate_locks_flop exposes
+    // the error as a value beforehand).
+    let lock_plan = resolve_locks_flop(game, &config.locks)
+        .expect("invalid node lock in DcfrConfig (validate locks before solving)");
+    for (did, slot) in lock_plan.flop.iter().enumerate() {
+        if let Some(frequencies) = slot {
+            buffers[did].set_lock(frequencies);
+        }
+    }
+    for (sub_idx, sub_locks) in lock_plan.subtrees.iter().enumerate() {
+        if let Some(state) = states[sub_idx].as_mut() {
+            state.apply_locks(sub_locks);
+        }
+    }
 
     let init_reach: [Vec<f64>; 2] = [
         game.combos[0].iter().map(|c| c.weight).collect(),
@@ -1005,6 +1070,7 @@ pub fn solve_flop_with_threads(
         ip_game_ev: exploitability.ip_strategy_ev,
         iterations: config.max_iterations,
         exploitability,
+        locks: config.locks.clone(),
     }
 }
 
@@ -1061,12 +1127,14 @@ impl<'a> FlopTraversal<'a> {
 
                 if d.player == traverser {
                     let cur_strat = self.buffers[decision_id].current_strategy.clone();
+                    let locked = self.buffers[decision_id].is_locked();
                     let bucket_of = &game.assignments[p_idx].bucket_of;
                     let num_buckets = self.buffers[decision_id].num_buckets;
 
                     // Accumulate average strategy at bucket level, weighted by
-                    // the bucket's total reach mass.
-                    {
+                    // the bucket's total reach mass. Locked nodes accumulate
+                    // nothing (their output is the lock vector itself).
+                    if !locked {
                         let mut bucket_mass = vec![0.0f64; num_buckets];
                         for i in 0..num_my {
                             bucket_mass[bucket_of[i] as usize] += my_reach[i];
@@ -1101,21 +1169,26 @@ impl<'a> FlopTraversal<'a> {
 
                     // Bucket regret update: range-weight-summed per-combo
                     // counterfactual regrets, discounted as in E2/E3.
-                    let regrets = &mut self.buffers[decision_id].regrets;
-                    for b in 0..num_buckets {
-                        let base = b * num_actions;
-                        for a in 0..num_actions {
-                            let mut inst = 0.0f64;
-                            for &i in &game.assignments[p_idx].buckets[b] {
-                                inst += game.combos[p_idx][i].weight
-                                    * (action_cfvs[a][i] - node_cfv[i]);
+                    // Locked nodes update no regrets (their strategy is the
+                    // lock vector, not regret matching); the node CFV above
+                    // is still computed under the locked strategy.
+                    if !locked {
+                        let regrets = &mut self.buffers[decision_id].regrets;
+                        for b in 0..num_buckets {
+                            let base = b * num_actions;
+                            for a in 0..num_actions {
+                                let mut inst = 0.0f64;
+                                for &i in &game.assignments[p_idx].buckets[b] {
+                                    inst += game.combos[p_idx][i].weight
+                                        * (action_cfvs[a][i] - node_cfv[i]);
+                                }
+                                let updated = regrets[base + a] + inst;
+                                regrets[base + a] = if updated >= 0.0 {
+                                    updated * self.pos_discount
+                                } else {
+                                    updated * self.neg_discount
+                                };
                             }
-                            let updated = regrets[base + a] + inst;
-                            regrets[base + a] = if updated >= 0.0 {
-                                updated * self.pos_discount
-                            } else {
-                                updated * self.neg_discount
-                            };
                         }
                     }
 
