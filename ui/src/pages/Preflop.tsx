@@ -19,6 +19,7 @@ import {
   solveActionForContext,
   sortPositions,
   SUITEDNESS_FILTERS,
+  type MatrixCell,
   type PreflopClass,
   type PreflopIndex,
   type PreflopSetDoc,
@@ -323,7 +324,7 @@ export function PreflopPage() {
   const suitFilterLabel =
     SUITEDNESS_FILTERS.find((f) => f.id === suitFilter)?.label ?? 'Any suits';
 
-  const cells = useMemo(
+  const cells = useMemo<Map<string, MatrixCell>>(
     () => (setDoc ? matrixCells(setDoc, action, classByHand, suitFeature) : new Map()),
     [setDoc, action, classByHand, suitFeature],
   );
