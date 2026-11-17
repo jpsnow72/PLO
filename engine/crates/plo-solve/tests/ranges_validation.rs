@@ -11,12 +11,18 @@
 //! scoring, RFI construction for every position, one full response set
 //! (BB vs BTN, the best-corroborated defense anchor), schema validation of
 //! the emitted documents, and frequency-sum checks.
+//!
+//! The v1.2 tests additionally load data/preflop/ranges-config-v1.2.json:
+//! the no-rake 6-max family's GTO Wizard cEV anchor targets, its set ids
+//! and `rake` recording, and raked-family id stability under the new
+//! config.
 
 use plo_solve::ranges::{
-    action_freqs, build_continuation_set, build_response_set, build_rfi_set, compute_features,
+    action_freqs, build_continuation_set, build_continuation_set_styled, build_response_set,
+    build_response_set_styled, build_rfi_set, build_rfi_set_styled, compute_features,
     enumerate_classes, equity_vs_pool, is_canonical_key, opening_weighted_totals, opener_pool,
-    score_all_classes, score_from_components, validate_rangeset, ContinuationsConfig, RangesConfig,
-    CLASS_COUNT, TOTAL_COMBOS,
+    score_all_classes, score_from_components, validate_rangeset, RangesConfig, CLASS_COUNT,
+    RAKE_NO_RAKE, RAKE_RAKED, TOTAL_COMBOS,
 };
 use plo_solve::JsonValue;
 
@@ -27,6 +33,15 @@ fn load_config() -> RangesConfig {
     );
     let text = std::fs::read_to_string(&path).expect("read ranges-config-v1.json");
     RangesConfig::from_json_text(&text).expect("parse ranges-config-v1.json")
+}
+
+fn load_config_v12() -> RangesConfig {
+    let path = format!(
+        "{}/../../../data/preflop/ranges-config-v1.2.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let text = std::fs::read_to_string(&path).expect("read ranges-config-v1.2.json");
+    RangesConfig::from_json_text(&text).expect("parse ranges-config-v1.2.json")
 }
 
 fn small_samples(
@@ -42,6 +57,11 @@ fn small_samples(
     c.samples_vs_opener = vs_opener;
     if let Some(cont) = &mut c.continuations {
         cont.samples_vs_three_bettor = vs_three_bettor;
+    }
+    if let Some(nr) = &mut c.norake {
+        if let Some(cont) = &mut nr.continuations {
+            cont.samples_vs_three_bettor = vs_three_bettor;
+        }
     }
     c
 }
@@ -263,7 +283,7 @@ fn continuations_config_covers_three_matchups() {
         .map(|m| (m.continuer.as_str(), m.three_bettor.as_str()))
         .collect();
     assert_eq!(pairs, vec![("BTN", "BB"), ("BTN", "SB"), ("CO", "BTN")]);
-    let ids: Vec<String> = cont.matchups.iter().map(ContinuationsConfig::set_id).collect();
+    let ids: Vec<String> = cont.matchups.iter().map(|m| cont.set_id(m)).collect();
     assert_eq!(
         ids,
         vec![
@@ -354,7 +374,7 @@ fn continuation_sets_hit_internal_targets_and_validate() {
             .collect();
         let doc = build_continuation_set(&test_cfg, &classes, &eq_tb, &ofreq, matchup)
             .expect("continuation set");
-        assert_eq!(doc.id, ContinuationsConfig::set_id(matchup));
+        assert_eq!(doc.id, cont.set_id(matchup));
         assert_eq!(doc.context, "vs_three_bet");
         assert_eq!(doc.target_kind, "internal");
         // Schema validation of the emitted document (round-tripped).
@@ -451,4 +471,244 @@ fn continuation_sets_hit_internal_targets_and_validate() {
             want_fb
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// v1.2: the rake dimension and the no-rake 6-max family
+// ---------------------------------------------------------------------------
+
+#[test]
+fn v12_config_carries_norake_family_with_gtw_anchors() {
+    let cfg = load_config_v12();
+    assert_eq!(cfg.version, "ranges-config-v1.2");
+    let nr = cfg.norake.as_ref().expect("v1.2 config must carry norake_6max");
+    // Cross-check source: the GTO Wizard cEV totals.
+    assert!(
+        nr.cross_check_source.name.contains("GTO Wizard"),
+        "no-rake cross-check source must be the GTO Wizard totals: {}",
+        nr.cross_check_source.name
+    );
+    assert_eq!(nr.cross_check_source.retrieved, "2026-11-17");
+    // RFI anchors (GTO Wizard cEV 100bb totals, collected 2026-11-17;
+    // their "HJ" seat is this schema's MP).
+    assert_eq!(nr.rfi_targets.len(), 5, "no-rake RFI targets for all non-BB 6max positions");
+    assert_eq!(nr.rfi_targets["UTG"].target, 0.185);
+    assert_eq!(nr.rfi_targets["MP"].target, 0.234);
+    assert_eq!(nr.rfi_targets["CO"].target, 0.317);
+    assert_eq!(nr.rfi_targets["BTN"].target, 0.489);
+    // SB is raise-or-fold: raise 28.4 + 0.5 x limp 26.4 = 41.6 (the v1
+    // reconciliation rule applied to the cEV limp-inclusive totals).
+    assert_eq!(nr.rfi_targets["SB"].target, 0.416);
+    for t in nr.rfi_targets.values() {
+        assert_eq!(t.kind, "anchor");
+        assert!(t.band[0] < t.target && t.target < t.band[1], "target inside its band");
+    }
+    // Responses mirror the raked family's coverage: BB 5 + SB 4 + BTN 2.
+    let resp_count: usize = nr.response_targets.values().map(|m| m.len()).sum();
+    assert_eq!(resp_count, 11, "no-rake response targets mirror the raked 6max coverage");
+    // The headline no-rake finding: defense calls run far wider than the
+    // raked anchors (BB vs BTN call 45.6% vs the raked 30%).
+    let bb_btn = &nr.response_targets["BB"]["BTN"];
+    assert_eq!(bb_btn.three_bet, 0.096);
+    assert_eq!(bb_btn.call, 0.456);
+    assert_eq!(bb_btn.kind, "anchor");
+    let bb_utg = &nr.response_targets["BB"]["UTG"];
+    assert_eq!(bb_utg.three_bet, 0.039);
+    assert_eq!(bb_utg.call, 0.320);
+    let bb_sb = &nr.response_targets["BB"]["SB"];
+    assert_eq!(bb_sb.three_bet, 0.098);
+    assert_eq!(bb_sb.call, 0.748);
+    let sb_btn = &nr.response_targets["SB"]["BTN"];
+    assert_eq!(sb_btn.three_bet, 0.095);
+    assert_eq!(sb_btn.call, 0.100);
+    // Non-anchored entries stay honestly labelled.
+    assert_eq!(nr.response_targets["SB"]["CO"].kind, "interpolated");
+    assert_eq!(nr.response_targets["BTN"]["CO"].kind, "interpolated");
+    // Continuations: the v1.1 internal parameters against the no-rake sets.
+    let cont = nr.continuations.as_ref().expect("no-rake continuations present");
+    assert!((cont.continue_fraction_of_open - 0.5).abs() < 1e-12);
+    assert!((cont.call_fraction_of_continue - 0.82).abs() < 1e-12);
+    assert!((cont.four_bet_fraction_of_continue - 0.18).abs() < 1e-12);
+    let ids: Vec<String> = cont.matchups.iter().map(|m| cont.set_id(m)).collect();
+    assert_eq!(
+        ids,
+        vec![
+            "constructed-v1.2-6max-norake-btn-vs-bb-3bet".to_string(),
+            "constructed-v1.2-6max-norake-btn-vs-sb-3bet".to_string(),
+            "constructed-v1.2-6max-norake-co-vs-btn-3bet".to_string(),
+        ]
+    );
+    // The raked maps are untouched by the v1.2 config (same targets as v1).
+    let v1 = load_config();
+    assert_eq!(cfg.rfi_targets["6max"]["BTN"].target, v1.rfi_targets["6max"]["BTN"].target);
+    assert_eq!(
+        cfg.response_targets["6max"]["BB"]["BTN"].call,
+        v1.response_targets["6max"]["BB"]["BTN"].call
+    );
+}
+
+#[test]
+fn raked_ids_and_rake_field_stable_under_v12_config() {
+    let cfg = load_config_v12();
+    let test_cfg = small_samples(&cfg, 800, 400, 0, 0);
+    let classes = score_all_classes(&test_cfg);
+    // The raked wrapper entry points under the v1.2 config produce the
+    // exact v1 ids, now recording rake = "raked".
+    let doc = build_rfi_set(&test_cfg, &classes, "6max", "BTN").expect("raked BTN RFI");
+    assert_eq!(doc.id, "constructed-v1-6max-btn-rfi");
+    assert_eq!(doc.rake, RAKE_RAKED);
+    let parsed = JsonValue::parse(&doc.to_json(&test_cfg)).expect("emitted JSON parses");
+    assert_eq!(parsed.get("rake").and_then(|v| v.as_str()), Some("raked"));
+    assert_eq!(
+        parsed.get("provenance").and_then(|p| p.get("config_version")).and_then(|v| v.as_str()),
+        Some("ranges-config-v1.2")
+    );
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", doc.id, errors);
+    // A v1-config document (no norake section) validates the same way.
+    let v1_cfg = load_config();
+    assert!(v1_cfg.norake.is_none(), "v1 config has no no-rake family");
+}
+
+#[test]
+fn norake_sets_hit_targets_and_validate() {
+    let cfg = load_config_v12();
+    let test_cfg = small_samples(&cfg, 800, 400, 2000, 2000);
+    let classes = score_all_classes(&test_cfg);
+    let nr = test_cfg.norake.as_ref().expect("norake section");
+    let family = test_cfg.norake_family().expect("norake family");
+    // No-rake BTN RFI: id, rake field, anchor target, provenance source.
+    let btn_doc = build_rfi_set_styled(
+        &test_cfg,
+        &classes,
+        "6max",
+        "BTN",
+        &nr.rfi_targets["BTN"],
+        &family,
+    )
+    .expect("no-rake BTN RFI");
+    assert_eq!(btn_doc.id, "constructed-v1.2-6max-norake-btn-rfi");
+    assert_eq!(btn_doc.rake, RAKE_NO_RAKE);
+    assert!(
+        (btn_doc.achieved["raise"] - 0.489).abs() <= 0.005,
+        "no-rake BTN raise {} vs GTW anchor 0.489",
+        btn_doc.achieved["raise"]
+    );
+    let parsed = JsonValue::parse(&btn_doc.to_json(&test_cfg)).expect("emitted JSON parses");
+    assert_eq!(parsed.get("rake").and_then(|v| v.as_str()), Some("no-rake"));
+    let prov = parsed.get("provenance").expect("provenance block present");
+    let sources = prov.get("sources").and_then(|v| v.as_array()).expect("sources array");
+    assert_eq!(sources.len(), 1, "no-rake sets cite exactly the GTO Wizard source");
+    assert!(
+        sources[0].get("name").and_then(|v| v.as_str()).unwrap_or("").contains("GTO Wizard"),
+        "no-rake provenance must name the GTO Wizard cEV totals"
+    );
+    // The top-level source block mirrors the raked 6-max shape.
+    assert!(
+        parsed.get("source").and_then(|s| s.get("name")).and_then(|v| v.as_str()).unwrap_or("").contains("GTO Wizard"),
+        "no-rake sets carry the GTO Wizard top-level source block"
+    );
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", btn_doc.id, errors);
+    // No-rake BB vs BTN: the wide cEV defense (call 45.6%).
+    let ofreq = action_freqs(&btn_doc, &classes, "raise");
+    let pool = opener_pool(&classes, &ofreq);
+    let eq: Vec<f64> = classes
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            equity_vs_pool(
+                &c.class.representative,
+                &pool,
+                test_cfg.samples_vs_opener,
+                test_cfg.seed ^ (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15),
+            )
+        })
+        .collect();
+    let doc = build_response_set_styled(
+        &test_cfg,
+        &classes,
+        &eq,
+        "6max",
+        "BB",
+        "BTN",
+        &nr.response_targets["BB"]["BTN"],
+        &family,
+    )
+    .expect("no-rake BB vs BTN");
+    assert_eq!(doc.id, "constructed-v1.2-6max-norake-bb-vs-btn");
+    assert_eq!(doc.rake, RAKE_NO_RAKE);
+    assert!(
+        (doc.achieved["three_bet"] - 0.096).abs() <= 0.005,
+        "no-rake BB 3bet {} vs GTW anchor 0.096",
+        doc.achieved["three_bet"]
+    );
+    assert!(
+        (doc.achieved["call"] - 0.456).abs() <= 0.005,
+        "no-rake BB call {} vs GTW anchor 0.456",
+        doc.achieved["call"]
+    );
+    let parsed = JsonValue::parse(&doc.to_json(&test_cfg)).expect("emitted JSON parses");
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", doc.id, errors);
+    // Trash still folds; premium still 3-bets.
+    let trash = &doc.hands["9s 7h 3d 2c"];
+    assert_eq!(trash.get("fold").copied().unwrap_or(0.0), 1.0, "trash must fold vs BTN open");
+    // One no-rake continuation (BTN vs BB) against the internal targets.
+    let cont = nr.continuations.as_ref().expect("no-rake continuations");
+    let matchup = &cont.matchups[0];
+    assert_eq!(matchup.opener_rfi_set, btn_doc.id);
+    assert_eq!(matchup.three_bettor_set, doc.id);
+    let tb_freq = action_freqs(&doc, &classes, "three_bet");
+    let tb_pool = opener_pool(&classes, &tb_freq);
+    let eq_tb: Vec<f64> = classes
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            equity_vs_pool(
+                &c.class.representative,
+                &tb_pool,
+                cont.samples_vs_three_bettor,
+                test_cfg.seed ^ (i as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F),
+            )
+        })
+        .collect();
+    let cdoc = build_continuation_set_styled(
+        &test_cfg,
+        &classes,
+        &eq_tb,
+        &ofreq,
+        matchup,
+        cont,
+        &family,
+    )
+    .expect("no-rake continuation set");
+    assert_eq!(cdoc.id, "constructed-v1.2-6max-norake-btn-vs-bb-3bet");
+    assert_eq!(cdoc.rake, RAKE_NO_RAKE);
+    assert_eq!(cdoc.target_kind, "internal");
+    let want_call = cont.continue_fraction_of_open * cont.call_fraction_of_continue;
+    let want_fb = cont.continue_fraction_of_open * cont.four_bet_fraction_of_continue;
+    assert!(
+        (cdoc.achieved["call"] - want_call).abs() <= 0.005,
+        "{} call {} vs internal target {}",
+        cdoc.id,
+        cdoc.achieved["call"],
+        want_call
+    );
+    assert!(
+        (cdoc.achieved["four_bet"] - want_fb).abs() <= 0.005,
+        "{} four_bet {} vs internal target {}",
+        cdoc.id,
+        cdoc.achieved["four_bet"],
+        want_fb
+    );
+    let parsed = JsonValue::parse(&cdoc.to_json(&test_cfg)).expect("emitted JSON parses");
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", cdoc.id, errors);
+    // The config-level matchup lookup finds the no-rake continuation.
+    let (found_cont, found_m) = test_cfg
+        .continuation_matchup("constructed-v1.2-6max-norake-btn-vs-bb-3bet")
+        .expect("continuation_matchup must find no-rake matchups");
+    assert_eq!(found_m.three_bettor_set, doc.id);
+    assert_eq!(found_cont.id_prefix, "constructed-v1.2-6max-norake");
 }
