@@ -151,6 +151,86 @@ export function lineSteps(data: SolveData, node: SolveNode): string[] {
   return steps;
 }
 
+/**
+ * The node history a spot question was generated from, recovered from
+ * its itemKey (`{solveId}|{history}|{combo}` — solveId and hero combo
+ * are known fields, so the slice between them is unambiguous even
+ * though histories themselves contain '|' street separators). Falls
+ * back to 'root' if the key does not have the expected shape.
+ */
+export function nodeHistoryOf(q: SpotQuestion): string {
+  const prefix = `${q.solveId}|`;
+  const suffix = `|${q.heroCombo}`;
+  if (q.itemKey.startsWith(prefix) && q.itemKey.endsWith(suffix)) {
+    return q.itemKey.slice(prefix.length, q.itemKey.length - suffix.length);
+  }
+  return 'root';
+}
+
+export interface ExplorerStep {
+  nodeHistory: string;
+  label: string;
+  kind: 'root' | 'action' | 'runout';
+}
+
+/**
+ * Rebuild the Explorer path steps that lead to the node with the given
+ * history, by replaying the history against the tree exactly the way
+ * lineSteps does — each token is matched to a real action of the node
+ * it was taken at, so nothing is guessed. Returns null when any step
+ * cannot be resolved (the caller then opens the solve at its root).
+ */
+export function explorerPathFor(data: SolveData, targetHistory: string): ExplorerStep[] | null {
+  const rootStep: ExplorerStep = { nodeHistory: 'root', label: 'Start of hand', kind: 'root' };
+  if (targetHistory === 'root') return [rootStep];
+  if (!data.nodesByHistory.has(targetHistory)) return null;
+  const steps: ExplorerStep[] = [rootStep];
+  let current: SolveNode = data.root;
+  const segments = targetHistory.split('|');
+  for (const segment of segments) {
+    const tokens = segment.split('/').filter((t) => t.length > 0);
+    let start = 0;
+    const chance = /^([tr]):(.+)$/.exec(tokens[0] ?? '');
+    if (chance) {
+      const street = chance[1] === 't' ? 'Turn' : 'River';
+      const next = data.nodesByHistory.get(
+        current.history === 'root'
+          ? `root|${chance[1]}:${chance[2]}`
+          : `${current.history}|${chance[1]}:${chance[2]}`,
+      );
+      const resolved =
+        next ??
+        [...data.nodesByHistory.values()].find(
+          (n) =>
+            n.history.endsWith(`|${chance[1]}:${chance[2]}`) &&
+            (current.history === 'root' || n.history.startsWith(current.history)),
+        );
+      if (!resolved) return null;
+      steps.push({
+        nodeHistory: resolved.history,
+        label: `${street} card · ${chance[2]}`,
+        kind: 'runout',
+      });
+      current = resolved;
+      start = 1;
+    }
+    for (let i = start; i < tokens.length; i++) {
+      const token = tokens[i] ?? '';
+      const label = current.actions.find((a) => actionToken(a) === token);
+      if (!label) return null;
+      const child = data.nodesByHistory.get(childHistory(current, label));
+      if (!child) return null;
+      steps.push({
+        nodeHistory: child.history,
+        label: `${current.player} · ${tokenLabel(token)}`,
+        kind: 'action',
+      });
+      current = child;
+    }
+  }
+  return current.history === targetHistory ? steps : null;
+}
+
 // ---------- Spot questions -----------------------------------------------------
 
 export type GradingMode = 'ev' | 'frequency' | 'match';

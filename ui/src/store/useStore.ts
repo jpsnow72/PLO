@@ -56,6 +56,13 @@ interface AppState {
   dismissRunout: () => void;
   goToStep: (index: number) => void;
   resetPath: () => void;
+  /**
+   * Replace the navigation path wholesale (deep-linking into a loaded
+   * solve, e.g. the Quiz Trainer's "Open in Explorer"). Callers must
+   * build the steps from the loaded solve's own tree so every step's
+   * nodeHistory resolves; the first step must be the root step.
+   */
+  setPath: (steps: PathStep[]) => void;
 
   // Jobs submitted from the wizard this session.
   sessionJobs: JobRecord[];
@@ -196,6 +203,15 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   resetPath: () => set({ path: [ROOT_STEP], pendingRunout: null, terminalAction: null }),
+
+  setPath: (steps) => {
+    if (steps.length === 0 || steps[0]?.nodeHistory !== 'root') return;
+    const { solve } = get();
+    if (!solve) return;
+    // Refuse a path whose steps do not resolve in the loaded solve.
+    if (steps.some((s) => !solve.nodesByHistory.has(s.nodeHistory))) return;
+    set({ path: steps, pendingRunout: null, terminalAction: null });
+  },
 
   sessionJobs: [],
   upsertJob: (job) =>
