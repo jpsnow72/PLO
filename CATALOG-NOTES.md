@@ -147,8 +147,10 @@ The 50% size is the small turn size in the plan's menu. Deep-dive turn roots ret
 Size menus are stored as fractions of pot, matching the engine's existing spot format:
 
 - Flop: bet sizes `[0.33, 0.75]`, raise sizes `[1.0]`, all-in included
-- Turn: bet sizes `[0.5, 0.75]`, raise sizes `[1.0]`, all-in included
-- River: bet sizes `[0.75]`, raise sizes `[1.0]`, all-in included
+- Turn: bet sizes `[0.5, 1.0]`, raise sizes `[1.0]`, all-in included
+- River: bet sizes `[0.5, 1.0]`, raise sizes `[1.0]`, all-in included
+
+Menu change (2026-11-17, approved by Justin; gauged from GTO Wizard's solved trees): turn was `[0.5, 0.75]` and river was `[0.75]`; the flop menu is unchanged. The standard-line derivation sizes are unaffected — the flop line still bets 33% (the small flop size) and the deep-dive river line still bets 50% (still the small turn size) — so all catalog root states stand. The committed `data/library/spot-catalog.json` still carries the old turn/river menus until the catalog is regenerated with the updated generator; entries already solved keep their solve-time menus by design.
 
 A flop entry carries all three streets' menus. A turn entry carries turn and river. A river entry carries river only; earlier-street actions are recorded in `line`.
 
