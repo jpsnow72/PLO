@@ -14,6 +14,7 @@ pub mod cfr;
 pub mod flop;
 pub mod game;
 pub mod json;
+pub mod locks;
 pub mod parallel;
 pub mod turn;
 
@@ -35,6 +36,10 @@ pub use game::{
     compute_pot_limit_bounds, legal_bet_sizes, legal_raise_sizes, Action, DecisionNode, Node,
     NodeId, Player, PotLimitBounds, RiverGame, RiverSpot, SolveError, TerminalNode, TreeConfig,
     CHIP_EPS,
+};
+pub use locks::{
+    resolve_locks_flop, resolve_locks_river, resolve_locks_turn, validate_locks_flop,
+    validate_locks_river, validate_locks_turn, FlopLockPlan, NodeLock, LOCK_SUM_TOLERANCE,
 };
 pub use json::{
     format_flop_solve_result_json, format_multiway_equity_result_json, format_solve_result_json,

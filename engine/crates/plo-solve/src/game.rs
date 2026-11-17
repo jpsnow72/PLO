@@ -461,6 +461,11 @@ pub enum SolveError {
     EmptyUnblockedRange(Player),
     AllComboPairsBlocked,
     JsonError(String),
+    /// A nodelock (see [`crate::locks`]) failed validation against the game
+    /// tree: unknown node history, wrong player, wrong number of
+    /// frequencies, negative/non-finite frequencies, or frequencies not
+    /// summing to 1. No solve is started when this is returned.
+    InvalidLock(String),
 }
 
 impl fmt::Display for SolveError {
@@ -480,6 +485,7 @@ impl fmt::Display for SolveError {
                 write!(f, "all (OOP, IP) combo pairs collide with each other")
             }
             SolveError::JsonError(msg) => write!(f, "JSON error: {msg}"),
+            SolveError::InvalidLock(msg) => write!(f, "invalid node lock: {msg}"),
         }
     }
 }
