@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApproximationBadge } from '../components/AccuracyBadge';
+import { CardPicker } from '../components/CardPicker';
 import { pctText } from '../components/FrequencyBar';
+import { parseCardList, RANKS_DESC } from '../lib/cards';
 import {
   ApiError,
   fetchJob,
@@ -25,6 +27,7 @@ import {
 import {
   buildSpot,
   defaultWizardForm,
+  parseRangeText,
   TIER_LABEL,
   type AccuracyTier,
   type StreetSizes,
@@ -222,6 +225,13 @@ function RangeField({
   onSet: (id: string | null) => void;
 }) {
   const entry = setId ? (sets.find((s) => s.id === setId) ?? null) : null;
+  // Live parse of the manual text (including PPT "@percent" entries) so a
+  // bad entry is flagged inline the moment it is typed or pasted — never
+  // silently dropped, and not only discovered on submit.
+  const liveParse = useMemo(
+    () => (!setId && text.trim().length > 0 ? parseRangeText(text) : null),
+    [setId, text],
+  );
   return (
     <div className="mt-2 first:mt-0">
       <span className="text-xs text-ink-dim">{label}</span>
@@ -262,7 +272,22 @@ function RangeField({
             rows={3}
             className="mt-1 w-full rounded-md border border-navy-700 bg-navy-850 px-2 py-2 font-mono text-xs text-ink"
             placeholder={placeholder}
+            aria-invalid={liveParse !== null && liveParse.errors.length > 0}
           />
+          {liveParse && liveParse.errors.length > 0 ? (
+            <ul className="mt-1 flex flex-col gap-0.5 text-xs text-red-300" role="alert">
+              {liveParse.errors.slice(0, 3).map((err) => (
+                <li key={err}>{err}</li>
+              ))}
+              {liveParse.errors.length > 3 ? (
+                <li>…and {liveParse.errors.length - 3} more problem entries</li>
+              ) : null}
+            </ul>
+          ) : liveParse ? (
+            <p className="mt-1 text-xs text-ink-faint">
+              {liveParse.entries.length} combos parsed
+            </p>
+          ) : null}
           {sets.length > 0 ? (
             <label className="mt-1 block text-xs text-ink-faint">
               …or load from the preflop library
@@ -297,6 +322,120 @@ const BOARD_SHORTCUTS: { label: string; board: string }[] = [
   { label: 'Dry flop', board: 'As 7d 2c' },
 ];
 
+interface QuickSetup {
+  id: string;
+  title: string;
+  blurb: string;
+  patch: Partial<WizardForm>;
+}
+
+/**
+ * One-click spot templates. Set ids are the constructed preflop sets the
+ * API can expand into a custom solve (RFI raise ranges and vs-RFI call
+ * ranges — the only contexts the uncapped expansion loads).
+ *
+ * - Single-raised pot is exact: BB's call range vs a BTN open (OOP) and
+ *   BTN's raise-first-in range (IP).
+ * - 3-bet / 4-bet pots have no dedicated solve-compatible sets: the true
+ *   3-bet ranges live in the v1.1 vs_three_bet continuation sets, which
+ *   the API only expands through its capped path (not emitted by this
+ *   wizard). These cards load the closest solve-compatible constructed
+ *   sets — the opener's RFI range and the responder's vs-RFI range —
+ *   with the template's pot/stack geometry. See SHIP1-NOTES.md.
+ */
+const QUICK_SETUPS: QuickSetup[] = [
+  {
+    id: 'srp-btn-bb',
+    title: 'Single-raised pot',
+    blurb: 'BTN vs BB · pot 7.5 · stacks 100',
+    patch: {
+      oopRangeSet: 'constructed-v1-6max-bb-vs-btn',
+      ipRangeSet: 'constructed-v1-6max-btn-rfi',
+      pot: 7.5,
+      stacks: 100,
+    },
+  },
+  {
+    id: '3bet-co-btn',
+    title: '3-bet pot',
+    blurb: 'CO vs BTN · pot 22 · stacks 100',
+    patch: {
+      oopRangeSet: 'constructed-v1-6max-co-rfi',
+      ipRangeSet: 'constructed-v1-6max-btn-vs-co',
+      pot: 22,
+      stacks: 100,
+    },
+  },
+  {
+    id: '4bet-btn-bb',
+    title: '4-bet pot',
+    blurb: 'BTN vs BB · pot 48 · stacks 100',
+    patch: {
+      oopRangeSet: 'constructed-v1-6max-bb-vs-btn',
+      ipRangeSet: 'constructed-v1-6max-btn-rfi',
+      pot: 48,
+      stacks: 100,
+    },
+  },
+];
+
+function QuickSetupCards({
+  form,
+  onApply,
+}: {
+  form: WizardForm;
+  onApply: (patch: Partial<WizardForm>) => void;
+}) {
+  const isActive = (s: QuickSetup) =>
+    form.oopRangeSet === s.patch.oopRangeSet &&
+    form.ipRangeSet === s.patch.ipRangeSet &&
+    form.pot === s.patch.pot &&
+    form.stacks === s.patch.stacks;
+  const customActive = form.oopRangeSet === null && form.ipRangeSet === null;
+  const cardClass = (active: boolean) =>
+    `rounded-lg border p-3 text-left shadow-panel transition-colors ${
+      active
+        ? 'border-table bg-navy-800 ring-1 ring-table'
+        : 'border-navy-700 bg-navy-900 hover:border-navy-600 hover:bg-navy-800'
+    }`;
+  return (
+    <section aria-label="Quick setups">
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+        Quick setup
+      </h2>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {QUICK_SETUPS.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => onApply(s.patch)}
+            aria-pressed={isActive(s)}
+            className={cardClass(isActive(s))}
+          >
+            <span className="block text-sm font-semibold text-ink">{s.title}</span>
+            <span className="mt-0.5 block text-xs text-ink-dim">{s.blurb}</span>
+            <span className="mt-1 block text-[11px] text-ink-faint">
+              Loads constructed preflop sets for both ranges.
+            </span>
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => onApply({ oopRangeSet: null, ipRangeSet: null, pot: 100, stacks: 100 })}
+          aria-pressed={customActive}
+          className={cardClass(customActive)}
+        >
+          <span className="block text-sm font-semibold text-ink">Heads-up custom</span>
+          <span className="mt-0.5 block text-xs text-ink-dim">Manual ranges · pot 100 · stacks 100</span>
+          <span className="mt-1 block text-[11px] text-ink-faint">
+            Clears both sides back to manual range entry.
+          </span>
+        </button>
+      </div>
+    </section>
+  );
+}
+
 const RANGE_PRESETS: { label: string; oop: string; ip: string }[] = [
   {
     label: 'Engine sample ranges',
@@ -327,6 +466,8 @@ export function SolverPage() {
   const [offline, setOffline] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
+  const [boardPickerOpen, setBoardPickerOpen] = useState(false);
+  const [boardPick, setBoardPick] = useState<string[]>([]);
 
   const activeJob = sessionJobs.find((j) => j.id === activeJobId) ?? null;
 
@@ -465,25 +606,75 @@ export function SolverPage() {
         </div>
       ) : null}
 
+      <QuickSetupCards form={form} onApply={patch} />
+
       <form onSubmit={(e) => void onSubmit(e)} className="flex flex-col gap-4">
         <div className="grid gap-4 lg:grid-cols-2">
           <fieldset className="rounded-lg border border-navy-700 bg-navy-900 p-3">
             <legend className="px-1 text-sm font-semibold text-ink">Board</legend>
-            <input
-              type="text"
-              value={form.board}
-              onChange={(e) => patch({ board: e.target.value })}
-              className="w-full rounded-md border border-navy-700 bg-navy-850 px-2 py-2 font-mono text-sm text-ink"
-              aria-label="Board cards"
-              placeholder="As Ks Qs 7d 2c"
-            />
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={form.board}
+                onChange={(e) => patch({ board: e.target.value })}
+                className="w-full rounded-md border border-navy-700 bg-navy-850 px-2 py-2 font-mono text-sm text-ink"
+                aria-label="Board cards"
+                placeholder="As Ks Qs 7d 2c"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setBoardPick((parseCardList(form.board) ?? []).map((c) => c.label));
+                  setBoardPickerOpen(true);
+                }}
+                className="shrink-0 rounded-md bg-navy-800 px-3 py-2 text-sm font-semibold text-ink-dim hover:text-ink"
+              >
+                Pick cards
+              </button>
+            </div>
+            {/* Street chips: the street follows the board (3/4/5 cards). */}
+            <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Street">
+              {(['Flop', 'Turn', 'River'] as const).map((streetName, i) => {
+                const cards = parseCardList(form.board);
+                const activeStreet = cards
+                  ? cards.length === 3
+                    ? 'Flop'
+                    : cards.length === 4
+                      ? 'Turn'
+                      : cards.length === 5
+                        ? 'River'
+                        : null
+                  : null;
+                const isActive = activeStreet === streetName;
+                return (
+                  <span
+                    key={streetName}
+                    className={`rounded-full px-2.5 py-1 text-xs ${
+                      isActive
+                        ? 'bg-navy-800 font-semibold text-ink ring-1 ring-table'
+                        : 'text-ink-faint ring-1 ring-navy-700'
+                    }`}
+                    aria-current={isActive ? 'true' : undefined}
+                    title={`${3 + i} cards`}
+                  >
+                    {streetName}
+                  </span>
+                );
+              })}
+              <span className="text-[11px] text-ink-faint">Street follows the board — 3, 4 or 5 cards.</span>
+            </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {BOARD_SHORTCUTS.map((s) => (
                 <button
                   key={s.label}
                   type="button"
                   onClick={() => patch({ board: s.board })}
-                  className="rounded-full bg-navy-800 px-2 py-1 text-xs text-ink-dim hover:text-ink"
+                  aria-pressed={form.board === s.board}
+                  className={`rounded-full px-2 py-1 text-xs ${
+                    form.board === s.board
+                      ? 'bg-navy-800 font-semibold text-ink ring-1 ring-accent'
+                      : 'bg-navy-800 text-ink-dim hover:text-ink'
+                  }`}
                 >
                   {s.label}
                 </button>
@@ -595,9 +786,11 @@ export function SolverPage() {
             />
             <p className="mt-1 text-xs text-ink-faint">
               Manual ranges: one combo per entry, comma or newline separated; add{' '}
-              <span className="font-mono">:weight</span> to weight a combo (default 1). Library
-              sets are constructed preflop ranges — RFI sets load their raise range, vs-RFI sets
-              load their call range.
+              <span className="font-mono">:weight</span> to weight a combo (default 1), or paste
+              PPT format — <span className="font-mono">AsKsQsTh@100, AsKsQsJh@52</span> — where @
+              is a weight percent. Bad entries are flagged inline under the field, never silently
+              dropped. Library sets are constructed preflop ranges — RFI sets load their raise
+              range, vs-RFI sets load their call range.
             </p>
           </fieldset>
         </div>
@@ -701,6 +894,39 @@ export function SolverPage() {
             ))}
           </ul>
         </section>
+      ) : null}
+
+      {boardPickerOpen ? (
+        <CardPicker
+          title="Pick the board"
+          caption="Choose 3 cards (flop), 4 (turn) or 5 (river). Click a chosen card again to remove it."
+          selected={boardPick}
+          onPick={(label) =>
+            setBoardPick((prev) =>
+              prev.includes(label)
+                ? prev.filter((c) => c !== label)
+                : prev.length < 5
+                  ? [...prev, label]
+                  : prev,
+            )
+          }
+          onClear={() => setBoardPick([])}
+          onRandom={() => {
+            const deck: string[] = [];
+            for (const suit of ['s', 'h', 'd', 'c'] as const) {
+              for (const rank of RANKS_DESC) deck.push(`${rank}${suit}`);
+            }
+            const shuffled = [...deck].sort(() => Math.random() - 0.5);
+            setBoardPick(shuffled.slice(0, 5));
+          }}
+          applyLabel={`Use this board (${boardPick.length} cards)`}
+          applyDisabled={boardPick.length < 3 || boardPick.length > 5}
+          onApply={() => {
+            patch({ board: boardPick.join(' ') });
+            setBoardPickerOpen(false);
+          }}
+          onClose={() => setBoardPickerOpen(false)}
+        />
       ) : null}
     </div>
   );

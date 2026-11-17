@@ -21,7 +21,7 @@
 import { RANK_ORDER, type Suit } from './cards';
 
 export type TableSize = '6max' | '9max';
-export type SetContext = 'rfi' | 'vs_rfi' | 'three_bet' | 'sb_play';
+export type SetContext = 'rfi' | 'vs_rfi' | 'three_bet' | 'sb_play' | 'vs_three_bet';
 
 export interface PreflopSource {
   name: string;
@@ -127,7 +127,11 @@ function isSource(v: unknown): v is PreflopSource {
 }
 
 const TABLE_SIZES: readonly string[] = ['6max', '9max'];
-const CONTEXTS: readonly string[] = ['rfi', 'vs_rfi', 'three_bet', 'sb_play'];
+// 'vs_three_bet' is the v1.1 continuation sets' context in the served
+// index/documents. It must be a recognised context or the shape guards
+// reject the whole index; it stays non-solve-compatible below (the
+// uncapped API expansion only loads rfi/vs_rfi sets into custom solves).
+const CONTEXTS: readonly string[] = ['rfi', 'vs_rfi', 'three_bet', 'sb_play', 'vs_three_bet'];
 
 export function isPreflopIndex(v: unknown): v is PreflopIndex {
   if (!isRecord(v) || !Array.isArray(v.rangesets)) return false;
@@ -309,7 +313,10 @@ export function combosInAction(
 /**
  * The action whose frequencies define the continuing range when a set is
  * loaded into a solve (mirrors the API rule): RFI sets -> raise, vs-RFI
- * sets -> call. Null for contexts the API rejects (sb_play, three_bet).
+ * sets -> call. Null for contexts the API's uncapped solve expansion
+ * rejects (sb_play, three_bet, vs_three_bet — the v1.1 continuations
+ * need the capped expansion path with an explicit base set, which the
+ * wizard does not emit).
  */
 export function solveActionForContext(context: SetContext): string | null {
   if (context === 'rfi') return 'raise';
@@ -345,6 +352,8 @@ export function setLabel(
       return `${entry.table_size} · ${entry.position} vs ${opener ?? '?'} open`;
     case 'three_bet':
       return `${entry.table_size} · ${entry.position} vs 3-bet`;
+    case 'vs_three_bet':
+      return `${entry.table_size} · ${entry.position} vs 3-bet (continue)`;
     default:
       return `${entry.table_size} · ${entry.position}`;
   }

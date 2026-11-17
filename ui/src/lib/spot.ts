@@ -87,10 +87,23 @@ export interface RangeEntry {
   weight: number;
 }
 
+/** "AsKsQsTh" -> "As Ks Qs Th" (only for a bare 8-char compact combo). */
+function compactToSpaced(text: string): string {
+  if (!text.includes(' ') && text.length === 8) {
+    return (text.match(/.{2}/g) ?? []).join(' ');
+  }
+  return text;
+}
+
 /**
- * Parse a range textarea: combos separated by commas and/or newlines,
- * each "Ts 9s 3c 4c" with optional ":weight" suffix.
- * Returns entries or a list of human-readable errors.
+ * Parse a range textarea: combos separated by commas and/or newlines.
+ * Three entry shapes are accepted, freely mixed:
+ *   - "Ts 9s 3c 4c" with optional ":weight" suffix (weight is a plain
+ *     number, e.g. ":0.5");
+ *   - PPT format "AsKsQsTh@100" — a compact (or spaced) combo plus "@"
+ *     and a weight PERCENT in [0, 100], converted to weight/100.
+ * Every malformed entry produces a human-readable error — entries are
+ * never silently dropped. Returns entries plus the error list.
  */
 export function parseRangeText(text: string): { entries: RangeEntry[]; errors: string[] } {
   const entries: RangeEntry[] = [];
@@ -102,6 +115,22 @@ export function parseRangeText(text: string): { entries: RangeEntry[]; errors: s
   // A combo itself contains spaces, so splitting on commas/newlines only is
   // correct; a bare newline-separated list of card tokens is NOT supported.
   for (const part of parts) {
+    // PPT format: "<combo>@<percent>".
+    const at = part.lastIndexOf('@');
+    if (at >= 0) {
+      const pct = Number(part.slice(at + 1));
+      if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+        errors.push(`Bad PPT weight in "${part}" (@ must be a percent 0-100)`);
+        continue;
+      }
+      const cards = parseCombo(compactToSpaced(part.slice(0, at).trim()));
+      if (!cards) {
+        errors.push(`Not a valid 4-card combo: "${part}"`);
+        continue;
+      }
+      entries.push({ combo: cards.map((c) => c.label).join(' '), weight: pct / 100 });
+      continue;
+    }
     const colon = part.lastIndexOf(':');
     let comboText = part;
     let weight = 1;
