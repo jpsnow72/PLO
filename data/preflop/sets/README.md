@@ -12,7 +12,14 @@ file per set, named by the set's `id`:
   continuation sets (`vs_three_bet` context: fold / call / four_bet), the
   opener's range after facing a 3-bet; internal construction targets, see
   `RANGES-V11-NOTES.md` at the repository root
+- `constructed-v1.2-6max-norake-<position>-rfi.json`,
+  `constructed-v1.2-6max-norake-<responder>-vs-<opener>.json` and
+  `constructed-v1.2-6max-norake-<continuer>-vs-<three-bettor>-3bet.json` —
+  the v1.2 NO-RAKE 6-max family (same three shapes; every document
+  records `rake: "no-rake"` and cites the GTO Wizard cEV totals as its
+  cross-check source; the raked files above record `rake: "raked"`)
 
-Do not hand-edit these files: change `../ranges-config-v1.json` and
-regenerate. See `RANGES-NOTES.md` at the repository root and
+Do not hand-edit these files: change `../ranges-config-v1.2.json` (the
+canonical config; `../ranges-config-v1.json` is the historical raked-only
+config) and regenerate. See `RANGES-NOTES.md` at the repository root and
 `../README.md` for the constructed-sets rules.
