@@ -11,6 +11,7 @@ import { QuizPage } from './pages/Quiz';
 import { RunnerPage } from './pages/Runner';
 import { SolverPage } from './pages/Solver';
 import { SpotPickerPage } from './pages/SpotPicker';
+import { StartingHandsPage } from './pages/StartingHands';
 import { SettingsPage } from './pages/Stubs';
 import { useStore } from './store/useStore';
 
@@ -22,6 +23,7 @@ const NAV: { to: string; label: string; end?: boolean }[] = [
   { to: '/preflop', label: 'Preflop' },
   { to: '/quick-review', label: 'Quick Review' },
   { to: '/quiz', label: 'Quiz' },
+  { to: '/starting-hands', label: 'Starting Hands' },
   { to: '/heuristics', label: 'Heuristics' },
   { to: '/settings', label: 'Settings' },
 ];
@@ -108,6 +110,7 @@ export function App() {
             <Route path="/explorer" element={<ExplorerPage />} />
             <Route path="/solver" element={<SolverPage />} />
             <Route path="/preflop" element={<PreflopPage />} />
+            <Route path="/starting-hands" element={<StartingHandsPage />} />
             <Route path="/quick-review" element={<QuickReviewPage />} />
             <Route path="/quiz" element={<QuizPage />} />
             <Route path="/heuristics" element={<HeuristicsPage />} />

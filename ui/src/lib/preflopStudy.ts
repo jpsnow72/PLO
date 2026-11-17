@@ -63,11 +63,14 @@ function variantFromText(text: string): RakeVariant | null {
 /**
  * The rake variant of a set. Preference order: an explicit `rake`
  * field on the index entry (the data layer's field, read defensively
- * — lib/preflop.ts does not declare it yet), then a `rake` field on
- * the set document, then the document's free-text `rake_note`. The v1
- * documents state "no rake modelled in construction", so until the
- * data carries an explicit field they classify as no-rake — which is
- * what their construction actually assumed.
+ * — lib/preflop.ts does not declare it yet), then the set id itself
+ * (generated ids embed the variant, e.g. "…-6max-norake-…"), then a
+ * `rake` field on the set document, then the document's free-text
+ * `rake_note`. The v1 documents state "no rake modelled in
+ * construction", so once a v1 document is loaded it classifies as
+ * no-rake — which is what its construction actually assumed. At index
+ * level (no document loaded) a v1 set honestly reports "unknown":
+ * the index carries no rake information for it.
  */
 export function variantOfSet(
   entry: PreflopSetIndexEntry,
@@ -78,6 +81,8 @@ export function variantOfSet(
     const v = variantFromText(entryRake);
     if (v) return v;
   }
+  const fromId = variantFromText(entry.id);
+  if (fromId) return fromId;
   if (doc) {
     const docRake = (doc as unknown as Record<string, unknown>).rake;
     if (typeof docRake === 'string') {
