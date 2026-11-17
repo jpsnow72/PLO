@@ -74,6 +74,21 @@ Configuration (environment variables):
 **[admin]** = requires an admin session when auth is enabled (`401` JSON
 otherwise). All GET endpoints stay public.
 
+### Nodelocked solves
+
+A `POST /api/solves` body may carry `locks`: an array of
+`{ history, player, frequencies }` specs naming decision nodes (by the
+history keys used in solve output) whose strategy the engine holds fixed
+while re-solving the rest of the tree. The server shape-validates the
+field (`400` on malformed specs, including frequencies not summing to 1)
+and forwards it verbatim in the engine spot; the engine validates the
+semantics against the built tree (unknown node, wrong player, wrong
+vector length) and a failure ends the job in `error`. The job record and
+library meta carry `locked: true` for such solves, and the result JSON
+carries `"locked": true` plus the lock list. A locked solve is not an
+equilibrium — its `exploitability` is the locked profile's true
+best-response price — and surfaces must badge it LOCKED, never CERTIFIED.
+
 ### Loading a preflop range set into a solve
 
 A `POST /api/solves` body may carry `oop_range_set` and/or `ip_range_set`

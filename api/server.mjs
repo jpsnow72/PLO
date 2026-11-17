@@ -42,6 +42,15 @@
 // `*_range_seed` / `*_range_action` / `*_range_base_set` fields switch a
 // side to the capped expansion (top/sample, optional product base).
 //
+// A submission may also carry `locks` (nodelocking): an array of
+// { history, player, frequencies } specs the engine holds fixed during
+// the solve. The field is shape-validated here (400 on malformed specs)
+// and forwarded verbatim in the engine spot; semantic validation (node
+// exists, player to act, vector length) is the engine's, and a failure
+// there ends the job in `error` with the engine's message. Jobs and
+// library entries for locked solves record `locked: true` — a locked
+// solve is NOT an equilibrium and must be badged LOCKED, never CERTIFIED.
+//
 // LOCAL RUNNER (RUN-1): with QUEUE_ENABLED=1 the server also works the
 // persistent catalog queue (DATA_DIR/queue.json): queued spots are
 // translated to engine spots, solved through the same job path, and
@@ -194,6 +203,7 @@ async function submitJob(spot, meta = {}) {
     ip_range_set: meta.ip_range_set ?? null,
     spot_id: meta.spot_id ?? null,
     range_expansion: meta.range_expansion ?? null,
+    locked: Array.isArray(spot.locks) && spot.locks.length > 0,
     created_at: nowIso(),
     finished_at: null,
     nash_distance_pct: null,
@@ -221,6 +231,48 @@ function kindForBoard(board) {
   if (n === 5) return 'river';
   if (n === 4) return 'turn';
   if (n === 3) return 'flop';
+  return null;
+}
+
+/**
+ * Shape-checks a submission's optional `locks` array (nodelocking).
+ * Returns an error message string, or null when the field is well-formed.
+ * This is deliberately shape-only: whether the named node exists, whether
+ * the player acts there, and whether the vector length matches the node's
+ * action menu are semantic checks the engine performs against the built
+ * tree (a failure there ends the job in `error`). The sum-to-1 rule is
+ * checked here too because it needs no tree.
+ */
+function locksFieldError(locks) {
+  if (!Array.isArray(locks)) return '"locks" must be an array of lock objects.';
+  if (locks.length > 64) return '"locks" may name at most 64 nodes.';
+  for (let i = 0; i < locks.length; i += 1) {
+    const entry = locks[i];
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      return `locks[${i}] must be an object { history, player, frequencies }.`;
+    }
+    const history = entry.history ?? entry.node;
+    if (typeof history !== 'string' || history.length === 0) {
+      return `locks[${i}] must carry a non-empty "history" string.`;
+    }
+    if (typeof entry.player !== 'string' || !/^(oop|ip)$/i.test(entry.player)) {
+      return `locks[${i}].player must be "OOP" or "IP".`;
+    }
+    const freqs = entry.frequencies;
+    if (!Array.isArray(freqs) || freqs.length === 0 || freqs.length > 64) {
+      return `locks[${i}].frequencies must be an array of 1..64 numbers.`;
+    }
+    let sum = 0;
+    for (const f of freqs) {
+      if (typeof f !== 'number' || !Number.isFinite(f) || f < 0) {
+        return `locks[${i}].frequencies must be finite numbers >= 0.`;
+      }
+      sum += f;
+    }
+    if (Math.abs(sum - 1) > 1e-6) {
+      return `locks[${i}].frequencies must sum to 1 (got ${sum}).`;
+    }
+  }
   return null;
 }
 
@@ -302,6 +354,7 @@ async function runJob(job, spot) {
           ip_range_set: job.ip_range_set ?? null,
           spot_id: job.spot_id ?? null,
           range_expansion: job.range_expansion ?? null,
+          locked: job.locked ?? false,
           nash_distance_pct: job.nash_distance_pct,
           iterations: job.iterations,
           finished_at: job.finished_at,
@@ -1528,6 +1581,16 @@ const server = http.createServer(async (req, res) => {
       if (kind === null) {
         sendJson(req, res, 400, { error: 'Spot board must have 3, 4 or 5 cards.' });
         return;
+      }
+      // Optional nodelocks: shape-validate here (400s); the engine
+      // validates semantics against the built tree and its failure ends
+      // the job in `error`. The field itself is forwarded verbatim.
+      if (spot.locks !== undefined && spot.locks !== null) {
+        const locksError = locksFieldError(spot.locks);
+        if (locksError !== null) {
+          sendJson(req, res, 400, { error: locksError });
+          return;
+        }
       }
       // Optional range-set loading: `oop_range_set` / `ip_range_set` name a
       // preflop set id and replace the raw range array for that side. The
