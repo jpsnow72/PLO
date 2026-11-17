@@ -490,3 +490,26 @@ fn flop_json_roundtrip_namespaces_subtree_histories() {
     assert!(saw_turn_root, "output must contain turn subtree roots");
     assert!(saw_river_node, "output must contain river subtree nodes");
 }
+
+#[test]
+fn flop_json_per_street_default_menus() {
+    // No size fields at all: each street falls back to its own default
+    // menu (2026-11-17: flop [0.33, 0.75], turn [0.5, 1.0],
+    // river [0.5, 1.0]).
+    let bare_json = r#"{
+        "board": "9c 8d 3h",
+        "oop_range": ["As Ah Kd Qc:1.0"],
+        "ip_range": ["Ks Kh Qd Jc:1.0"],
+        "pot": 100.0,
+        "stacks": 150.0
+    }"#;
+    let (spot, _) = parse_flop_spot_json(bare_json).unwrap();
+    assert_eq!(spot.flop_config.bet_sizes, vec![0.33, 0.75]);
+    assert_eq!(spot.turn_config.bet_sizes, vec![0.5, 1.0]);
+    assert_eq!(spot.river_config.bet_sizes, vec![0.5, 1.0]);
+    assert_eq!(spot.flop_config.raise_sizes, vec![1.0]);
+    assert_eq!(spot.flop_config.max_raises, 2);
+    assert!(spot.flop_config.include_all_in_bet);
+    assert!(spot.turn_config.include_all_in_bet);
+    assert!(spot.river_config.include_all_in_bet);
+}
