@@ -712,3 +712,64 @@ fn norake_sets_hit_targets_and_validate() {
     assert_eq!(found_m.three_bettor_set, doc.id);
     assert_eq!(found_cont.id_prefix, "constructed-v1.2-6max-norake");
 }
+
+#[test]
+fn v12_raked_family_cites_gtw_raked_anchors_informational_only() {
+    let cfg = load_config_v12();
+    // The third cross-check source exists only in the v1.2 config.
+    let v1 = RangesConfig::from_json_text(
+        &std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../data/preflop/ranges-config-v1.json"
+        ))
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(v1.cross_check_source_3.is_none());
+    let s3 = cfg
+        .cross_check_source_3
+        .as_ref()
+        .expect("v1.2 config carries the GTW raked source");
+    assert!(s3.name.contains("PLO100"), "source 3 names the raked set");
+    assert_eq!(s3.retrieved, "2026-11-17");
+
+    // Anchors parse exactly (GTO Wizard PLO100 totals, 2026-11-17).
+    assert_eq!(cfg.gtw_raked_rfi.get("BTN"), Some(&0.426));
+    assert_eq!(cfg.gtw_raked_rfi.get("UTG"), Some(&0.173));
+    assert_eq!(cfg.gtw_raked_defense["BB"]["BTN"].three_bet, 0.101);
+    assert_eq!(cfg.gtw_raked_defense["BB"]["BTN"].call, 0.322);
+    assert_eq!(cfg.gtw_raked_defense["BB"]["SB"].call, 0.624);
+    assert_eq!(cfg.gtw_raked_defense["SB"]["BTN"].call, 0.053);
+
+    // The anchors are informational: the raked construction targets are
+    // untouched — BTN RFI still targets 49% (the band that matches the
+    // no-rake anchor), the flagged v1.3 retarget candidate.
+    let btn = &cfg.rfi_targets["6max"]["BTN"];
+    assert!((btn.target - 0.49).abs() < 1e-9);
+    assert_eq!(btn.band, [0.48, 0.50]);
+
+    // Raked 6-max provenance cites all three sources; the top-level
+    // source stays PLO.com.
+    let samples = small_samples();
+    let hands: Vec<WeightedHand> = vec![
+        (parse_hand("AsAhKdQc").unwrap(), 1.0),
+        (parse_hand("7s6d5h4c").unwrap(), 0.5),
+    ];
+    let doc = build_rfi_set(
+        &cfg,
+        "6max",
+        "BTN",
+        &hands,
+        &samples,
+        &class_table(),
+        "deadbeef".to_string(),
+    );
+    let parsed = JsonValue::parse(&doc.to_json(&cfg)).expect("emitted JSON parses");
+    let sources = parsed["provenance"]["sources"].as_array().unwrap();
+    assert_eq!(sources.len(), 3, "PLO.com + Upswing + GTW raked");
+    assert!(parsed["provenance"]["source"]["name"]
+        .as_str()
+        .unwrap()
+        .contains("PLO.com"));
+    assert_eq!(validate_rangeset(&parsed), Vec::<String>::new());
+}
