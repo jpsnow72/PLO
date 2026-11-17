@@ -3,13 +3,14 @@ import { Link } from 'react-router-dom';
 import { AccuracyBadge, ApproximationBadge } from '../components/AccuracyBadge';
 import { ActionList } from '../components/ActionList';
 import { actionColor, prettyAction } from '../components/actionStyle';
+import { CardPicker } from '../components/CardPicker';
 import { CardRow } from '../components/CardChip';
 import { ExplainPanel } from '../components/ExplainPanel';
 import { HandDetail } from '../components/HandDetail';
 import { LinkToHeuristic } from '../components/LinkToHeuristic';
-import { PathBar } from '../components/PathBar';
+import { NodeStrip } from '../components/NodeStrip';
 import { RangeGrid } from '../components/RangeGrid';
-import { RunoutPicker } from '../components/RunoutPicker';
+import { StrategyTables } from '../components/StrategyTables';
 import { parseCard } from '../lib/cards';
 import { aggregateFrequencies, rangeEv } from '../lib/solveTree';
 import { currentNodeOf, useStore } from '../store/useStore';
@@ -20,6 +21,8 @@ function terminalMessage(actionLabel: string): string {
   if (actionLabel === 'Check') return 'Check — showdown. No further decisions on this line.';
   return 'No further decision nodes on this line in this solve (the hand is all-in or complete).';
 }
+
+type ExplorerView = 'strategy' | 'matrix';
 
 export function ExplorerPage() {
   const solve = useStore((s) => s.solve);
@@ -34,17 +37,24 @@ export function ExplorerPage() {
   const terminalAction = useStore((s) => s.terminalAction);
   const chooseAction = useStore((s) => s.chooseAction);
   const chooseRunout = useStore((s) => s.chooseRunout);
-  const dismissRunout = useStore((s) => s.dismissRunout);
   const goToStep = useStore((s) => s.goToStep);
   const resetPath = useStore((s) => s.resetPath);
 
   const node = currentNodeOf(solve, path);
   const [colorActionIdx, setColorActionIdx] = useState(0);
   const [selectedCombo, setSelectedCombo] = useState<string | null>(null);
+  const [view, setView] = useState<ExplorerView>('strategy');
+  const [pickerDismissed, setPickerDismissed] = useState(false);
 
   useEffect(() => {
     if (loadStatus === 'idle') void loadSample();
   }, [loadStatus, loadSample]);
+
+  // A fresh runout choice reopens the card picker (it may have been
+  // dismissed at the previous chance node).
+  useEffect(() => {
+    if (pendingRunout) setPickerDismissed(false);
+  }, [pendingRunout]);
 
   const aggregates = useMemo(
     () => (solve && node ? aggregateFrequencies(solve, node) : []),
@@ -92,6 +102,14 @@ export function ExplorerPage() {
   const riverCard = node.river_card ? parseCard(node.river_card) : null;
   const oopEv = rangeEv(solve, 'OOP');
   const ipEv = rangeEv(solve, 'IP');
+  const pendingStreet = pendingRunout?.[0]?.street ?? null;
+  const potOddsPct = node.to_call > 0 ? (node.to_call / (node.pot + node.to_call)) * 100 : null;
+
+  // Cards that can never be dealt at the pending chance node.
+  const pickerDeadCards = [
+    ...solve.boardCards.map((c) => c.label),
+    ...(pendingStreet === 'river' && node.turn_card ? [node.turn_card] : []),
+  ];
 
   return (
     <div className="flex flex-col gap-4">
@@ -116,16 +134,156 @@ export function ExplorerPage() {
         </div>
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)_340px]">
-        {/* Left: board + line */}
+      {/* Node strip: the line so far, one card per node */}
+      <NodeStrip
+        solve={solve}
+        path={path}
+        pendingStreet={pendingStreet}
+        onGoTo={goToStep}
+        onPendingClick={() => setPickerDismissed(false)}
+      />
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        {/* Centre: action chooser + strategy / matrix views */}
+        <section
+          aria-label="Actions at this node"
+          className="flex flex-col gap-3 rounded-lg border border-navy-700 bg-navy-900 p-3 shadow-panel"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-semibold text-ink">
+              {node.player} to act{' '}
+              <span className="font-normal text-ink-dim">— pick an action to follow the line</span>
+            </h2>
+            <button
+              type="button"
+              onClick={resetPath}
+              className="ml-auto rounded px-1.5 py-0.5 text-xs text-ink-dim hover:bg-navy-800 hover:text-ink"
+            >
+              Reset line
+            </button>
+          </div>
+
+          {terminalAction ? (
+            <p className="rounded-lg border border-navy-700 bg-navy-850 px-3 py-2.5 text-sm text-ink">
+              {terminalMessage(terminalAction)}{' '}
+              <span className="text-ink-dim">Use the node strip above to step back.</span>
+            </p>
+          ) : null}
+          {pendingRunout && pickerDismissed ? (
+            <p className="rounded-lg border border-accent/60 bg-navy-850 px-3 py-2.5 text-sm text-ink">
+              The street closed — a {pendingStreet} card comes next.{' '}
+              <button
+                type="button"
+                onClick={() => setPickerDismissed(false)}
+                className="font-semibold text-table-light underline"
+              >
+                Pick the {pendingStreet} card
+              </button>
+            </p>
+          ) : null}
+
+          <ActionList actions={node.actions} aggregates={aggregates} onChoose={chooseAction} />
+
+          {/* View tabs: Strategy tables / Matrix (range grid) */}
+          <div className="mt-1 flex gap-1.5 border-b border-navy-700" role="tablist" aria-label="Explorer views">
+            {(
+              [
+                { key: 'strategy', label: 'Strategy' },
+                { key: 'matrix', label: 'Matrix' },
+              ] as { key: ExplorerView; label: string }[]
+            ).map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={view === t.key}
+                onClick={() => setView(t.key)}
+                className={`rounded-t-md px-3 py-1.5 text-sm ${
+                  view === t.key
+                    ? 'bg-navy-800 font-semibold text-ink ring-1 ring-navy-700'
+                    : 'text-ink-dim hover:bg-navy-800 hover:text-ink'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {view === 'strategy' ? (
+            <StrategyTables
+              key={node.history}
+              data={solve}
+              node={node}
+              aggregates={aggregates}
+              selectedCombo={selectedCombo}
+              onSelectCombo={setSelectedCombo}
+            />
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-ink">{node.player} range</h3>
+                <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="Colour grid by action">
+                  {node.actions.map((label, i) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => setColorActionIdx(i)}
+                      aria-pressed={i === colorActionIdx}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs ${
+                        i === colorActionIdx
+                          ? 'bg-navy-800 font-semibold text-ink ring-1 ring-accent'
+                          : 'text-ink-dim hover:bg-navy-800 hover:text-ink'
+                      }`}
+                    >
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: actionColor(label) }}
+                        aria-hidden="true"
+                      />
+                      {prettyAction(label)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <RangeGrid
+                key={node.history}
+                data={solve}
+                node={node}
+                colorActionIdx={colorActionIdx}
+                selectedCombo={selectedCombo}
+                onSelectCombo={setSelectedCombo}
+              />
+            </div>
+          )}
+        </section>
+
+        {/* Right rail: node overview, accuracy, hand detail, study tools */}
         <div className="flex flex-col gap-4">
           <section
-            aria-label="Board"
+            aria-label="Node overview"
             className="rounded-lg border border-navy-700 bg-navy-900 p-3 shadow-panel"
           >
             <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
-              Board
+              Node overview
             </h2>
+            <div className="mb-3 flex flex-wrap gap-1.5" aria-label="Positions and stacks">
+              {(['OOP', 'IP'] as const).map((p) => (
+                <span
+                  key={p}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs ${
+                    node.player === p
+                      ? 'bg-navy-800 font-semibold text-ink ring-1 ring-table'
+                      : 'text-ink-dim ring-1 ring-navy-700'
+                  }`}
+                >
+                  {p}
+                  <span className="num font-mono text-ink-faint">
+                    stack {solve.raw.effective_stack}
+                  </span>
+                  {node.player === p ? <span className="text-table-light">· to act</span> : null}
+                </span>
+              ))}
+            </div>
             <div className="flex items-center gap-2">
               <CardRow cards={solve.boardCards} size="lg" />
               {turnCard ? (
@@ -150,133 +308,95 @@ export function ExplorerPage() {
               </div>
               <div className="rounded-md bg-navy-850 px-2 py-1.5">
                 <dt className="text-ink-faint">Pot</dt>
-                <dd className="font-mono text-sm text-ink">{node.pot.toFixed(1)}</dd>
+                <dd className="num font-mono text-sm text-ink">{node.pot.toFixed(1)}</dd>
               </div>
               <div className="rounded-md bg-navy-850 px-2 py-1.5">
                 <dt className="text-ink-faint">To call</dt>
-                <dd className="font-mono text-sm text-ink">{node.to_call.toFixed(1)}</dd>
+                <dd className="num font-mono text-sm text-ink">{node.to_call.toFixed(1)}</dd>
+              </div>
+              {potOddsPct !== null ? (
+                <div className="rounded-md bg-navy-850 px-2 py-1.5">
+                  <dt className="text-ink-faint">Pot odds</dt>
+                  <dd className="num font-mono text-sm text-ink">{potOddsPct.toFixed(1)}%</dd>
+                </div>
+              ) : null}
+              <div className="rounded-md bg-navy-850 px-2 py-1.5">
+                <dt className="text-ink-faint">Range EV (whole solve)</dt>
+                <dd className="num font-mono text-sm text-ink">
+                  OOP {oopEv.toFixed(2)} · IP {ipEv.toFixed(2)}
+                </dd>
               </div>
             </dl>
-          </section>
-
-          <section className="rounded-lg border border-navy-700 bg-navy-900 p-3 shadow-panel">
-            <PathBar path={path} onGoTo={goToStep} onReset={resetPath} />
-          </section>
-
-          <section className="rounded-lg border border-navy-700 bg-navy-900 p-3 text-xs text-ink-dim shadow-panel">
-            <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ink-faint">
-              Badges
-            </h2>
-            <p className="flex flex-col gap-1.5">
-              <span>
-                <AccuracyBadge nashPct={solve.raw.exploitability.nash_distance_pct} /> measured
-                against a best response — certified solver output.
-              </span>
-              <span>
-                <ApproximationBadge /> guidance only (multiway lens, V2) — never a measured solve.
-              </span>
+            <p className="mt-2 text-xs text-ink-faint">
+              Pot odds are the call amount over the pot after calling, from this node's own pot /
+              to-call figures. Range EV is the whole solve's weighted per-combo EV — the engine
+              reports EV per combo for the whole solve, not per action.
             </p>
+          </section>
+
+          <section
+            aria-label="Solve accuracy"
+            className="rounded-lg border border-navy-700 bg-navy-900 p-3 shadow-panel"
+          >
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+              Accuracy
+            </h2>
+            <AccuracyBadge nashPct={solve.raw.exploitability.nash_distance_pct} />
+            <p className="mt-2 text-xs text-ink-dim">
+              Measured against a best response by the engine's independent checker — certified
+              solver output, {solve.raw.iterations.toLocaleString()} iterations.
+            </p>
+            <p className="mt-2 flex items-center gap-2 text-xs text-ink-dim">
+              <ApproximationBadge /> guidance only (multiway lens, V2) — never a measured solve.
+            </p>
+          </section>
+
+          <section
+            aria-label="Hand detail"
+            className="rounded-lg border border-navy-700 bg-navy-900 p-3 shadow-panel"
+          >
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+              Hand detail
+            </h2>
+            <HandDetail data={solve} node={node} combo={selectedCombo} />
+          </section>
+
+          <section
+            aria-label="Study tools"
+            className="flex flex-col gap-4 rounded-lg border border-navy-700 bg-navy-900 p-3 shadow-panel"
+          >
+            <div>
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                Link to heuristic
+              </h2>
+              <LinkToHeuristic spotId={solveId} />
+            </div>
+            <div className="border-t border-navy-700 pt-3">
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                GTO Insight &amp; Rationale
+              </h2>
+              <ExplainPanel data={solve} node={node} combo={selectedCombo} />
+            </div>
           </section>
         </div>
-
-        {/* Centre: actions */}
-        <section
-          aria-label="Actions at this node"
-          className="flex flex-col gap-3 rounded-lg border border-navy-700 bg-navy-900 p-3 shadow-panel"
-        >
-          <h2 className="text-sm font-semibold text-ink">
-            {node.player} to act <span className="font-normal text-ink-dim">— pick an action to follow the line</span>
-          </h2>
-
-          {pendingRunout ? (
-            <RunoutPicker options={pendingRunout} onPick={chooseRunout} onDismiss={dismissRunout} />
-          ) : null}
-          {terminalAction ? (
-            <p className="rounded-lg border border-navy-700 bg-navy-850 px-3 py-2.5 text-sm text-ink">
-              {terminalMessage(terminalAction)}{' '}
-              <span className="text-ink-dim">Use the line on the left to step back.</span>
-            </p>
-          ) : null}
-
-          <ActionList actions={node.actions} aggregates={aggregates} onChoose={chooseAction} />
-
-          <div className="mt-auto rounded-lg bg-navy-850 px-3 py-2.5 text-xs text-ink-dim">
-            <h3 className="mb-1 font-semibold uppercase tracking-wide text-ink-faint">
-              Range EV (whole solve)
-            </h3>
-            <p className="font-mono text-sm text-ink">
-              OOP {oopEv.toFixed(2)} · IP {ipEv.toFixed(2)}
-            </p>
-            <p className="mt-1">
-              The engine reports EV per combo for the whole solve (see hand detail), not per
-              action — frequencies above are the strategy. Bars show how often this node's range
-              takes each action, weighted by combo weight.
-            </p>
-          </div>
-        </section>
-
-        {/* Right: range grid + hand detail */}
-        <section
-          aria-label="Range"
-          className="flex flex-col gap-3 rounded-lg border border-navy-700 bg-navy-900 p-3 shadow-panel"
-        >
-          <div>
-            <h2 className="text-sm font-semibold text-ink">{node.player} range</h2>
-            <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="Colour grid by action">
-              {node.actions.map((label, i) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => setColorActionIdx(i)}
-                  aria-pressed={i === colorActionIdx}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs ${
-                    i === colorActionIdx
-                      ? 'bg-navy-800 font-semibold text-ink ring-1 ring-accent'
-                      : 'text-ink-dim hover:bg-navy-800 hover:text-ink'
-                  }`}
-                >
-                  <span
-                    className="h-2 w-2 rounded-full"
-                    style={{ backgroundColor: actionColor(label) }}
-                    aria-hidden="true"
-                  />
-                  {prettyAction(label)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <RangeGrid
-            key={node.history}
-            data={solve}
-            node={node}
-            colorActionIdx={colorActionIdx}
-            selectedCombo={selectedCombo}
-            onSelectCombo={setSelectedCombo}
-          />
-
-          <div className="border-t border-navy-700 pt-3">
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
-              Hand detail
-            </h3>
-            <HandDetail data={solve} node={node} combo={selectedCombo} />
-          </div>
-
-          <div className="border-t border-navy-700 pt-3">
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
-              Link to heuristic
-            </h3>
-            <LinkToHeuristic spotId={solveId} />
-          </div>
-
-          <div className="border-t border-navy-700 pt-3">
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">
-              GTO Insight &amp; Rationale
-            </h3>
-            <ExplainPanel data={solve} node={node} combo={selectedCombo} />
-          </div>
-        </section>
       </div>
+
+      {/* Runout card picker (chance node) */}
+      {pendingRunout && !pickerDismissed ? (
+        <CardPicker
+          title={`Deal the ${pendingStreet ?? 'next'} card`}
+          caption="Only runouts present in this solve can be picked. Each was solved exactly — pick any card to keep walking the tree."
+          deadCards={pickerDeadCards}
+          enabledCards={pendingRunout.map((o) => o.card)}
+          onPick={chooseRunout}
+          onClear={() => setPickerDismissed(true)}
+          onRandom={() => {
+            const opt = pendingRunout[Math.floor(Math.random() * pendingRunout.length)];
+            if (opt) chooseRunout(opt.card);
+          }}
+          onClose={() => setPickerDismissed(true)}
+        />
+      ) : null}
 
       <p className="text-xs text-ink-faint">
         Exploring is fully client-side: every number comes from the loaded solve — no re-solving,

@@ -1,6 +1,6 @@
 import { SUIT_SYMBOL, type Card } from '../lib/cards';
 
-const SUIT_COLOR: Record<Card['suit'], string> = {
+export const SUIT_COLOR: Record<Card['suit'], string> = {
   s: 'var(--suit-spades)',
   h: 'var(--suit-hearts)',
   d: 'var(--suit-diamonds)',
