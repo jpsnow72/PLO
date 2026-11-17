@@ -303,7 +303,7 @@
    }
   }
  ],
- "description": "One preflop starting-range chart for one table size, position, decision context and stack depth, transcribed from a single licence-verified source. Hand keys are canonical representative combos (see README.md in this directory); values map actions to frequencies in [0, 1]. Importers must additionally enforce: card distinctness, non-increasing rank order, canonical suit labelling, per-context action sets, and per-hand frequencies summing to 1 (within rounding tolerance). Amendment 2026-11-07 (constructed ranges): a set built by build-ranges carries a 'provenance' block (method, tool, config version/hash, cross-check sources) instead of a single transcribed-chart 'source'; 'source' is then optional, and a provenance with an empty sources list must state its 'derivation'. The top-level 'source' rules are unchanged for transcribed charts. Amendment 2026-11-07 (v1.1 continuations): context 'vs_three_bet' (the opener's continuation after facing a three-bet: fold/call/four_bet) added for constructed continuation sets (method constructed-equity-v1.1). Their continuation targets are internal construction parameters - no published cross-check anchor exists - recorded in the set's provenance 'derivation' with an empty 'sources' list, never as externally validated values.",
+ "description": "One preflop starting-range chart for one table size, position, decision context and stack depth, transcribed from a single licence-verified source. Hand keys are canonical representative combos (see README.md in this directory); values map actions to frequencies in [0, 1]. Importers must additionally enforce: card distinctness, non-increasing rank order, canonical suit labelling, per-context action sets, and per-hand frequencies summing to 1 (within rounding tolerance). Amendment 2026-11-07 (constructed ranges): a set built by build-ranges carries a 'provenance' block (method, tool, config version/hash, cross-check sources) instead of a single transcribed-chart 'source'; 'source' is then optional, and a provenance with an empty sources list must state its 'derivation'. The top-level 'source' rules are unchanged for transcribed charts. Amendment 2026-11-07 (v1.1 continuations): context 'vs_three_bet' (the opener's continuation after facing a three-bet: fold/call/four_bet) added for constructed continuation sets (method constructed-equity-v1.1). Their continuation targets are internal construction parameters - no published cross-check anchor exists - recorded in the set's provenance 'derivation' with an empty 'sources' list, never as externally validated values. Amendment 2026-11-17 (v1.2 rake variants): optional top-level 'rake' field ('raked' | 'no-rake') recording which game's published totals a constructed set's targets describe - 'raked' sets are anchored on raked-game totals (PLO.com / Upswing), 'no-rake' sets on no-rake (cEV) totals (GTO Wizard). Construction models no rake in either variant (see 'rake_note'). Constructed sets must record 'rake'; transcribed and legacy documents predate the field and may omit it.",
  "properties": {
   "context": {
    "description": "rfi = first-in decision; vs_rfi = facing a single open raise (the three_bet action lives here); three_bet = facing a three-bet; sb_play = small-blind first-in/completion decisions; vs_three_bet = the opener's continuation decision after facing a three-bet (constructed v1.1 sets only).",
@@ -393,6 +393,14 @@
     "sources"
    ],
    "type": "object"
+  },
+  "rake": {
+   "description": "Rake variant the set's targets describe (constructed sets, 2026-11-17 v1.2 amendment): 'raked' = targets anchored on raked-game published totals; 'no-rake' = targets anchored on no-rake (cEV) published totals. Required on constructed sets; absent on transcribed/legacy documents.",
+   "enum": [
+    "raked",
+    "no-rake"
+   ],
+   "type": "string"
   },
   "rake_note": {
    "description": "Rake structure assumption stated by the source, or an explicit note that the source does not state one.",

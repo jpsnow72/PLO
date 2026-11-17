@@ -432,7 +432,7 @@ pub fn score_from_components(
 }
 
 // ---------------------------------------------------------------------------
-// Config (data/preflop/ranges-config-v1.json)
+// Config (data/preflop/ranges-config-v1.json; v1.2: ranges-config-v1.2.json)
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug)]
