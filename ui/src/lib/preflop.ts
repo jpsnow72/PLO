@@ -414,6 +414,165 @@ export function featureTags(cls: PreflopClass): string[] {
   return tags;
 }
 
+// --------------------------- matrix drill-down ---------------------------
+
+/** Rank labels in matrix order, high to low. */
+export const MATRIX_RANKS: string[] = [
+  'A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2',
+];
+
+/**
+ * Suitedness filters for the matrix drill-down. Each maps onto the
+ * class table's exact `features.suitedness` value ("four" = all four
+ * cards one suit = monotone; "three" = three of one suit = the
+ * "triple suited" shape). Filtering is only honest when the class
+ * table is loaded — callers must disable the chips without it.
+ */
+export type SuitednessFilter = 'any' | 'double' | 'single' | 'three' | 'four' | 'rainbow';
+
+export const SUITEDNESS_FILTERS: {
+  id: SuitednessFilter;
+  label: string;
+  /** features.suitedness value, or null for "no filtering". */
+  feature: string | null;
+}[] = [
+  { id: 'any', label: 'Any suits', feature: null },
+  { id: 'double', label: 'Double suited', feature: 'double' },
+  { id: 'single', label: 'Single suited', feature: 'single' },
+  { id: 'three', label: 'Triple suited', feature: 'three' },
+  { id: 'four', label: 'Monotone', feature: 'four' },
+  { id: 'rainbow', label: 'Rainbow', feature: 'rainbow' },
+];
+
+/** Rank values (14..2) of a canonical class key's four cards. */
+export function classRankValues(key: string): number[] {
+  return key
+    .split(' ')
+    .map((tok) => RANK_ORDER[tok[0] ?? ''] ?? 0)
+    .filter((v) => v > 0);
+}
+
+/** Does a class with these rank values belong to matrix cell (hi, lo)? */
+function ranksMatchCell(values: number[], hi: number, lo: number): boolean {
+  if (hi === lo) return values.filter((v) => v === hi).length >= 2;
+  return values.includes(hi) && values.includes(lo);
+}
+
+function passesSuitedness(
+  cls: PreflopClass | null,
+  filterFeature: string | null,
+): boolean {
+  if (filterFeature === null) return true;
+  return cls !== null && cls.features.suitedness === filterFeature;
+}
+
+export interface MatrixCell {
+  hi: number;
+  lo: number;
+  /** Concrete combos of classes touching this cell (after filtering). */
+  combos: number;
+  /** Combo-weighted frequency of the action within the cell (0..1). */
+  fraction: number;
+}
+
+/**
+ * Aggregate the 13x13 rank-pair matrix for one action. A class touches
+ * every cell whose two ranks both appear among its cards, plus the
+ * diagonal cell of any rank it holds two or more of — the same
+ * drill-down semantics as a rank-pair matrix in other study tools:
+ * cell (A,K) = every class containing at least one ace and one king.
+ * `filterFeature` is a features.suitedness value or null.
+ */
+export function matrixCells(
+  doc: PreflopSetDoc,
+  action: string,
+  tableByHand: Map<string, PreflopClass> | null,
+  filterFeature: string | null,
+): Map<string, MatrixCell> {
+  const acc = new Map<string, { combos: number; weighted: number }>();
+  const add = (hi: number, lo: number, mult: number, weighted: number) => {
+    const k = `${hi}-${lo}`;
+    const cur = acc.get(k) ?? { combos: 0, weighted: 0 };
+    cur.combos += mult;
+    cur.weighted += weighted;
+    acc.set(k, cur);
+  };
+  for (const [key, actions] of Object.entries(doc.hands)) {
+    const cls = tableByHand?.get(key) ?? null;
+    if (!passesSuitedness(cls, filterFeature)) continue;
+    const mult = multiplicityOf(key, tableByHand);
+    const weighted = mult * (actions[action] ?? 0);
+    const values = classRankValues(key);
+    const distinct = [...new Set(values)].sort((a, b) => b - a);
+    for (let i = 0; i < distinct.length; i += 1) {
+      for (let j = i + 1; j < distinct.length; j += 1) {
+        add(distinct[i] as number, distinct[j] as number, mult, weighted);
+      }
+    }
+    for (const v of distinct) {
+      if (values.filter((x) => x === v).length >= 2) add(v, v, mult, weighted);
+    }
+  }
+  const out = new Map<string, MatrixCell>();
+  for (const [k, v] of acc) {
+    const [hi = 0, lo = 0] = k.split('-').map(Number);
+    out.set(k, {
+      hi,
+      lo,
+      combos: v.combos,
+      fraction: v.combos > 0 ? v.weighted / v.combos : 0,
+    });
+  }
+  return out;
+}
+
+/** Total combos passing the suitedness filter (the matrix's denominator). */
+export function matrixFilteredTotal(
+  doc: PreflopSetDoc,
+  tableByHand: Map<string, PreflopClass> | null,
+  filterFeature: string | null,
+): number {
+  let total = 0;
+  for (const key of Object.keys(doc.hands)) {
+    const cls = tableByHand?.get(key) ?? null;
+    if (!passesSuitedness(cls, filterFeature)) continue;
+    total += multiplicityOf(key, tableByHand);
+  }
+  return total;
+}
+
+export interface MatrixClassRow {
+  key: string;
+  actions: HandActions;
+  cls: PreflopClass | null;
+  multiplicity: number;
+}
+
+/**
+ * The classes inside one matrix cell (after filtering), sorted by the
+ * action's frequency, strongest first — the drill-down table's rows.
+ */
+export function matrixClasses(
+  doc: PreflopSetDoc,
+  action: string,
+  tableByHand: Map<string, PreflopClass> | null,
+  hi: number,
+  lo: number,
+  filterFeature: string | null,
+): MatrixClassRow[] {
+  const rows: MatrixClassRow[] = [];
+  for (const [key, actions] of Object.entries(doc.hands)) {
+    const cls = tableByHand?.get(key) ?? null;
+    if (!passesSuitedness(cls, filterFeature)) continue;
+    if (!ranksMatchCell(classRankValues(key), hi, lo)) continue;
+    rows.push({ key, actions, cls, multiplicity: multiplicityOf(key, tableByHand) });
+  }
+  rows.sort(
+    (a, b) => (b.actions[action] ?? 0) - (a.actions[action] ?? 0) || a.key.localeCompare(b.key),
+  );
+  return rows;
+}
+
 // --------------------------- pair-rank summary ---------------------------
 
 export interface PairRankBucket {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ApproximationBadge } from '../components/AccuracyBadge';
 import { FrequencyBar, pctText } from '../components/FrequencyBar';
 import { ApiError, fetchPreflopClassTable, fetchPreflopIndex, fetchPreflopSet } from '../lib/api';
@@ -7,17 +7,24 @@ import {
   combosInAction,
   featureTags,
   isSolveCompatible,
+  MATRIX_RANKS,
+  matrixCells,
+  matrixClasses,
+  matrixFilteredTotal,
   multiplicityOf,
   pairRankSummary,
+  rankLabel,
   setLabel,
   setTotalCombos,
   solveActionForContext,
   sortPositions,
+  SUITEDNESS_FILTERS,
   type PreflopClass,
   type PreflopIndex,
   type PreflopSetDoc,
   type PreflopSetIndexEntry,
   type SetContext,
+  type SuitednessFilter,
   type TableSize,
 } from '../lib/preflop';
 import { useStore } from '../store/useStore';
@@ -57,6 +64,15 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 const ROW_CAP = 200;
+const MATRIX_ROW_CAP = 100;
+
+type RangeView = 'set' | 'matrix';
+
+function hexToRgba(hex: string, alpha: number): string {
+  const n = Number.parseInt(hex.slice(1), 16);
+  if (Number.isNaN(n)) return hex;
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
 
 type SortKey = 'frequency' | 'equity' | 'score' | 'hand';
 
@@ -112,6 +128,10 @@ export function PreflopPage() {
   const [action, setAction] = useState<string>('raise');
   const [sortKey, setSortKey] = useState<SortKey>('frequency');
   const [filter, setFilter] = useState('');
+
+  const [view, setView] = useState<RangeView>('set');
+  const [suitFilter, setSuitFilter] = useState<SuitednessFilter>('any');
+  const [selCell, setSelCell] = useState<{ hi: number; lo: number }>({ hi: 14, lo: 14 });
 
   // Load the index and the class table independently: the class table is
   // an enhancement (equities/features); the page works without it.
@@ -289,6 +309,40 @@ export function PreflopPage() {
     }
     return filtered;
   }, [setDoc, classByHand, filter, sortKey, action]);
+
+  // ----- Matrix drill-down -----
+  // Suitedness filtering reads the class table's exact features, so the
+  // chips are disabled (and the filter ignored) when the table is not
+  // loaded — the grid itself only needs ranks + multiplicities and
+  // always works from the set document.
+  const suitFiltersEnabled = classByHand !== null;
+  const suitFeature = useMemo(() => {
+    if (!suitFiltersEnabled) return null;
+    return SUITEDNESS_FILTERS.find((f) => f.id === suitFilter)?.feature ?? null;
+  }, [suitFiltersEnabled, suitFilter]);
+  const suitFilterLabel =
+    SUITEDNESS_FILTERS.find((f) => f.id === suitFilter)?.label ?? 'Any suits';
+
+  const cells = useMemo(
+    () => (setDoc ? matrixCells(setDoc, action, classByHand, suitFeature) : new Map()),
+    [setDoc, action, classByHand, suitFeature],
+  );
+  const matrixTotal = useMemo(
+    () => (setDoc ? matrixFilteredTotal(setDoc, classByHand, suitFeature) : 0),
+    [setDoc, classByHand, suitFeature],
+  );
+  const selCellData = cells.get(`${selCell.hi}-${selCell.lo}`);
+  const drillRows = useMemo(
+    () =>
+      setDoc
+        ? matrixClasses(setDoc, action, classByHand, selCell.hi, selCell.lo, suitFeature)
+        : [],
+    [setDoc, action, classByHand, selCell, suitFeature],
+  );
+  const selPairLabel =
+    selCell.hi === selCell.lo
+      ? `${rankLabel(selCell.hi)}${rankLabel(selCell.hi)}`
+      : `${rankLabel(selCell.hi)}${rankLabel(selCell.lo)}`;
 
   const actionsInSet = useMemo(() => {
     if (!setDoc) return [];
@@ -531,6 +585,26 @@ export function PreflopPage() {
                 </div>
               </section>
 
+              <div
+                className="flex flex-wrap items-center gap-2"
+                role="tablist"
+                aria-label="Range view"
+              >
+                <Pill active={view === 'set'} onClick={() => setView('set')}>
+                  Set view
+                </Pill>
+                <Pill active={view === 'matrix'} onClick={() => setView('matrix')}>
+                  Matrix view
+                </Pill>
+                <span className="text-xs text-ink-faint">
+                  {view === 'set'
+                    ? 'Pair-rank aggregates and the full class list for this set.'
+                    : 'Pick a rank pair to drill into the classes that contain both ranks.'}
+                </span>
+              </div>
+
+              {view === 'set' ? (
+                <>
               <section
                 aria-label="Pair rank summary"
                 className="rounded-lg border border-navy-700 bg-navy-900 p-4"
@@ -666,6 +740,196 @@ export function PreflopPage() {
                   </table>
                 </div>
               </section>
+                </>
+              ) : (
+              <section
+                aria-label="Rank-pair matrix"
+                className="rounded-lg border border-navy-700 bg-navy-900 p-4"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-sm font-semibold text-ink">
+                    Matrix — pick a rank pair to drill into combos
+                  </h2>
+                  <div className="ml-auto flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs text-ink-faint">Action</span>
+                    {actionsInSet.map((a) => (
+                      <Pill key={a} active={action === a} onClick={() => setAction(a)}>
+                        {ACTION_LABEL[a] ?? a}
+                      </Pill>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                    Suitedness
+                  </span>
+                  {SUITEDNESS_FILTERS.map((f) => (
+                    <Pill
+                      key={f.id}
+                      active={suitFilter === f.id}
+                      onClick={() => setSuitFilter(f.id)}
+                    >
+                      {f.label}
+                    </Pill>
+                  ))}
+                  {!suitFiltersEnabled ? (
+                    <span className="text-xs text-ink-faint">
+                      Suitedness filters need the class table, which is not loaded — showing all
+                      suits.
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+                  <div className="overflow-x-auto">
+                    <div
+                      className="grid min-w-[430px]"
+                      style={{
+                        gridTemplateColumns: `1.4rem repeat(${MATRIX_RANKS.length}, minmax(0, 1fr))`,
+                      }}
+                      role="grid"
+                      aria-label="Rank pair matrix"
+                    >
+                      <span />
+                      {MATRIX_RANKS.map((r) => (
+                        <span
+                          key={`col-${r}`}
+                          className="pb-1 text-center text-[11px] font-semibold text-ink-faint"
+                        >
+                          {r}
+                        </span>
+                      ))}
+                      {MATRIX_RANKS.map((rowRank, ri) => {
+                        const rowVal = 14 - ri;
+                        return (
+                          <Fragment key={`row-${rowRank}`}>
+                            <span className="flex items-center justify-center pr-1 text-[11px] font-semibold text-ink-faint">
+                              {rowRank}
+                            </span>
+                            {MATRIX_RANKS.map((colRank, ci) => {
+                              const colVal = 14 - ci;
+                              const hi = Math.max(rowVal, colVal);
+                              const lo = Math.min(rowVal, colVal);
+                              const cell = cells.get(`${hi}-${lo}`);
+                              const frac = cell?.fraction ?? 0;
+                              const selected = selCell.hi === hi && selCell.lo === lo;
+                              const pairName = `${rankLabel(hi)}${rankLabel(lo)}`;
+                              return (
+                                <button
+                                  key={`${rowRank}-${colRank}`}
+                                  type="button"
+                                  role="gridcell"
+                                  aria-pressed={selected}
+                                  aria-label={`${pairName}: ${cell ? cell.combos.toLocaleString() : 0} combos, ${ACTION_LABEL[action] ?? action} ${pctText(frac)}`}
+                                  title={`${pairName} · ${cell ? cell.combos.toLocaleString() : 0} combos · ${ACTION_LABEL[action] ?? action} ${pctText(frac)}`}
+                                  onClick={() => setSelCell({ hi, lo })}
+                                  className={`aspect-square border border-navy-950/60 ${
+                                    selected
+                                      ? 'z-10 ring-2 ring-accent'
+                                      : 'hover:ring-1 hover:ring-ink-faint'
+                                  }`}
+                                  style={{
+                                    backgroundColor: cell
+                                      ? hexToRgba(
+                                          ACTION_COLOR[action] ?? '#7a8aa0',
+                                          0.1 + 0.85 * frac,
+                                        )
+                                      : undefined,
+                                  }}
+                                />
+                              );
+                            })}
+                          </Fragment>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-2 text-xs leading-relaxed text-ink-faint">
+                      Cell colour is the combo-weighted {ACTION_LABEL[action] ?? action}{' '}
+                      frequency of every class containing both ranks (the diagonal is pairs and
+                      better of that rank). Suitedness filters reshape the grid; the grid is a
+                      drill-down, never a 270K-combo wall.
+                    </p>
+                  </div>
+
+                  <aside aria-label="Matrix selection" className="flex flex-col gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-ink">
+                        {selPairLabel} selected →{' '}
+                        {(selCellData?.combos ?? 0).toLocaleString()} combos ·{' '}
+                        {ACTION_LABEL[action] ?? action} {pctText(selCellData?.fraction ?? 0)}
+                      </h3>
+                      <p className="mt-1 text-xs text-ink-dim">
+                        {matrixTotal > 0
+                          ? `${pctText((selCellData?.combos ?? 0) / matrixTotal)} of the ${matrixTotal.toLocaleString()} combos in this set${suitFeature ? ` with suitedness: ${suitFilterLabel.toLowerCase()}` : ''}. Frequency is combo-weighted within the selection.`
+                          : 'No combos in this set match the current filter.'}
+                      </p>
+                    </div>
+                    {drillRows.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                          <thead>
+                            <tr className="border-b border-navy-700 text-xs uppercase tracking-wide text-ink-faint">
+                              <th className="py-1.5 pr-3 font-medium">Class</th>
+                              <th className="py-1.5 pr-3 font-medium">Combos</th>
+                              <th className="py-1.5 font-medium">
+                                {ACTION_LABEL[action] ?? action}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {drillRows.slice(0, MATRIX_ROW_CAP).map((r) => (
+                              <tr key={r.key} className="border-b border-navy-800">
+                                <td className="py-1.5 pr-3 font-mono text-xs text-ink">
+                                  {r.key}
+                                  {r.cls ? (
+                                    <span className="block font-sans text-[11px] text-ink-faint">
+                                      {featureTags(r.cls).join(' · ')}
+                                    </span>
+                                  ) : null}
+                                </td>
+                                <td className="py-1.5 pr-3 font-mono text-xs text-ink-dim">
+                                  {r.multiplicity}
+                                </td>
+                                <td className="w-32 py-1.5">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-14">
+                                      <FrequencyBar
+                                        fraction={r.actions[action] ?? 0}
+                                        color={ACTION_COLOR[action] ?? '#7a8aa0'}
+                                        height="h-2"
+                                      />
+                                    </div>
+                                    <span className="font-mono text-xs text-ink-dim">
+                                      {pctText(r.actions[action] ?? 0)}
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {drillRows.length > MATRIX_ROW_CAP ? (
+                          <p className="mt-1.5 text-xs text-ink-faint">
+                            Showing the first {MATRIX_ROW_CAP} of{' '}
+                            {drillRows.length.toLocaleString()} classes, strongest{' '}
+                            {ACTION_LABEL[action] ?? action} frequency first.
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-ink-dim">
+                        No classes in this set contain{' '}
+                        {selCell.hi === selCell.lo
+                          ? `a pair or better of ${rankLabel(selCell.hi)}s`
+                          : `both ${rankLabel(selCell.hi)} and ${rankLabel(selCell.lo)}`}
+                        {suitFeature ? ` with suitedness: ${suitFilterLabel.toLowerCase()}` : ''}.
+                      </p>
+                    )}
+                  </aside>
+                </div>
+              </section>
+              )}
             </>
           ) : !setLoading && !setError ? (
             <p className="text-sm text-ink-dim">No range set matches the current selection.</p>
