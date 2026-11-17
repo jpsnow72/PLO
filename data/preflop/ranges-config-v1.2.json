@@ -8,6 +8,7 @@
  "_comment_cross_check": "In --check mode, RFI sets must land inside their published band and anchored defense totals within cross_check_defense_tolerance (absolute, in fraction units) of the anchor; interpolated/extrapolated/derived totals are reported as deltas only. Because generation fits targets by construction, --check is a regression/validation diff of the emitted files against these published targets, not an independent solve.",
  "_comment_cross_check_source": "The external sources recorded in emitted provenance: (1) PLO.com - its data page states its numbers are free to cite with a link back; we cite its aggregate totals as cross-check targets only, no PLO.com range data is transcribed into any set. (2) Upswing Advanced PLO Preflop Guide - owner-provided copy, personal use, cross-check totals only (see _comment_upswing); it has no URL because the copy is the owner's PDF, so its provenance entry omits url. ThinkGTO totals were compared in the research report ONLY; ThinkGTO's terms prohibit copying/derivative works and it is NOT recorded as a source anywhere in the emitted data (a consent request was sent 2026-11-07; if granted, the coordinator will update provenance then).",
  "_comment_derivation_9max": "No free published 9-max PLO4 chart exists (research report section 5). 9-max targets are DERIVED from the 6-max solver targets by the players-behind seat mapping (a seat's width is governed by how many players act behind it): 9-max LJ (5 behind) ~= 6-max UTG, HJ ~= MP, CO/BTN/SB keep their 6-max targets, and the three new early seats extrapolate the curve (UTG 10-13%, UTG+1 13-15%, UTG+2 15-17%). 9-max sets are labelled derived-by-mapping in their provenance and carry an empty sources array.",
+ "_comment_gtw_raked": "GTO Wizard RAKED anchors (added 2026-11-17, cross_check_source_3 + gtw_raked_*_6max): totals from GTO Wizard Cash 6-max Classic PLO100 (5% rake, 2bb cap) 100bb, collected 2026-11-17 (strategy-view header totals only; no range data transcribed). RFI: UTG 17.3 / HJ 21.5 / CO 28.6 / BTN 42.6 / SB raise 31.9 with limp 9.9. BB defense 3-bet/call: vs UTG 4.3/24.2, vs HJ 5.5/25.4, vs CO 7.0/28.0, vs BTN 10.1/32.2, vs SB open 11.0/62.4. SB vs BTN 9.2/5.3. These are ADDITIONAL cross-check anchors for the RAKED family, reported by --check as informational deltas only (like the Upswing totals); the v1 construction targets are NOT changed in v1.2. Two deltas stand out and are flagged for a v1.3 retarget decision: (1) BTN RFI - GTO Wizard raked opens 42.6% while our target is 49% (band 48-50), which matches the NO-RAKE anchor (48.9) instead; rake costs the button ~6pp of opens. (2) BB calls run wider in the GTO Wizard raked solution than our PLO.com-anchored targets (e.g. vs UTG call 24.2 vs our 16.3; vs SB open 62.4 vs our extrapolated 32). Corroboration: the SB raise-or-fold reconciliation of the raked totals (raise 31.9 + 0.5 x limp 9.9 = 36.85) lands on our SB target 37.",
  "_comment_norake_6max": "NO-RAKE 6-max family (v1.2): same construction machinery, seed, weights and components as the raked family - only the targets and the cross-check source differ. Anchors (kind: anchor) are GTO Wizard Cash 6-max Classic cEV (no rake) 100bb totals collected 2026-11-17 (strategy-view header totals; totals only, no range data transcribed): RFI UTG 18.5 / HJ 23.4 / CO 31.7 / BTN 48.9; BB defense 3-bet/call vs UTG 3.9/32.0, vs HJ 5.0/34.4, vs CO 6.5/38.5, vs BTN 9.6/45.6, vs SB open 9.8/74.8; SB vs BTN 9.5/10.0. GTO Wizard names the second seat HJ; it is the seat this schema calls MP. SB RFI: GTO Wizard’s SB plays raise 28.4 + limp 26.4 in a limp-inclusive tree; our SB set is raise-or-fold, so the set-point applies the v1 reconciliation rule (raise + 0.5 x limp = 28.4 + 13.2 = 41.6) - most of the cEV limp slice is weak completes that fold in a raise-or-fold model, half is the documented convention carried over from v1 (PLO.com raise 33.6 + 0.5 x limp 6.8 = 37.0). Entries marked interpolated have no GTO Wizard anchor: SB vs CO/MP/UTG are scaled from the SB vs BTN anchor by the v1 SB interpolation ratios; BTN vs CO/MP apply a conservative share of the cEV blind-defense call widening to the raked anchors. Continuations reuse the v1.1 internal construction parameters (no published anchor exists for either variant) against the no-rake input sets.",
  "_comment_rake": "Construction models NO rake in EITHER variant (equities are rake-free showdown equities). The rake dimension records which game the TARGETS describe: the raked family’s cross-check targets were published for a 5% / 1bb-cap rake game; the no-rake family’s targets are GTO Wizard cEV (no-rake) totals. No-rake defense targets run much wider (a no-rake game rewards flatting where a raked game pushes 3-bet-or-fold), which is the entire point of carrying both variants.",
  "_comment_ramp": "Boundary handling: instead of a hard in/out cliff at the target frequency, classes straddling the boundary receive fractional frequencies from a linear ramp over +/- ramp_band/2 of cumulative combo mass around the target. A deterministic residual correction on boundary classes then makes each set's achieved total match its target to <1e-9 (before 6-decimal rounding in the emitted JSON).",
@@ -85,7 +86,50 @@
   "name": "Upswing Advanced PLO Preflop Guide (owner-provided copy, personal use)",
   "retrieved": "2026-11-07"
  },
+ "cross_check_source_3": {
+  "licence": "Viewed under the tool owner’s GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+  "name": "GTO Wizard - PLO Cash 6-max Classic, PLO100 rake (5%, 2bb cap) solution totals cited as cross-check targets; ranges constructed independently",
+  "retrieved": "2026-11-17",
+  "url": "https://app.gtowizard.com/solutions/plo"
+ },
  "derivation_note_9max": "derived-by-mapping: targets derived from the 6-max cross-check targets by the players-behind seat mapping (research report section 5); no published 9-max PLO4 chart exists and none is cited as a source.",
+ "gtw_raked_defense_6max": {
+  "BB": {
+   "BTN": {
+    "call": 0.322,
+    "three_bet": 0.101
+   },
+   "CO": {
+    "call": 0.28,
+    "three_bet": 0.07
+   },
+   "MP": {
+    "call": 0.254,
+    "three_bet": 0.055
+   },
+   "SB": {
+    "call": 0.624,
+    "three_bet": 0.11
+   },
+   "UTG": {
+    "call": 0.242,
+    "three_bet": 0.043
+   }
+  },
+  "SB": {
+   "BTN": {
+    "call": 0.053,
+    "three_bet": 0.092
+   }
+  }
+ },
+ "gtw_raked_rfi_6max": {
+  "BTN": 0.426,
+  "CO": 0.286,
+  "MP": 0.215,
+  "SB": 0.319,
+  "UTG": 0.173
+ },
  "mc_samples": {
   "vs_opener": 4000,
   "vs_random": 20000,

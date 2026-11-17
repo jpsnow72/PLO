@@ -659,7 +659,17 @@ pub struct RangesConfig {
     pub cross_check_defense_tolerance: f64,
     pub cross_check_source: SourceBlock,
     pub cross_check_source_2: Option<SourceBlock>,
+    /// Optional third cross-check source (v1.2 configs): the GTO Wizard
+    /// raked (PLO100) totals. Cited in the raked 6-max provenance alongside
+    /// sources 1–2; its totals below are informational check anchors only.
+    pub cross_check_source_3: Option<SourceBlock>,
     pub upswing_rfi: BTreeMap<String, f64>,
+    /// GTO Wizard raked (PLO100) RFI totals by position (6-max), reported
+    /// as informational deltas in the cross-check — never hard failures,
+    /// and never construction targets in v1.2.
+    pub gtw_raked_rfi: BTreeMap<String, f64>,
+    /// GTO Wizard raked (PLO100) defense totals by responder, then opener.
+    pub gtw_raked_defense: BTreeMap<String, BTreeMap<String, PairTarget>>,
     pub derivation_note_9max: String,
     pub btn_vs: BTreeMap<String, Vec<String>>,
     pub rfi_targets: BTreeMap<String, BTreeMap<String, RfiTarget>>,
@@ -730,6 +740,47 @@ impl RangesConfig {
             }),
             None => None,
         };
+        let cross_check_source_3 = match root.get("cross_check_source_3") {
+            Some(s3) => Some(SourceBlock {
+                name: obj_str(s3, "name")?,
+                url: s3.get("url").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                licence: obj_str(s3, "licence")?,
+                retrieved: obj_str(s3, "retrieved")?,
+            }),
+            None => None,
+        };
+        let mut gtw_raked_rfi: BTreeMap<String, f64> = BTreeMap::new();
+        if let Some(u) = root.get("gtw_raked_rfi_6max") {
+            if let JsonValue::Object(entries) = u {
+                for (pos, v) in entries {
+                    gtw_raked_rfi.insert(
+                        pos.clone(),
+                        v.as_f64().ok_or("gtw_raked_rfi_6max values must be numbers")?,
+                    );
+                }
+            }
+        }
+        let mut gtw_raked_defense: BTreeMap<String, BTreeMap<String, PairTarget>> = BTreeMap::new();
+        if let Some(d) = root.get("gtw_raked_defense_6max") {
+            if let JsonValue::Object(resp_entries) = d {
+                for (resp, openers) in resp_entries {
+                    let mut omap = BTreeMap::new();
+                    if let JsonValue::Object(op_entries) = openers {
+                        for (op, t) in op_entries {
+                            omap.insert(
+                                op.clone(),
+                                PairTarget {
+                                    three_bet: obj_num(t, "three_bet")?,
+                                    call: obj_num(t, "call")?,
+                                    kind: "anchor".to_string(),
+                                },
+                            );
+                        }
+                    }
+                    gtw_raked_defense.insert(resp.clone(), omap);
+                }
+            }
+        }
         let mut upswing_rfi: BTreeMap<String, f64> = BTreeMap::new();
         if let Some(u) = root.get("upswing_rfi_6max") {
             if let JsonValue::Object(entries) = u {
@@ -995,7 +1046,10 @@ impl RangesConfig {
             )?,
             cross_check_source,
             cross_check_source_2,
+            cross_check_source_3,
             upswing_rfi,
+            gtw_raked_rfi,
+            gtw_raked_defense,
             derivation_note_9max: get("derivation_note_9max")?
                 .as_str()
                 .ok_or("config 'derivation_note_9max' must be a string")?
@@ -1029,6 +1083,9 @@ impl RangesConfig {
             let mut sources = vec![self.cross_check_source.clone()];
             if let Some(s2) = &self.cross_check_source_2 {
                 sources.push(s2.clone());
+            }
+            if let Some(s3) = &self.cross_check_source_3 {
+                sources.push(s3.clone());
             }
             FamilySpec {
                 rake: RAKE_RAKED.to_string(),
@@ -2687,8 +2744,9 @@ pub fn check_doc_totals(
                     t.kind,
                     if in_band { "OK" } else { "OUT OF BAND" }
                 ));
-                // The Upswing totals describe a raked game: the delta is
-                // informational for the raked 6-max family only.
+                // The Upswing and GTO Wizard raked totals describe raked
+                // games: their deltas are informational for the raked
+                // 6-max family only (never hard failures, never targets).
                 if rake == RAKE_RAKED && table_size == "6max" {
                     if let Some(u) = cfg.upswing_rfi.get(position) {
                         lines.push(format!(
@@ -2696,6 +2754,14 @@ pub fn check_doc_totals(
                             id,
                             u * 100.0,
                             (achieved - u) * 100.0
+                        ));
+                    }
+                    if let Some(g) = cfg.gtw_raked_rfi.get(position) {
+                        lines.push(format!(
+                            "{}:   vs GTO Wizard raked (PLO100) total {:.1}% -> delta {:+.2}pp (informational)",
+                            id,
+                            g * 100.0,
+                            (achieved - g) * 100.0
                         ));
                     }
                 }
@@ -2738,6 +2804,26 @@ pub fn check_doc_totals(
                         t.kind,
                         if bad { "OUT OF TOLERANCE" } else { "OK" }
                     ));
+                }
+                // GTO Wizard raked defense deltas: informational only
+                // (raked 6-max), like the Upswing RFI deltas above.
+                if rake == RAKE_RAKED && table_size == "6max" {
+                    if let Some(g) = cfg
+                        .gtw_raked_defense
+                        .get(position)
+                        .and_then(|m| m.get(opener))
+                    {
+                        for (action, want) in [("three_bet", g.three_bet), ("call", g.call)] {
+                            let achieved = totals.get(action).copied().unwrap_or(0.0);
+                            lines.push(format!(
+                                "{}:   vs GTO Wizard raked (PLO100) {} {:.1}% -> delta {:+.2}pp (informational)",
+                                id,
+                                action,
+                                want * 100.0,
+                                (achieved - want) * 100.0
+                            ));
+                        }
+                    }
                 }
             }
             None => {
