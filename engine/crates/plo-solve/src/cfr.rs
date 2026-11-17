@@ -10,9 +10,10 @@ use plo_eval::WeightedCombo;
 
 use crate::br::{compute_exploitability, ExploitabilityReport};
 use crate::game::{Action, Node, NodeId, Player, RiverGame, TerminalNode};
+use crate::locks::{resolve_locks_river, NodeLock};
 
 /// Configuration parameters for the Discounted CFR river solver.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DcfrConfig {
     /// Maximum number of DCFR iterations to run (default: `1000`).
     pub max_iterations: usize,
@@ -27,6 +28,11 @@ pub struct DcfrConfig {
     pub beta: f64,
     /// Strategy accumulation discount exponent $\gamma$ (default: `2.0`).
     pub gamma: f64,
+    /// Nodelocks: strategies held fixed at the named decision nodes for the
+    /// whole solve (see [`crate::locks`]). Empty (the default) is an
+    /// ordinary unlocked solve. The same field serves the river, turn, and
+    /// flop solvers — each resolves the histories against its own tree.
+    pub locks: Vec<NodeLock>,
 }
 
 impl Default for DcfrConfig {
@@ -38,6 +44,7 @@ impl Default for DcfrConfig {
             alpha: 1.5,
             beta: 0.0,
             gamma: 2.0,
+            locks: Vec::new(),
         }
     }
 }
@@ -105,7 +112,13 @@ pub struct SolveResult {
     /// Total number of DCFR iterations executed.
     pub iterations: usize,
     /// Exact exploitability report measured by the independent checker (`br.rs`).
+    /// For a locked solve this prices the lock: it is the locked profile's
+    /// true best-response exploitability, measured exactly as for unlocked
+    /// solves (never skipped or approximated).
     pub exploitability: ExploitabilityReport,
+    /// The nodelocks this solve ran under (empty = unlocked). A locked
+    /// profile is not an equilibrium; consumers must badge it LOCKED.
+    pub locks: Vec<NodeLock>,
 }
 
 /// Precomputed CSR lookup table of unblocked opponent combo indices partitioned into
@@ -220,6 +233,11 @@ struct NodeBuffer {
     cum_strategy: Vec<f64>,
     /// Current iteration's regret-matched strategy `current_strategy[combo_idx * num_actions + action_idx]`.
     current_strategy: Vec<f64>,
+    /// Nodelock vector for this node (`Some` = the strategy is held at this
+    /// vector for the whole solve: `current_strategy` is pinned to it, no
+    /// regret updates, no cumulative-strategy accumulation, and the output
+    /// strategy is the vector verbatim).
+    lock: Option<Vec<f64>>,
 }
 
 impl NodeBuffer {
@@ -237,12 +255,34 @@ impl NodeBuffer {
             regrets: vec![0.0; len],
             cum_strategy: vec![0.0; len],
             current_strategy: vec![uniform; len],
+            lock: None,
         }
     }
 
+    /// Pins this node's strategy to `frequencies` (one per legal action,
+    /// already validated against the tree) for the whole solve.
+    fn set_lock(&mut self, frequencies: &[f64]) {
+        debug_assert_eq!(frequencies.len(), self.num_actions);
+        for i in 0..self.num_combos {
+            let base = i * self.num_actions;
+            self.current_strategy[base..base + self.num_actions].copy_from_slice(frequencies);
+        }
+        self.lock = Some(frequencies.to_vec());
+    }
+
+    /// Whether this node's strategy is locked.
+    #[inline]
+    fn is_locked(&self) -> bool {
+        self.lock.is_some()
+    }
+
     /// Recomputes `current_strategy` from `regrets` via Regret Matching.
+    /// Locked nodes keep their pinned vector.
     #[inline]
     fn recompute_current_strategy(&mut self) {
+        if self.is_locked() {
+            return;
+        }
         let num_actions = self.num_actions;
         let uniform = 1.0 / (num_actions as f64);
 
@@ -271,9 +311,28 @@ impl NodeBuffer {
     }
 
     /// Extracts the normalized average strategy for this decision node.
+    /// A locked node returns its lock vector verbatim for every combo (the
+    /// frequencies were never accumulated, so there is nothing to
+    /// normalize — this is what makes the output equal the lock exactly).
     fn to_node_strategy(&self, game: &RiverGame, decision_id: usize) -> NodeStrategy {
         let d = game.decision_node(decision_id);
         let num_actions = self.num_actions;
+        if let Some(lock) = &self.lock {
+            let mut frequencies = vec![0.0f64; num_actions * self.num_combos];
+            for i in 0..self.num_combos {
+                let base = i * num_actions;
+                frequencies[base..base + num_actions].copy_from_slice(lock);
+            }
+            return NodeStrategy {
+                decision_id,
+                node_id: d.node_id,
+                player: d.player,
+                history: d.history.clone(),
+                actions: d.actions.clone(),
+                num_combos: self.num_combos,
+                frequencies,
+            };
+        }
         let uniform = 1.0 / (num_actions as f64);
         let mut frequencies = vec![0.0f64; num_actions * self.num_combos];
 
@@ -329,6 +388,19 @@ pub fn solve_river(game: &RiverGame, config: &DcfrConfig) -> SolveResult {
             NodeBuffer::new(d.player, d.actions.len(), num_combos)
         })
         .collect();
+
+    // Nodelocks are constraints on the game from iteration 0: pin the
+    // locked buffers before the first traversal. An invalid lock is a
+    // caller bug here (the CLI bins validate first and exit cleanly);
+    // resolve_locks_river has already been given its chance to return the
+    // error as a value via validate_locks_river.
+    let resolved_locks = resolve_locks_river(game, &config.locks)
+        .expect("invalid node lock in DcfrConfig (validate locks before solving)");
+    for (did, slot) in resolved_locks.iter().enumerate() {
+        if let Some(frequencies) = slot {
+            buffers[did].set_lock(frequencies);
+        }
+    }
 
     let init_oop_reach: Vec<f64> = game.combos[0].iter().map(|c| c.weight).collect();
     let init_ip_reach: Vec<f64> = game.combos[1].iter().map(|c| c.weight).collect();
@@ -435,6 +507,7 @@ pub fn solve_river(game: &RiverGame, config: &DcfrConfig) -> SolveResult {
         ip_game_ev: exploitability.ip_strategy_ev,
         iterations: iterations_done,
         exploitability,
+        locks: config.locks.clone(),
     }
 }
 
@@ -484,9 +557,12 @@ fn dcfr_traverse(
             if d.player == traverser {
                 // Copy current strategy for this node so we can recurse mutably on child nodes.
                 let cur_strat = buffers[decision_id].current_strategy.clone();
+                let locked = buffers[decision_id].is_locked();
 
                 // Accumulate average strategy weighted by `strat_weight * my_reach[i]`.
-                {
+                // Locked nodes accumulate nothing: their output strategy is
+                // the lock vector itself, not an average.
+                if !locked {
                     let cum_strat = &mut buffers[decision_id].cum_strategy;
                     for i in 0..num_my {
                         let w = strat_weight * my_reach[i];
@@ -528,18 +604,24 @@ fn dcfr_traverse(
                 }
 
                 // Update and discount cumulative regrets at this node.
-                let regrets = &mut buffers[decision_id].regrets;
-                for i in 0..num_my {
-                    let base = i * num_actions;
-                    let ev_i = node_cfv[i];
-                    for a in 0..num_actions {
-                        let inst_regret = action_cfvs[a][i] - ev_i;
-                        let updated = regrets[base + a] + inst_regret;
-                        regrets[base + a] = if updated >= 0.0 {
-                            updated * pos_discount
-                        } else {
-                            updated * neg_discount
-                        };
+                // Locked nodes keep zero regrets forever: their strategy is
+                // the lock vector, not regret matching, so there is nothing
+                // to update (the node CFV above is still computed with the
+                // locked strategy — parents and the checker depend on it).
+                if !locked {
+                    let regrets = &mut buffers[decision_id].regrets;
+                    for i in 0..num_my {
+                        let base = i * num_actions;
+                        let ev_i = node_cfv[i];
+                        for a in 0..num_actions {
+                            let inst_regret = action_cfvs[a][i] - ev_i;
+                            let updated = regrets[base + a] + inst_regret;
+                            regrets[base + a] = if updated >= 0.0 {
+                                updated * pos_discount
+                            } else {
+                                updated * neg_discount
+                            };
+                        }
                     }
                 }
 
