@@ -7,6 +7,7 @@ use crate::br::ExploitabilityReport;
 use crate::cfr::{ComboEv, DcfrConfig, NodeStrategy, SolveResult};
 use crate::flop::{expand_bucket_strategies, BucketConfig, FlopGame, FlopSolveResult, FlopSpot};
 use crate::game::{Player, RiverGame, RiverSpot, SolveError, TreeConfig};
+use crate::locks::NodeLock;
 use crate::turn::{TurnGame, TurnSolveResult, TurnSpot};
 
 /// Minimal recursive-descent JSON value representation (`std` only).
@@ -389,6 +390,7 @@ pub fn parse_spot_json(input: &str) -> Result<(RiverSpot, DcfrConfig), SolveErro
     {
         dcfr_config.target_exploitability_pct = target.max(0.0);
     }
+    dcfr_config.locks = parse_locks(&root)?;
 
     let spot = RiverSpot {
         board,
@@ -504,6 +506,107 @@ fn parse_range_value(val: &JsonValue) -> Result<PloRange, SolveError> {
     Ok(range)
 }
 
+/// Parses the optional `"locks"` array of a spot (nodelocking, Ship 3):
+/// `[{"history": "root", "player": "OOP", "frequencies": [0.5, 0.5]}]`
+/// (`"node"` is accepted as an alias for `"history"`). Only the shape is
+/// checked here — node existence, player-to-act, vector length, and the
+/// sum-to-1 rule are validated against the built game in [`crate::locks`]
+/// before any iteration runs.
+fn parse_locks(root: &JsonValue) -> Result<Vec<NodeLock>, SolveError> {
+    let Some(value) = root.get("locks") else {
+        return Ok(Vec::new());
+    };
+    if matches!(value, JsonValue::Null) {
+        return Ok(Vec::new());
+    }
+    let arr = value.as_array().ok_or_else(|| {
+        SolveError::JsonError("\"locks\" must be an array of lock objects".to_string())
+    })?;
+    let mut locks = Vec::with_capacity(arr.len());
+    for (i, item) in arr.iter().enumerate() {
+        let history = item
+            .get("history")
+            .or_else(|| item.get("node"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                SolveError::JsonError(format!(
+                    "locks[{i}] must carry a \"history\" (or \"node\") string"
+                ))
+            })?;
+        let player_str = item
+            .get("player")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                SolveError::JsonError(format!("locks[{i}] must carry a \"player\" string"))
+            })?;
+        let player = match player_str {
+            "OOP" | "oop" => Player::Oop,
+            "IP" | "ip" => Player::Ip,
+            other => {
+                return Err(SolveError::JsonError(format!(
+                    "locks[{i}].player must be \"OOP\" or \"IP\", got \"{other}\""
+                )))
+            }
+        };
+        let freq_arr = item
+            .get("frequencies")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| {
+                SolveError::JsonError(format!(
+                    "locks[{i}] must carry a \"frequencies\" array of numbers"
+                ))
+            })?;
+        if freq_arr.is_empty() {
+            return Err(SolveError::JsonError(format!(
+                "locks[{i}].frequencies cannot be empty"
+            )));
+        }
+        let mut frequencies = Vec::with_capacity(freq_arr.len());
+        for f in freq_arr {
+            frequencies.push(f.as_f64().ok_or_else(|| {
+                SolveError::JsonError(format!("locks[{i}].frequencies must contain numbers"))
+            })?);
+        }
+        locks.push(NodeLock {
+            history: history.to_string(),
+            player,
+            frequencies,
+        });
+    }
+    Ok(locks)
+}
+
+/// Emits the `"locked"` / `"locks"` header fields of a solve result: the
+/// honesty badge. A locked solve is not an equilibrium — consumers must
+/// surface it as LOCKED, never CERTIFIED/GTO. Unlocked solves emit
+/// `"locked": false` and an empty list so the schema is stable.
+fn push_locks_json(out: &mut String, locks: &[NodeLock]) {
+    out.push_str(&format!("  \"locked\": {},\n", !locks.is_empty()));
+    if locks.is_empty() {
+        out.push_str("  \"locks\": [],\n");
+        return;
+    }
+    out.push_str("  \"locks\": [\n");
+    for (i, lock) in locks.iter().enumerate() {
+        let comma = if i + 1 < locks.len() { "," } else { "" };
+        out.push_str("    {\"history\": \"");
+        out.push_str(&lock.history);
+        out.push_str("\", \"player\": \"");
+        out.push_str(lock.player.as_str());
+        out.push_str("\", \"frequencies\": [");
+        for (a, f) in lock.frequencies.iter().enumerate() {
+            if a > 0 {
+                out.push_str(", ");
+            }
+            out.push_str(&format!("{f:.6}"));
+        }
+        out.push_str("]}");
+        out.push_str(comma);
+        out.push('\n');
+    }
+    out.push_str("  ],\n");
+}
+
 fn parse_combo_colon_weight(s: &str) -> Result<(&str, f64), SolveError> {
     if let Some((hand, w_str)) = s.split_once(':') {
         let w: f64 = w_str.trim().parse().map_err(|_| {
@@ -529,6 +632,7 @@ pub fn format_solve_result_json(game: &RiverGame, result: &SolveResult) -> Strin
         game.effective_stack
     ));
     out.push_str(&format!("  \"iterations\": {},\n", result.iterations));
+    push_locks_json(&mut out, &result.locks);
 
     // Exploitability object
     let ex = &result.exploitability;
@@ -842,6 +946,7 @@ pub fn parse_turn_spot_json(input: &str) -> Result<(TurnSpot, DcfrConfig), Solve
     if let Some(ci) = root.get("check_interval").and_then(|v| v.as_f64()) {
         dcfr_config.check_interval = (ci.max(0.0)) as usize;
     }
+    dcfr_config.locks = parse_locks(&root)?;
 
     Ok((
         TurnSpot {
@@ -872,6 +977,7 @@ pub fn format_turn_solve_result_json(game: &TurnGame, result: &TurnSolveResult) 
         game.effective_stack
     ));
     out.push_str(&format!("  \"iterations\": {},\n", result.iterations));
+    push_locks_json(&mut out, &result.locks);
 
     let ex = &result.exploitability;
     out.push_str("  \"exploitability\": {\n");
@@ -1165,6 +1271,7 @@ pub fn parse_flop_spot_json(input: &str) -> Result<(FlopSpot, DcfrConfig), Solve
     if let Some(ci) = root.get("check_interval").and_then(|v| v.as_f64()) {
         dcfr_config.check_interval = (ci.max(0.0)) as usize;
     }
+    dcfr_config.locks = parse_locks(&root)?;
 
     Ok((
         FlopSpot {
@@ -1348,6 +1455,7 @@ pub fn format_flop_solve_result_json(game: &FlopGame, result: &FlopSolveResult) 
         game.effective_stack
     ));
     out.push_str(&format!("  \"iterations\": {},\n", result.iterations));
+    push_locks_json(&mut out, &result.locks);
 
     push_exploitability_json(&mut out, &result.exploitability);
     push_combo_evs_json(&mut out, "oop_evs", &result.oop_evs);
