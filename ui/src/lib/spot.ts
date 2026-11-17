@@ -74,9 +74,13 @@ export function defaultWizardForm(): WizardForm {
     ipRangeSet: null,
     pot: 100,
     stacks: 100,
-    flop: emptyStreetSizes([0.5, 0.75]),
-    turn: emptyStreetSizes([0.33, 0.75]),
-    river: emptyStreetSizes([0.33, 0.75, 1.0]),
+    // Default bet menus per street (approved 2026-11-17, gauged from GTO
+    // Wizard's solved trees): flop 33%/75%, turn 50%/100%, river 50%/100%.
+    // All-in is the separate `allIn` toggle in emptyStreetSizes (default
+    // on) at every street; raises default to pot (1.0), max 2 raises.
+    flop: emptyStreetSizes([0.33, 0.75]),
+    turn: emptyStreetSizes([0.5, 1.0]),
+    river: emptyStreetSizes([0.5, 1.0]),
     tier: 'balanced',
     maxIterations: 200000,
   };
