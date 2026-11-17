@@ -252,7 +252,7 @@ export async function fetchQuizProgress(): Promise<QuizProgress> {
 
 export interface QuizAnswerRecord {
   item_key: string;
-  kind: 'spot' | 'heuristic';
+  kind: 'spot' | 'heuristic' | 'preflop';
   topic: QuizTopic;
   score: number;
   grading: GradingMode;

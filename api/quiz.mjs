@@ -9,6 +9,12 @@
 // Item keys are built by the client and are opaque here:
 //   spot questions:      "<solveId>|<node history>|<combo>"
 //   heuristic questions: "heuristic|<heuristic id>"
+//   preflop questions:   "preflop|<set id>|<hand-class key>" — the
+//                        Starting Hands drill records under kind
+//                        "preflop" with topic { texture: "preflop",
+//                        street: <position>, spot_type: "first-in" |
+//                        "vs-open" }, so per-position accuracy lands in
+//                        topics like any other topic.
 //
 // SRS LADDER (deliberately simple; see S2-NOTES.md): the review interval
 // for an item is INTERVAL_DAYS[level] days. After each graded answer:
@@ -36,7 +42,7 @@ export const PARTIAL_THRESHOLD = 0.4;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_KEY_LEN = 300;
 const MAX_TAG_LEN = 60;
-const ITEM_KINDS = new Set(['spot', 'heuristic']);
+const ITEM_KINDS = new Set(['spot', 'heuristic', 'preflop']);
 const GRADINGS = new Set(['ev', 'frequency', 'match']);
 
 function cleanTag(value) {
