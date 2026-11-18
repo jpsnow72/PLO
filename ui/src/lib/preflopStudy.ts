@@ -28,6 +28,7 @@ import {
   pairRankSummary,
   POSITION_ORDER,
   type PreflopClass,
+  type PreflopClassTable,
   type PreflopIndex,
   type PreflopSetDoc,
   type PreflopSetIndexEntry,
@@ -35,6 +36,18 @@ import {
 } from './preflop';
 import { bandForScore, type GradeResult, type QuizTopic } from './quiz';
 import type { Heuristic } from './study';
+
+// ------------------------------ class table ------------------------------
+
+/**
+ * The class table as a by-hand lookup — the same Map construction the
+ * Preflop page builds from fetchPreflopClassTable's document
+ * (lib/preflop.ts exposes the table type and per-key helpers, but no
+ * whole-table index; callers build the Map from `classes`).
+ */
+export function classTableByHand(table: PreflopClassTable): Map<string, PreflopClass> {
+  return new Map(table.classes.map((c) => [c.hand, c]));
+}
 
 // ------------------------------ set selection ------------------------------
 

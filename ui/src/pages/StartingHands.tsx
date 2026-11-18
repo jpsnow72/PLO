@@ -9,10 +9,9 @@ import {
   fetchQuizProgress,
   recordQuizAnswer,
 } from '../lib/api';
-import { canonicalClass } from '../lib/cards';
+import { canonicalClass, formatCards } from '../lib/cards';
 import {
   actionTotals,
-  classTableByHand,
   featureTags,
   openerOf,
   setLabel,
@@ -25,6 +24,7 @@ import {
 } from '../lib/preflop';
 import {
   buildDrillPool,
+  classTableByHand,
   drawWeighted,
   gradePreflopAnswer,
   personalForSpot,
@@ -292,7 +292,7 @@ export function StartingHandsPage() {
     if (!entry) return;
     let cancelled = false;
     setDocState('loading');
-    Promise.all([fetchPreflopSet(entry), loadClassTable()])
+    Promise.all([fetchPreflopSet(entry.id), loadClassTable()])
       .then(([loaded, table]) => {
         if (cancelled) return;
         setDoc(loaded);
@@ -426,7 +426,15 @@ export function StartingHandsPage() {
     for (const [key, stats] of Object.entries(localTopics)) merged.set(key, stats);
     const rows = [...merged.entries()].map(([key, stats]) => {
       const parts = key.split('|');
-      return { key, pos: parts[1] ?? '', spotType: parts[2] ?? '', stats };
+      return {
+        key,
+        pos: parts[1] ?? '',
+        spotType: parts[2] ?? '',
+        stats,
+        // QuizTopicStats stores attempts + score_sum; the mean is
+        // derived (the same ratio lib/quiz.ts's weakTopics computes).
+        mean: stats.attempts > 0 ? stats.score_sum / stats.attempts : 0,
+      };
     });
     const order = ['UTG', 'UTG+1', 'UTG+2', 'MP', 'LJ', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
     rows.sort(
@@ -440,7 +448,7 @@ export function StartingHandsPage() {
     if (!chosenOption || !doc || docState !== 'ready') return;
     const pool = buildDrillPool(doc, tableByHand);
     if (pool.length === 0) return;
-    const dueKeys = new Set(progress ? dueItemKeys(progress) : []);
+    const dueKeys = new Set(progress ? dueItemKeys(progress, new Date()) : []);
     const dueCards = pool.filter((c) => dueKeys.has(c.itemKey));
     // Light shuffle so due cards do not arrive in pool order.
     for (let i = dueCards.length - 1; i > 0; i -= 1) {
@@ -476,10 +484,15 @@ export function StartingHandsPage() {
     ]);
     const key = preflopTopicKey(sessionPosition, sessionSpot);
     setLocalTopics((prev) => {
-      const cur = prev[key] ?? { attempts: 0, total_score: 0, mean_score: 0 };
-      const attempts = cur.attempts + 1;
-      const total = cur.total_score + g.score;
-      return { ...prev, [key]: { attempts, total_score: total, mean_score: total / attempts } };
+      const cur = prev[key] ?? { attempts: 0, score_sum: 0, last_at: null };
+      return {
+        ...prev,
+        [key]: {
+          attempts: cur.attempts + 1,
+          score_sum: cur.score_sum + g.score,
+          last_at: new Date().toISOString(),
+        },
+      };
     });
     if (syncState === 'synced') {
       recordQuizAnswer({
@@ -490,7 +503,9 @@ export function StartingHandsPage() {
         grading: 'frequency',
         ev_lost_pct: null,
       })
-        .then(({ progress: p }) => setProgress(p))
+        .then((p) => {
+          if (p) setProgress(p);
+        })
         .catch(() => setSyncState('local'));
     }
   }
@@ -803,7 +818,7 @@ export function StartingHandsPage() {
               className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-navy-700 bg-navy-850 px-3 py-2 text-sm"
             >
               <span aria-hidden>{bandGlyph(a.grade.band)}</span>
-              <span className="font-medium text-slate-100">{canonicalClass(a.card.heroCards)}</span>
+              <span className="font-medium text-slate-100">{canonicalClass(formatCards(a.card.heroCards))}</span>
               <span className="text-slate-400">
                 you picked {preflopActionLabel(a.card.actions[a.pickedIdx] ?? '')} · range takes
                 it {pctText(a.grade.score)}
@@ -1041,10 +1056,10 @@ export function StartingHandsPage() {
                         {row.pos} · {row.spotType === 'first-in' ? 'First-in' : 'vs open'}
                       </span>
                       <div className="flex-1">
-                        <FrequencyBar fraction={row.stats.mean_score} color="#2E9E6B" height="h-2" />
+                        <FrequencyBar fraction={row.mean} color="#2E9E6B" height="h-2" />
                       </div>
                       <span className="w-16 shrink-0 text-right text-slate-400">
-                        {pctText(row.stats.mean_score)} · {row.stats.attempts}
+                        {pctText(row.mean)} · {row.stats.attempts}
                       </span>
                     </div>
                   ))}
@@ -1068,7 +1083,7 @@ export function StartingHandsPage() {
                   >
                     <span aria-hidden>{bandGlyph(a.grade.band)}</span>
                     <span className="font-medium text-slate-100">
-                      {canonicalClass(a.card.heroCards)}
+                      {canonicalClass(formatCards(a.card.heroCards))}
                     </span>
                     <span className="text-slate-500">
                       {preflopActionLabel(a.card.actions[a.pickedIdx] ?? '')} ·{' '}
