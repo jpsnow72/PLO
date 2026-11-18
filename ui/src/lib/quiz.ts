@@ -503,7 +503,7 @@ export function gradeHeuristicAnswer(q: HeuristicQuestion, chosenId: string): Gr
 // ---------- Progress (server-persisted SRS state) ---------------------------------
 
 export interface QuizItemState {
-  kind: 'spot' | 'heuristic';
+  kind: 'spot' | 'heuristic' | 'preflop';
   topic: QuizTopic;
   level: number;
   due_at: string;
@@ -546,7 +546,8 @@ export function parseQuizProgress(body: unknown): QuizProgress | null {
   for (const [key, raw] of Object.entries(body.items)) {
     if (!isRecord(raw)) continue;
     items[key] = {
-      kind: raw.kind === 'heuristic' ? 'heuristic' : 'spot',
+      kind:
+        raw.kind === 'heuristic' ? 'heuristic' : raw.kind === 'preflop' ? 'preflop' : 'spot',
       topic: parseTopic(raw.topic),
       level: typeof raw.level === 'number' ? raw.level : 0,
       due_at: typeof raw.due_at === 'string' ? raw.due_at : new Date(0).toISOString(),
