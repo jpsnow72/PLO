@@ -7,13 +7,31 @@ import { FrequencyBar, pctText } from '../components/FrequencyBar';
 import {
   ApiError,
   fetchHeuristics,
+  fetchJobResult,
   fetchLibrary,
   fetchLibrarySolve,
+  fetchPreflopIndex,
   fetchQuizProgress,
   fetchSampleSolve,
   recordQuizAnswer,
 } from '../lib/api';
 import { parseCard, parseCombo, type Card } from '../lib/cards';
+import {
+  addSavedDrill,
+  focusLabel,
+  focusMatches,
+  loadSavedDrills,
+  preflopDrillGroups,
+  removeSavedDrill,
+  spotTypeDrillEntries,
+  streetDrillEntries,
+  topicDrillEntries,
+  type DrillEntry,
+  type PreflopDrillGroup,
+  type SavedDrill,
+  type TrainerFocus,
+} from '../lib/drills';
+import type { PreflopIndex } from '../lib/preflop';
 import type { Heuristic } from '../lib/heuristics';
 import {
   buildHeuristicQuestions,
@@ -39,6 +57,7 @@ import { useStore } from '../store/useStore';
 type SyncState = 'checking' | 'synced' | 'locked' | 'offline';
 type HeuristicsState = 'checking' | 'available' | 'unavailable' | 'locked';
 type Phase = 'loading' | 'home' | 'question' | 'summary';
+type HomeTab = 'train' | 'drills' | 'history' | 'stats';
 
 type SessionEntry =
   | { type: 'spot'; q: SpotQuestion }
@@ -52,6 +71,38 @@ interface AnsweredEntry {
 const MAX_LIBRARY_SOURCES = 12;
 const SESSION_SPOT_TARGET = 9;
 const SESSION_HEURISTIC_TARGET = 3;
+/** A spot drill cycles its node's questions up to this many hands. */
+const SPOT_DRILL_TARGET = 10;
+
+/**
+ * Generate every question one solve supports, loading it by source.
+ * Used for Practice This Spot and saved spot drills, whose solve may
+ * not be among the trainer's general sources (job solves, or a library
+ * solve past the general source cap).
+ */
+async function questionsForSolve(
+  solveId: string,
+  solveName: string,
+  source: 'library' | 'sample' | 'job',
+): Promise<SpotQuestion[]> {
+  const raw =
+    source === 'library'
+      ? await fetchLibrarySolve(solveId)
+      : source === 'job'
+        ? await fetchJobResult(solveId)
+        : await fetchSampleSolve();
+  const data = parseSolve(raw);
+  if (!data) return [];
+  return collectSpotQuestions({ id: solveId, name: solveName, source, data });
+}
+
+function solveSourceLabel(source: SpotQuestion['solveSource']): string {
+  return source === 'library'
+    ? 'library solve'
+    : source === 'job'
+      ? 'your solve (job)'
+      : 'bundled sample solve';
+}
 
 function cardsOf(labels: string[]): Card[] {
   const out: Card[] = [];
@@ -302,6 +353,16 @@ export function QuizPage() {
   const [localTopics, setLocalTopics] = useState<Record<string, QuizTopicStats>>({});
   const repeatedRef = useRef<Set<string>>(new Set());
 
+  // Trainer parity (issue #22): home tabs, focused drill sessions,
+  // saved drills, and the preflop drill catalogue.
+  const [homeTab, setHomeTab] = useState<HomeTab>('train');
+  const [sessionFocus, setSessionFocus] = useState<TrainerFocus | null>(null);
+  const [focusNotice, setFocusNotice] = useState<string | null>(null);
+  const [savedDrills, setSavedDrills] = useState<SavedDrill[]>(() => loadSavedDrills());
+  const [preflopIndex, setPreflopIndex] = useState<PreflopIndex | null>(null);
+  const [drillName, setDrillName] = useState('');
+  const [drillSaved, setDrillSaved] = useState(false);
+
   const navigate = useNavigate();
   const [openingKey, setOpeningKey] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -320,10 +381,12 @@ export function QuizPage() {
         const raw =
           q.solveSource === 'library'
             ? await fetchLibrarySolve(q.solveId)
-            : await fetchSampleSolve();
+            : q.solveSource === 'job'
+              ? await fetchJobResult(q.solveId)
+              : await fetchSampleSolve();
         const ok = useStore
           .getState()
-          .loadRawSolve(raw, q.solveName, q.solveSource, q.solveSource === 'library' ? q.solveId : null);
+          .loadRawSolve(raw, q.solveName, q.solveSource, q.solveSource === 'sample' ? null : q.solveId);
         if (!ok) {
           setOpenError('That solve could not be loaded into the Explorer.');
           return;
@@ -432,6 +495,22 @@ export function QuizPage() {
     };
   }, []);
 
+  // Preflop drill catalogue (defensive: the Drills tab explains its
+  // absence rather than failing the page).
+  useEffect(() => {
+    let cancelled = false;
+    fetchPreflopIndex()
+      .then((idx) => {
+        if (!cancelled) setPreflopIndex(idx);
+      })
+      .catch(() => {
+        if (!cancelled) setPreflopIndex(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const dueCount = useMemo(() => {
     if (!progress) return 0;
     const due = dueItemKeys(progress, new Date());
@@ -447,6 +526,111 @@ export function QuizPage() {
     for (const [key, s] of Object.entries(from)) merged[key] = s;
     return topicStatsChips(merged);
   }, [syncState, progress, localTopics]);
+
+  /** Reset all per-session state and enter the question phase. */
+  const beginSession = useCallback((entries: SessionEntry[], focus: TrainerFocus | null) => {
+    repeatedRef.current = new Set();
+    setSession(entries);
+    setSessionFocus(focus);
+    setDrillSaved(false);
+    setDrillName('');
+    setAnswered([]);
+    setIndex(0);
+    setPickedAction(null);
+    setPickedHeuristic(null);
+    setGrade(null);
+    setPhase('question');
+  }, []);
+
+  /**
+   * Start a focused drill session from explicit question pools.
+   * Returns false (and changes nothing) when the focus matches no
+   * questions — the caller reports that instead of starting an empty
+   * session. Grading and persistence are untouched: entries flow
+   * through the same submit/persist path as a mixed session.
+   */
+  const startFocused = useCallback(
+    (
+      focus: TrainerFocus,
+      spots: SpotQuestion[],
+      heurs: HeuristicQuestion[],
+      due: Set<string>,
+    ): boolean => {
+      let entries: SessionEntry[] = [];
+      if (focus.kind === 'due') {
+        const dueSpots = shuffle(spots.filter((q) => due.has(q.itemKey)));
+        const dueHeurs = heurs.filter((q) => due.has(q.itemKey));
+        entries = dueSpots.map((q) => ({ type: 'spot' as const, q }));
+        dueHeurs.forEach((q, i) => {
+          const at = Math.min(entries.length, 2 + i * 3);
+          entries.splice(at, 0, { type: 'heuristic' as const, q });
+        });
+      } else if (focus.kind === 'spot') {
+        // One exact node: cycle its combos (reshuffled each pass)
+        // until the drill target, so a small node still fills a
+        // session and a large one is sampled.
+        const pool = spots.filter((q) => focusMatches(focus, q));
+        const picked: SpotQuestion[] = [];
+        while (pool.length > 0 && picked.length < SPOT_DRILL_TARGET) {
+          picked.push(...shuffle(pool));
+        }
+        entries = picked
+          .slice(0, SPOT_DRILL_TARGET)
+          .map((q) => ({ type: 'spot' as const, q }));
+      } else {
+        const pool = spots.filter((q) => focusMatches(focus, q));
+        const ordered = [
+          ...shuffle(pool.filter((q) => due.has(q.itemKey))),
+          ...shuffle(pool.filter((q) => !due.has(q.itemKey))),
+        ];
+        entries = ordered
+          .slice(0, SESSION_SPOT_TARGET)
+          .map((q) => ({ type: 'spot' as const, q }));
+      }
+      if (entries.length === 0) return false;
+      beginSession(entries, focus);
+      return true;
+    },
+    [beginSession],
+  );
+
+  /**
+   * Launch a focus from the UI (drill catalogue, saved drills,
+   * history). Spot focuses load their own solve first; the rest run
+   * over the trainer's already-loaded pools.
+   */
+  const launchFocus = useCallback(
+    async (focus: TrainerFocus) => {
+      setFocusNotice(null);
+      const due = progress ? dueItemKeys(progress, new Date()) : new Set<string>();
+      if (focus.kind === 'spot') {
+        try {
+          const qs = await questionsForSolve(focus.solveId, focus.solveName, focus.solveSource);
+          if (!startFocused(focus, qs, [], due)) {
+            setFocusNotice(
+              `“${focusLabel(focus)}” has no drillable decision — the node may offer only one action, or the solve changed since the drill was saved.`,
+            );
+            setHomeTab('drills');
+          }
+        } catch {
+          setFocusNotice(
+            `“${focusLabel(focus)}” could not start — that solve is unreachable right now.`,
+          );
+          setHomeTab('drills');
+        }
+        return;
+      }
+      if (!startFocused(focus, spotQuestions, heuristicQuestions, due)) {
+        setFocusNotice(
+          focus.kind === 'due'
+            ? 'Nothing is due for review right now — due items lead every session automatically.'
+            : `“${focusLabel(focus)}” matches no questions in the solves the trainer could load.`,
+        );
+        setHomeTab('drills');
+      }
+    },
+    [progress, spotQuestions, heuristicQuestions, startFocused],
+  );
 
   const startSession = useCallback(() => {
     const due = progress ? dueItemKeys(progress, new Date()) : new Set<string>();
@@ -464,15 +648,22 @@ export function QuizPage() {
       entries.splice(at, 0, { type: 'heuristic' as const, q });
     });
 
-    repeatedRef.current = new Set();
-    setSession(entries);
-    setAnswered([]);
-    setIndex(0);
-    setPickedAction(null);
-    setPickedHeuristic(null);
-    setGrade(null);
-    setPhase('question');
-  }, [progress, spotQuestions, heuristicQuestions]);
+    beginSession(entries, null);
+  }, [progress, spotQuestions, heuristicQuestions, beginSession]);
+
+  // Consume a trainer focus handed off through the store (Practice
+  // This Spot in the Explorer) once the home view is up. One-shot:
+  // the ref + clearing the store slot mean a stale focus can never
+  // re-fire on later visits home.
+  const focusConsumedRef = useRef(false);
+  useEffect(() => {
+    if (phase !== 'home' || focusConsumedRef.current) return;
+    focusConsumedRef.current = true;
+    const pending = useStore.getState().trainerFocus;
+    if (!pending) return;
+    useStore.getState().setTrainerFocus(null);
+    void launchFocus(pending);
+  }, [phase, launchFocus]);
 
   const recordLocal = useCallback((topic: { texture: string; street: string; spot_type: string }, score: number) => {
     const key = topicKey(topic);
@@ -555,6 +746,25 @@ export function QuizPage() {
 
   if (phase === 'home') {
     const noQuestions = spotQuestions.length === 0 && heuristicQuestions.length === 0;
+    // Drill catalogue + History/Stats derivations — all from real
+    // loaded data (the question pools, the preflop index, and the
+    // synced progress snapshot). Nothing is estimated or padded.
+    const accuracyByKey = new Map<string, number>();
+    const topicSource = syncState === 'synced' && progress ? progress.topics : localTopics;
+    for (const [key, s] of Object.entries(topicSource)) {
+      if (s.attempts > 0) accuracyByKey.set(key, s.score_sum / s.attempts);
+    }
+    const streetEntries = streetDrillEntries(spotQuestions);
+    const spotTypeEntries = spotTypeDrillEntries(spotQuestions);
+    const topicEntries = topicDrillEntries(spotQuestions, accuracyByKey);
+    const preflopGroups = preflopIndex ? preflopDrillGroups(preflopIndex) : [];
+    const sampleOnly =
+      spotQuestions.length > 0 && spotQuestions.every((q) => q.solveSource === 'sample');
+    const questionsByKey = new Map(spotQuestions.map((q) => [q.itemKey, q]));
+    const heuristicTextById = new Map<string, string>();
+    for (const hq of heuristicQuestions) {
+      for (const o of hq.options) heuristicTextById.set(o.id, o.text);
+    }
     return (
       <div className="flex flex-col gap-4">
         <header>
@@ -565,6 +775,47 @@ export function QuizPage() {
           </p>
         </header>
 
+        {focusNotice ? (
+          <p
+            className="rounded-lg border border-accent/60 bg-navy-850 px-3 py-2.5 text-sm text-ink"
+            role="alert"
+          >
+            {focusNotice}
+          </p>
+        ) : null}
+
+        <div
+          className="flex gap-1.5 border-b border-navy-700"
+          role="tablist"
+          aria-label="Trainer views"
+        >
+          {(
+            [
+              ['train', 'Train'],
+              ['drills', 'Drills'],
+              ['history', 'History'],
+              ['stats', 'Stats'],
+            ] as [HomeTab, string][]
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={homeTab === key}
+              onClick={() => setHomeTab(key)}
+              className={`rounded-t-md px-3 py-1.5 text-sm ${
+                homeTab === key
+                  ? 'bg-navy-800 font-semibold text-ink ring-1 ring-navy-700'
+                  : 'text-ink-dim hover:bg-navy-800 hover:text-ink'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {homeTab === 'train' ? (
+          <>
         <section className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-lg border border-navy-700 bg-navy-900 p-3 shadow-panel">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
@@ -661,7 +912,7 @@ export function QuizPage() {
             </p>
           </section>
         ) : (
-          <div>
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={startSession}
@@ -670,8 +921,85 @@ export function QuizPage() {
               Start session
               {dueCount > 0 && syncState === 'synced' ? ` (${dueCount} due first)` : ''}
             </button>
+            <button
+              type="button"
+              onClick={() => setHomeTab('drills')}
+              className="rounded-md bg-navy-800 px-4 py-2 text-sm font-semibold text-ink ring-1 ring-navy-600 hover:bg-navy-700"
+            >
+              Browse drills
+            </button>
           </div>
         )}
+          </>
+        ) : null}
+
+        {homeTab === 'drills' ? (
+          <DrillsSection
+            savedDrills={savedDrills}
+            dueCount={dueCount}
+            syncState={syncState}
+            noQuestions={noQuestions}
+            sampleOnly={sampleOnly}
+            streetEntries={streetEntries}
+            spotTypeEntries={spotTypeEntries}
+            topicEntries={topicEntries}
+            preflopGroups={preflopGroups}
+            preflopLoaded={preflopIndex !== null}
+            onMixed={startSession}
+            onLaunch={(focus) => void launchFocus(focus)}
+            onDeleteSaved={(id) => setSavedDrills(removeSavedDrill(id))}
+            onPreflop={(group) => {
+              useStore.getState().setPreflopDrillSetId(group.firstSetId);
+              navigate('/starting-hands');
+            }}
+          />
+        ) : null}
+
+        {homeTab === 'history' ? (
+          syncState === 'synced' && progress ? (
+            <HistorySection
+              progress={progress}
+              questionsByKey={questionsByKey}
+              heuristicTextById={heuristicTextById}
+              openingKey={openingKey}
+              openError={openError}
+              onOpenExplorer={(q) => void openInExplorer(q)}
+              onPractice={(focus) => void launchFocus(focus)}
+              onPreflopAgain={(setId) => {
+                useStore.getState().setPreflopDrillSetId(setId);
+                navigate('/starting-hands');
+              }}
+            />
+          ) : (
+            <section className="rounded-lg border border-navy-700 bg-navy-900 p-4 shadow-panel">
+              <h2 className="text-sm font-semibold text-ink">History lives with your synced progress</h2>
+              <p className="mt-1 text-sm text-ink-dim">
+                {syncState === 'locked'
+                  ? 'Sign in (admin) to sync quiz progress — your training history is stored with it, per item, across devices.'
+                  : syncState === 'checking'
+                    ? 'Checking your synced progress…'
+                    : 'The job service is unreachable, so your stored history cannot load this visit. Answers from this visit still appear in the session rail while you train.'}
+              </p>
+            </section>
+          )
+        ) : null}
+
+        {homeTab === 'stats' ? (
+          syncState === 'synced' && progress ? (
+            <StatsSection progress={progress} />
+          ) : (
+            <section className="rounded-lg border border-navy-700 bg-navy-900 p-4 shadow-panel">
+              <h2 className="text-sm font-semibold text-ink">Stats live with your synced progress</h2>
+              <p className="mt-1 text-sm text-ink-dim">
+                {syncState === 'locked'
+                  ? 'Sign in (admin) to sync quiz progress — volume and accuracy stats are computed from it, across every session and device.'
+                  : syncState === 'checking'
+                    ? 'Checking your synced progress…'
+                    : 'The job service is unreachable, so your stored stats cannot load this visit. This session’s stats are in the rail while you train.'}
+              </p>
+            </section>
+          )
+        ) : null}
       </div>
     );
   }
@@ -681,12 +1009,36 @@ export function QuizPage() {
       answered.length > 0
         ? answered.reduce((a, r) => a + r.grade.score, 0) / answered.length
         : 0;
+    const bandCounts = {
+      solid: answered.filter((r) => r.grade.band === 'solid').length,
+      partial: answered.filter((r) => r.grade.band === 'partial').length,
+      miss: answered.filter((r) => r.grade.band === 'miss').length,
+    };
+    const evLossPcts: number[] = [];
+    for (const r of answered) {
+      if (r.entry.type === 'spot' && r.grade.evLostChips !== null && r.entry.q.pot > 0) {
+        evLossPcts.push((r.grade.evLostChips / r.entry.q.pot) * 100);
+      }
+    }
+    const avgEvLossPct =
+      evLossPcts.length > 0
+        ? evLossPcts.reduce((a, v) => a + v, 0) / evLossPcts.length
+        : null;
     return (
       <div className="flex flex-col gap-4">
         <header>
           <h1 className="text-xl font-bold text-ink">Session done</h1>
+          {sessionFocus ? (
+            <p className="text-xs font-medium uppercase tracking-wide text-accent">
+              Drill · {focusLabel(sessionFocus)}
+            </p>
+          ) : null}
           <p className="text-sm text-ink-dim">
-            Average score {(avg * 100).toFixed(0)}% over {answered.length} graded answers
+            {answered.length} hands · accuracy {(avg * 100).toFixed(0)}% · solid{' '}
+            {bandCounts.solid} / partial {bandCounts.partial} / missed {bandCounts.miss}
+            {avgEvLossPct !== null
+              ? ` · avg EV loss ${avgEvLossPct.toFixed(1)}% of pot (EV-graded answers)`
+              : ''}
             {syncState === 'synced'
               ? ' — progress saved, misses are due again right away.'
               : ' — progress was not synced (this session only).'}
@@ -757,6 +1109,43 @@ export function QuizPage() {
             Another session
           </button>
         </div>
+
+        {sessionFocus ? (
+          <section className="rounded-lg border border-navy-700 bg-navy-900 p-4 shadow-panel">
+            <h2 className="text-sm font-semibold text-ink">Save as drill</h2>
+            <p className="mt-1 text-xs text-ink-dim">
+              Keep “{focusLabel(sessionFocus)}” as a named drill on this device. The drill
+              stores the setup, not the questions — launching it re-derives questions from the
+              solves the trainer can load then.
+            </p>
+            {drillSaved ? (
+              <p className="mt-2 text-sm text-table-light">
+                Saved — find it under Drills · Your drills.
+              </p>
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-2">
+                <input
+                  type="text"
+                  value={drillName}
+                  onChange={(e) => setDrillName(e.target.value)}
+                  placeholder={focusLabel(sessionFocus)}
+                  aria-label="Drill name"
+                  className="min-w-52 flex-1 rounded-md border border-navy-600 bg-navy-850 px-3 py-2 text-sm text-ink placeholder:text-ink-faint"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSavedDrills(addSavedDrill(drillName, sessionFocus));
+                    setDrillSaved(true);
+                  }}
+                  className="rounded-md bg-navy-800 px-4 py-2 text-sm font-semibold text-ink ring-1 ring-navy-600 hover:bg-navy-700"
+                >
+                  Save drill
+                </button>
+              </div>
+            )}
+          </section>
+        ) : null}
       </div>
     );
   }
@@ -784,7 +1173,12 @@ export function QuizPage() {
     return (
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex flex-col gap-4">
-        <p className="text-xs text-ink-faint">{progressText} · from your heuristics log</p>
+        <p className="text-xs text-ink-faint">
+          {progressText} · from your heuristics log
+          {sessionFocus ? (
+            <span className="ml-2 font-medium text-accent">Drill · {focusLabel(sessionFocus)}</span>
+          ) : null}
+        </p>
         <section className="rounded-lg border border-navy-700 bg-navy-900 p-4 shadow-panel">
           <h1 className="text-lg font-semibold text-ink">Which heuristic applies here?</h1>
           <div className="mt-3 flex flex-col gap-2">
@@ -856,6 +1250,9 @@ export function QuizPage() {
         <p className="flex flex-wrap items-center gap-2 text-xs text-ink-faint">
           {progressText} · {q.solveName}
           {q.solveSource === 'sample' ? ' · bundled sample' : ''}
+          {sessionFocus ? (
+            <span className="font-medium text-accent">Drill · {focusLabel(sessionFocus)}</span>
+          ) : null}
           <span className="ml-auto font-medium text-accent">Topic: {topicLabel(q.topic)}</span>
         </p>
 
@@ -963,8 +1360,8 @@ export function QuizPage() {
         </section>
 
         <p className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide text-ink-faint">
-          Source: {q.solveSource === 'library' ? 'library solve' : 'bundled sample solve'} ·{' '}
-          {topicLabel(q.topic)} · <AccuracyBadge nashPct={q.nashPct} />
+          Source: {solveSourceLabel(q.solveSource)} · {topicLabel(q.topic)} ·{' '}
+          <AccuracyBadge nashPct={q.nashPct} />
         </p>
       </div>
 
@@ -977,6 +1374,567 @@ export function QuizPage() {
         openError={openError}
         onOpenExplorer={(sq) => void openInExplorer(sq)}
       />
+    </div>
+  );
+}
+
+// ---------- Home tabs: Drills / History / Stats (issue #22) ----------------
+// Every number below derives from the loaded question pools or the
+// synced progress snapshot. Where the stored data cannot support a
+// surface (the action you picked, EV-loss aggregates, postflop
+// position), the section says so instead of estimating it.
+
+type QuizItem = QuizProgress['items'][string];
+
+function DrillEntryCard({
+  label,
+  count,
+  detail,
+  actionLabel = 'Start drill',
+  disabled = false,
+  disabledNote,
+  onLaunch,
+}: {
+  label: string;
+  count: number | null;
+  detail: string;
+  actionLabel?: string;
+  disabled?: boolean;
+  disabledNote?: string;
+  onLaunch: () => void;
+}) {
+  return (
+    <div className="flex flex-col rounded-lg border border-navy-700 bg-navy-900 p-3 shadow-panel">
+      <h3 className="text-sm font-semibold text-ink">{label}</h3>
+      <p className="mt-0.5 text-xs text-ink-dim">{detail}</p>
+      <div className="mt-auto flex items-baseline justify-between gap-2 pt-3">
+        <span className="font-mono text-sm text-ink-dim">
+          {count !== null ? `${count} questions` : ''}
+        </span>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onLaunch}
+          title={disabled ? disabledNote : undefined}
+          className="rounded-md bg-navy-800 px-3 py-1.5 text-xs font-semibold text-table-light ring-1 ring-navy-600 hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {actionLabel}
+        </button>
+      </div>
+      {disabled && disabledNote ? (
+        <p className="mt-1.5 text-xs text-ink-faint">{disabledNote}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function DrillsSection({
+  savedDrills,
+  dueCount,
+  syncState,
+  noQuestions,
+  sampleOnly,
+  streetEntries,
+  spotTypeEntries,
+  topicEntries,
+  preflopGroups,
+  preflopLoaded,
+  onMixed,
+  onLaunch,
+  onDeleteSaved,
+  onPreflop,
+}: {
+  savedDrills: SavedDrill[];
+  dueCount: number;
+  syncState: SyncState;
+  noQuestions: boolean;
+  sampleOnly: boolean;
+  streetEntries: DrillEntry[];
+  spotTypeEntries: DrillEntry[];
+  topicEntries: DrillEntry[];
+  preflopGroups: PreflopDrillGroup[];
+  preflopLoaded: boolean;
+  onMixed: () => void;
+  onLaunch: (focus: TrainerFocus) => void;
+  onDeleteSaved: (id: string) => void;
+  onPreflop: (group: PreflopDrillGroup) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-5">
+      <section>
+        <h2 className="mb-2 text-sm font-semibold text-ink">Your drills</h2>
+        {savedDrills.length === 0 ? (
+          <p className="rounded-lg border border-navy-700 bg-navy-900 p-3 text-sm text-ink-dim shadow-panel">
+            No saved drills. Run any focused session below — or Practice This Spot in the
+            Explorer — and save it as a drill from the results screen. Drills are saved on
+            this device and store the setup only; the questions are re-derived from your
+            solves each time you launch one.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {savedDrills.map((d) => (
+              <li
+                key={d.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-navy-700 bg-navy-900 px-3 py-2.5 shadow-panel"
+              >
+                <span className="text-sm font-semibold text-ink">{d.name}</span>
+                <span className="text-xs text-ink-faint">{focusLabel(d.focus)}</span>
+                <span className="ml-auto flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onLaunch(d.focus)}
+                    className="rounded-md bg-navy-800 px-3 py-1.5 text-xs font-semibold text-table-light ring-1 ring-navy-600 hover:bg-navy-700"
+                  >
+                    Start drill
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDeleteSaved(d.id)}
+                    className="rounded-md px-2 py-1.5 text-xs text-ink-dim hover:bg-navy-800 hover:text-ink"
+                  >
+                    Delete
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold text-ink">Postflop drills</h2>
+        {sampleOnly ? (
+          <p className="mb-2 rounded-lg border border-accent/60 bg-navy-850 px-3 py-2.5 text-xs leading-relaxed text-ink-dim">
+            These drills are drawn from the solves the trainer could load — right now that
+            is only the bundled sample solve, because the 300-spot library has not been
+            solved yet. The list is short by reality, not by omission: every finished
+            library solve adds its decisions here automatically.
+          </p>
+        ) : null}
+        {noQuestions ? (
+          <p className="text-sm text-ink-dim">
+            No postflop questions could be generated from the loaded solves, so there is
+            nothing honest to drill yet.
+          </p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <DrillEntryCard
+              label="Mixed session"
+              count={null}
+              detail="Spots and heuristics mixed, due reviews first — the standard session."
+              actionLabel="Start session"
+              onLaunch={onMixed}
+            />
+            <DrillEntryCard
+              label="Due for review"
+              count={syncState === 'synced' ? dueCount : null}
+              detail="Only the items the spaced-repetition ladder says are due now."
+              disabled={syncState !== 'synced' || dueCount === 0}
+              disabledNote={
+                syncState !== 'synced'
+                  ? 'Due reviews need synced progress (sign in).'
+                  : 'Nothing is due right now.'
+              }
+              onLaunch={() => onLaunch({ kind: 'due' })}
+            />
+            {streetEntries.map((e) => (
+              <DrillEntryCard
+                key={e.label}
+                label={e.label}
+                count={e.count}
+                detail={e.detail}
+                onLaunch={() => onLaunch(e.focus)}
+              />
+            ))}
+            {spotTypeEntries.map((e) => (
+              <DrillEntryCard
+                key={e.label}
+                label={e.label}
+                count={e.count}
+                detail={e.detail}
+                onLaunch={() => onLaunch(e.focus)}
+              />
+            ))}
+          </div>
+        )}
+
+        {topicEntries.length > 0 ? (
+          <>
+            <h3 className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+              By topic — weakest first
+            </h3>
+            <ul className="flex flex-col gap-1.5">
+              {topicEntries.map((e) => (
+                <li
+                  key={e.label}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-navy-700 bg-navy-900 px-3 py-2 text-sm shadow-panel"
+                >
+                  <span className="min-w-0 flex-1 truncate text-ink" title={e.label}>
+                    {e.label}
+                  </span>
+                  <span className="text-xs text-ink-faint">{e.detail}</span>
+                  <span className="font-mono text-xs text-ink-dim">{e.count} questions</span>
+                  <button
+                    type="button"
+                    onClick={() => onLaunch(e.focus)}
+                    className="rounded-md bg-navy-800 px-3 py-1.5 text-xs font-semibold text-table-light ring-1 ring-navy-600 hover:bg-navy-700"
+                  >
+                    Start drill
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold text-ink">Preflop drills</h2>
+        {!preflopLoaded ? (
+          <p className="text-sm text-ink-dim">
+            The preflop range-set index could not be loaded, so preflop drills are
+            unavailable this visit. The Starting Hands page drills the same sets.
+          </p>
+        ) : preflopGroups.length === 0 ? (
+          <p className="text-sm text-ink-dim">
+            The range-set index has no drillable sets yet.
+          </p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {preflopGroups.map((g) => (
+              <DrillEntryCard
+                key={g.key}
+                label={g.label}
+                count={null}
+                detail={`${g.detail} ${g.setCount} sets — opens Starting Hands on the first set; every position in the group is one picker step away there.`}
+                actionLabel="Open in Starting Hands"
+                onLaunch={() => onPreflop(g)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function parseSpotItemKey(
+  itemKey: string,
+): { solveId: string; history: string; combo: string } | null {
+  const first = itemKey.indexOf('|');
+  const last = itemKey.lastIndexOf('|');
+  if (first <= 0 || last <= first) return null;
+  return {
+    solveId: itemKey.slice(0, first),
+    history: itemKey.slice(first + 1, last),
+    combo: itemKey.slice(last + 1),
+  };
+}
+
+function gradingLabel(g: QuizItem['last_grading']): string {
+  return g === 'ev'
+    ? 'EV-lost grading'
+    : g === 'frequency'
+      ? 'frequency-match grading'
+      : g === 'match'
+        ? 'recall grading'
+        : '—';
+}
+
+function HistorySection({
+  progress,
+  questionsByKey,
+  heuristicTextById,
+  openingKey,
+  openError,
+  onOpenExplorer,
+  onPractice,
+  onPreflopAgain,
+}: {
+  progress: QuizProgress;
+  questionsByKey: Map<string, SpotQuestion>;
+  heuristicTextById: Map<string, string>;
+  openingKey: string | null;
+  openError: string | null;
+  onOpenExplorer: (q: SpotQuestion) => void;
+  onPractice: (focus: TrainerFocus) => void;
+  onPreflopAgain: (setId: string) => void;
+}) {
+  const now = new Date();
+  const rows = Object.entries(progress.items)
+    .map(([itemKey, item]) => ({ itemKey, item }))
+    .sort((a, b) => {
+      const at = a.item.last_at ? new Date(a.item.last_at).getTime() : 0;
+      const bt = b.item.last_at ? new Date(b.item.last_at).getTime() : 0;
+      return bt - at;
+    })
+    .slice(0, 30);
+
+  return (
+    <section className="flex flex-col gap-3">
+      <p className="text-xs leading-relaxed text-ink-faint">
+        Your most recently graded items, from your synced progress. Each row shows the
+        item’s latest grade — the progress store keeps the latest score per item, not the
+        action you picked, so rows show the grade rather than the pick. EV loss is not
+        stored either; it arrives with per-action EVs (issue #8).
+      </p>
+      {rows.length === 0 ? (
+        <p className="rounded-lg border border-navy-700 bg-navy-900 p-3 text-sm text-ink-dim shadow-panel">
+          Nothing graded yet — finish a session and your items will land here.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {rows.map(({ itemKey, item }) => {
+            const due = new Date(item.due_at).getTime() <= now.getTime();
+            const meta = (
+              <>
+                <span className="font-mono text-ink-dim">
+                  {item.last_score !== null
+                    ? `${(item.last_score * 100).toFixed(0)}%`
+                    : '—'}
+                </span>
+                <span>{gradingLabel(item.last_grading)}</span>
+                <span>
+                  {item.attempts} attempt{item.attempts === 1 ? '' : 's'}
+                </span>
+                {item.last_at ? (
+                  <span>{new Date(item.last_at).toLocaleDateString()}</span>
+                ) : null}
+                {due ? <span className="font-medium text-accent">due now</span> : null}
+              </>
+            );
+
+            if (item.kind === 'spot') {
+              const parsed = parseSpotItemKey(itemKey);
+              const loaded = questionsByKey.get(itemKey);
+              const cards = parsed ? parseCombo(parsed.combo) : null;
+              const focus: TrainerFocus | null = loaded
+                ? {
+                    kind: 'spot',
+                    solveId: loaded.solveId,
+                    solveName: loaded.solveName,
+                    solveSource: loaded.solveSource,
+                    history: nodeHistoryOf(loaded),
+                  }
+                : parsed
+                  ? {
+                      kind: 'spot',
+                      solveId: parsed.solveId,
+                      solveName: parsed.solveId,
+                      solveSource: parsed.solveId === 'sample' ? 'sample' : 'library',
+                      history: parsed.history,
+                    }
+                  : null;
+              return (
+                <li
+                  key={itemKey}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-navy-700 bg-navy-900 px-3 py-2.5 text-xs text-ink-faint shadow-panel"
+                >
+                  {cards ? <CardRow cards={cards} size="xs" /> : null}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-ink">
+                      {loaded?.solveName ?? parsed?.solveId ?? itemKey}
+                    </span>
+                    <span className="block">{topicLabel(item.topic)}</span>
+                  </span>
+                  {meta}
+                  {loaded ? (
+                    <button
+                      type="button"
+                      disabled={openingKey !== null}
+                      onClick={() => onOpenExplorer(loaded)}
+                      className="text-table-light underline hover:text-table disabled:opacity-50"
+                    >
+                      {openingKey === itemKey ? 'Opening…' : 'Open in Explorer'}
+                    </button>
+                  ) : null}
+                  {focus ? (
+                    <button
+                      type="button"
+                      onClick={() => onPractice(focus)}
+                      className="rounded-md bg-navy-800 px-2.5 py-1 text-xs font-semibold text-table-light ring-1 ring-navy-600 hover:bg-navy-700"
+                    >
+                      Practice again
+                    </button>
+                  ) : null}
+                </li>
+              );
+            }
+
+            if (item.kind === 'preflop') {
+              const parts = itemKey.split('|');
+              const setId = parts[1] ?? '';
+              const classKey = parts.slice(2).join('|');
+              return (
+                <li
+                  key={itemKey}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-navy-700 bg-navy-900 px-3 py-2.5 text-xs text-ink-faint shadow-panel"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-ink">
+                      Starting hand {classKey || '—'}
+                    </span>
+                    <span className="block">
+                      {topicLabel(item.topic)} · set {setId}
+                    </span>
+                  </span>
+                  {meta}
+                  {setId ? (
+                    <button
+                      type="button"
+                      onClick={() => onPreflopAgain(setId)}
+                      className="rounded-md bg-navy-800 px-2.5 py-1 text-xs font-semibold text-table-light ring-1 ring-navy-600 hover:bg-navy-700"
+                    >
+                      Drill this set
+                    </button>
+                  ) : null}
+                </li>
+              );
+            }
+
+            const heuristicId = itemKey.startsWith('heuristic|')
+              ? itemKey.slice('heuristic|'.length)
+              : '';
+            return (
+              <li
+                key={itemKey}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-navy-700 bg-navy-900 px-3 py-2.5 text-xs text-ink-faint shadow-panel"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm text-ink">
+                    {heuristicTextById.get(heuristicId) ?? 'Heuristic question'}
+                  </span>
+                  <span className="block">{topicLabel(item.topic)}</span>
+                </span>
+                {meta}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {openError ? (
+        <p className="text-xs text-red-300" role="alert">
+          {openError}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function StatsSection({ progress }: { progress: QuizProgress }) {
+  const items = Object.values(progress.items);
+  const totalAnswers = items.reduce((a, i) => a + i.attempts, 0);
+  const dueNow = dueItemKeys(progress, new Date()).size;
+  const topicEntries = Object.entries(progress.topics);
+  const topicAttempts = topicEntries.reduce((a, [, s]) => a + s.attempts, 0);
+  const topicScore = topicEntries.reduce((a, [, s]) => a + s.score_sum, 0);
+  const overall = topicAttempts > 0 ? topicScore / topicAttempts : null;
+
+  const byStreet = new Map<string, { attempts: number; score_sum: number }>();
+  const preflopByPosition = new Map<string, { attempts: number; score_sum: number }>();
+  for (const [key, s] of topicEntries) {
+    const [texture = '', street = ''] = key.split('|');
+    const streetLabel =
+      texture === 'preflop'
+        ? 'Preflop'
+        : street.charAt(0).toUpperCase() + street.slice(1);
+    const agg = byStreet.get(streetLabel) ?? { attempts: 0, score_sum: 0 };
+    agg.attempts += s.attempts;
+    agg.score_sum += s.score_sum;
+    byStreet.set(streetLabel, agg);
+    if (texture === 'preflop') {
+      const pos = preflopByPosition.get(street) ?? { attempts: 0, score_sum: 0 };
+      pos.attempts += s.attempts;
+      pos.score_sum += s.score_sum;
+      preflopByPosition.set(street, pos);
+    }
+  }
+  const streetOrder = ['Preflop', 'Flop', 'Turn', 'River'];
+  const streetRows = [...byStreet.entries()].sort(
+    (a, b) => streetOrder.indexOf(a[0]) - streetOrder.indexOf(b[0]),
+  );
+  const positionRows = [...preflopByPosition.entries()].sort((a, b) =>
+    a[0].localeCompare(b[0]),
+  );
+  const chips = topicStatsChips(progress.topics);
+
+  const statCard = (label: string, value: string, note: string) => (
+    <div className="rounded-lg border border-navy-700 bg-navy-900 p-3 shadow-panel">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{label}</h3>
+      <p className="mt-1 font-mono text-lg text-ink">{value}</p>
+      <p className="text-xs text-ink-dim">{note}</p>
+    </div>
+  );
+  const tableShell = (
+    title: string,
+    rows: [string, { attempts: number; score_sum: number }][],
+    firstCol: string,
+  ) => (
+    <section>
+      <h3 className="mb-2 text-sm font-semibold text-ink">{title}</h3>
+      <table className="w-full max-w-xl text-sm">
+        <thead>
+          <tr className="text-left text-xs uppercase tracking-wide text-ink-faint">
+            <th className="pb-1 font-semibold">{firstCol}</th>
+            <th className="pb-1 font-semibold">Answers</th>
+            <th className="pb-1 font-semibold">Accuracy</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([label, s]) => (
+            <tr key={label} className="border-t border-navy-800">
+              <td className="py-1.5 text-ink">{label}</td>
+              <td className="py-1.5 font-mono text-ink-dim">{s.attempts}</td>
+              <td className="py-1.5 font-mono text-ink-dim">
+                {s.attempts > 0 ? `${((s.score_sum / s.attempts) * 100).toFixed(0)}%` : '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+
+  return (
+    <div className="flex flex-col gap-5">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {statCard('Graded answers', String(totalAnswers), 'Across every item and session.')}
+        {statCard('Items in rotation', String(items.length), 'Distinct spots, heuristics and starting hands you have been graded on.')}
+        {statCard('Due now', String(dueNow), 'Items the spaced-repetition ladder wants back.')}
+        {statCard(
+          'Overall accuracy',
+          overall !== null ? `${(overall * 100).toFixed(0)}%` : '—',
+          'Mean grade score over all graded answers.',
+        )}
+      </section>
+
+      {streetRows.length > 0 ? tableShell('Accuracy by street', streetRows, 'Street') : null}
+      {positionRows.length > 0
+        ? tableShell('Preflop accuracy by position', positionRows, 'Position')
+        : null}
+
+      {chips.length > 0 ? (
+        <section>
+          <h3 className="mb-2 text-sm font-semibold text-ink">Accuracy by topic</h3>
+          <div className="max-w-xl">
+            <TopicBars chips={chips} limit={12} />
+          </div>
+        </section>
+      ) : null}
+
+      <section className="rounded-lg border border-navy-700 bg-navy-900 p-3 text-xs leading-relaxed text-ink-dim shadow-panel">
+        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+          What these stats cannot show yet
+        </h3>
+        <p>
+          The progress store keeps each item’s latest score and running totals — not a
+          per-answer band history — so a Correct / Partial / Miss split exists per session
+          (see the results screen and the session rail), not as a standing total. Average
+          EV-loss stats wait on per-action EVs (issue #8): no solve carries them yet, and
+          no EV figure is estimated in the meantime. Postflop accuracy by position is not
+          shown because topics record street and texture, not which seat you played.
+        </p>
+      </section>
     </div>
   );
 }
