@@ -10,6 +10,7 @@ import { LinkToHeuristic } from '../components/LinkToHeuristic';
 import { MultiwayLens } from '../components/MultiwayLens';
 import { NodeStrip } from '../components/NodeStrip';
 import { RangeGrid } from '../components/RangeGrid';
+import { RangesView } from '../components/RangesView';
 import { StrategyTables } from '../components/StrategyTables';
 import { TableView } from '../components/TableView';
 import { parseCard } from '../lib/cards';
@@ -23,7 +24,7 @@ function terminalMessage(actionLabel: string): string {
   return 'No further decision nodes on this line in this solve (the hand is all-in or complete).';
 }
 
-type ExplorerView = 'strategy' | 'matrix' | 'table';
+type ExplorerView = 'strategy' | 'matrix' | 'table' | 'ranges';
 
 export function ExplorerPage() {
   const solve = useStore((s) => s.solve);
@@ -188,13 +189,14 @@ export function ExplorerPage() {
 
           <ActionList actions={node.actions} aggregates={aggregates} onChoose={chooseAction} />
 
-          {/* View tabs: Strategy tables / Matrix (range grid) / Table */}
+          {/* View tabs: Strategy tables / Matrix (range grid) / Table / Ranges */}
           <div className="mt-1 flex gap-1.5 border-b border-navy-700" role="tablist" aria-label="Explorer views">
             {(
               [
                 { key: 'strategy', label: 'Strategy' },
                 { key: 'matrix', label: 'Matrix' },
                 { key: 'table', label: 'Table' },
+                { key: 'ranges', label: 'Ranges' },
               ] as { key: ExplorerView; label: string }[]
             ).map((t) => (
               <button
@@ -234,7 +236,7 @@ export function ExplorerPage() {
                 onSelectCombo={setSelectedCombo}
               />
             </div>
-          ) : (
+          ) : view === 'table' ? (
             <TableView
               key={node.history}
               solve={solve}
@@ -243,6 +245,16 @@ export function ExplorerPage() {
               boardCards={currentBoardCards}
               terminalAction={terminalAction}
               pendingStreet={pendingStreet}
+            />
+          ) : (
+            <RangesView
+              key={node.history}
+              data={solve}
+              node={node}
+              path={path}
+              boardCards={currentBoardCards}
+              selectedCombo={selectedCombo}
+              onSelectCombo={setSelectedCombo}
             />
           )}
         </section>
