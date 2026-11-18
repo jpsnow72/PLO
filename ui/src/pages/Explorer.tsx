@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AccuracyBadge, ApproximationBadge } from '../components/AccuracyBadge';
 import { ActionList } from '../components/ActionList';
+import { BlockersView } from '../components/BlockersView';
 import { CardPicker } from '../components/CardPicker';
 import { CardRow } from '../components/CardChip';
 import { ExplainPanel } from '../components/ExplainPanel';
@@ -25,7 +26,7 @@ function terminalMessage(actionLabel: string): string {
   return 'No further decision nodes on this line in this solve (the hand is all-in or complete).';
 }
 
-type ExplorerView = 'strategy' | 'matrix' | 'table' | 'ranges';
+type ExplorerView = 'strategy' | 'matrix' | 'table' | 'ranges' | 'blockers';
 
 export function ExplorerPage() {
   const solve = useStore((s) => s.solve);
@@ -190,7 +191,7 @@ export function ExplorerPage() {
 
           <ActionList actions={node.actions} aggregates={aggregates} onChoose={chooseAction} />
 
-          {/* View tabs: Strategy tables / Matrix (range grid) / Table / Ranges */}
+          {/* View tabs: Strategy / Matrix / Table / Ranges / Blockers */}
           <div className="mt-1 flex gap-1.5 border-b border-navy-700" role="tablist" aria-label="Explorer views">
             {(
               [
@@ -198,6 +199,7 @@ export function ExplorerPage() {
                 { key: 'matrix', label: 'Matrix' },
                 { key: 'table', label: 'Table' },
                 { key: 'ranges', label: 'Ranges' },
+                { key: 'blockers', label: 'Blockers' },
               ] as { key: ExplorerView; label: string }[]
             ).map((t) => (
               <button
@@ -247,7 +249,7 @@ export function ExplorerPage() {
               terminalAction={terminalAction}
               pendingStreet={pendingStreet}
             />
-          ) : (
+          ) : view === 'ranges' ? (
             <RangesView
               key={node.history}
               data={solve}
@@ -256,6 +258,18 @@ export function ExplorerPage() {
               boardCards={currentBoardCards}
               selectedCombo={selectedCombo}
               onSelectCombo={setSelectedCombo}
+            />
+          ) : (
+            // Blockers is keyed by solve, not by node: the picked hand
+            // is hero's holding for the whole hand, so it survives
+            // walking the tree; every number still re-derives per node
+            // from props. A new solve remounts with an empty hand.
+            <BlockersView
+              key={solveId ?? solveName}
+              data={solve}
+              node={node}
+              path={path}
+              boardCards={currentBoardCards}
             />
           )}
         </section>
