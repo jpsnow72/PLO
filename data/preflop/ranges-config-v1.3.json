@@ -1,0 +1,925 @@
+{
+ "_comment": "ranges-config-v1.3 - every tunable of the constructed-equity-v1 preflop range builder (engine bin `build-ranges`). This file is the methodology: the Rust code contains no strategy constants of its own. All target frequencies below are ASSUMPTIONS adopted for construction, cross-checked against published solver-derived totals (see cross_check_source and the research report free-charts-research-2026-11-07.md). They are NOT solved values and the emitted ranges are labelled CONSTRUCTED, never GTO. v1.2 (2026-11-17) adds the RAKE DIMENSION: the v1 family below is the RAKED variant (its targets were anchored on raked-game published totals) and the new norake_6max section carries the NO-RAKE variant of the 6-max family, anchored on GTO Wizard cEV (no-rake) totals. Every emitted set records rake: \"raked\" | \"no-rake\". All v1 fields are unchanged from ranges-config-v1.json, so the raked sets regenerate identically apart from the added rake field and the config version/hash recorded in provenance. v1.3 (2026-11-17) adds the 8-MAX families: the new eightmax section carries raked and no-rake 8-max targets derived from the same variant's 6-max targets by the players-behind seat mapping (see _comment_derivation_8max). No published 8-max PLO4 chart exists and no solver library offers a standard 8-max cash set, so the 8-max sets cite no source and carry the derivation in their provenance, exactly like the 9-max family. All v1/v1.2 fields are unchanged from ranges-config-v1.2.json, so the existing 63 sets regenerate identically apart from the config version/hash recorded in provenance.",
+ "_comment_btn_vs": "Which opens the BTN responds to (the HU-relevant in-position pairs the postflop solver needs first). BB responds to every opener and SB to every non-blind opener; those pairs are generated from the position lists, not from this table.",
+ "_comment_call_floor": "Call selection in vs_rfi sets ranks remaining classes by equity vs the opener's range multiplied by a realisation factor (in_position / out_of_position, by postflop acting order). Classes below call_equity_floor (on the discounted equity) are excluded; if that makes the call target unreachable the floor is relaxed in 0.02 steps down to 0 (documented construction fallback, so targets - the contract - are met).",
+ "_comment_components": "Playability component tables. pair_component = pair_base[kind] + pair_rank_bonus * (top_pair_rank / 14); for kind=none the rank term is 0. Trips are deliberately LOW: three of a kind is a weak, unplayable-heavy PLO starting structure (published class data: trips open ~0-1% even on the button). suitedness_component keys are the suit-count patterns of the 4 cards. connectedness is computed from rank gaps (see RANGES-NOTES.md), high_card = 0.6*(top/14) + 0.4*((top+second)/28).",
+ "_comment_continuations_targets_v11": "Continuation targets are INTERNAL CONSTRUCTION PARAMETERS, not published values: no published cross-check anchor for opener continuation rates vs a 3-bet was found in the free-charts research (free-charts-research-2026-11-07.md; the one free page with a vs-3bet spot, plo.ai-speeds.com, publishes dominant actions only, no frequencies, and carries no reuse licence, so it is not cited as a source). Targets are fractions OF THE OPENER'S RAISING RANGE by combo weight: continue_fraction_of_open of the opening range continues, split between call and four_bet by call_fraction_of_continue and four_bet_fraction_of_continue. cross_check status for these sets: no published anchor - method disclosed. They must never be presented as externally validated or solver-derived.",
+ "_comment_continuations_v11": "v1.1 continuations (method constructed-equity-v1.1): for each matchup in continuations_v11.matchups, the opener's continuation range after facing a 3-bet. Eligible classes are exactly the classes the opener opens in their constructed RFI set (raise frequency > 0 in that set). Classes are scored with the v1 feature blend, with the equity slot computed against the three-bettor's three_bet slice (seeded Monte Carlo, samples_vs_three_bettor samples per class, seed discipline identical to v1) discounted by the postflop realisation factor for the continuer (realisation.in_position when the continuer acts after the three-bettor postflop, else realisation.out_of_position). Ranking is by that score: the four_bet slice takes the top band and call takes the next band, fitted with the same linear ramp plus deterministic residual correction as v1. Emitted frequencies are conditional on having opened: for an eligible class fold + call + four_bet = 1; a class the opener never opens folds at 1.0 and can never continue.",
+ "_comment_cross_check": "In --check mode, RFI sets must land inside their published band and anchored defense totals within cross_check_defense_tolerance (absolute, in fraction units) of the anchor; interpolated/extrapolated/derived totals are reported as deltas only. Because generation fits targets by construction, --check is a regression/validation diff of the emitted files against these published targets, not an independent solve.",
+ "_comment_cross_check_source": "The external sources recorded in emitted provenance: (1) PLO.com - its data page states its numbers are free to cite with a link back; we cite its aggregate totals as cross-check targets only, no PLO.com range data is transcribed into any set. (2) Upswing Advanced PLO Preflop Guide - owner-provided copy, personal use, cross-check totals only (see _comment_upswing); it has no URL because the copy is the owner's PDF, so its provenance entry omits url. ThinkGTO totals were compared in the research report ONLY; ThinkGTO's terms prohibit copying/derivative works and it is NOT recorded as a source anywhere in the emitted data (a consent request was sent 2026-11-07; if granted, the coordinator will update provenance then).",
+ "_comment_derivation_8max": "No free published 8-max PLO4 chart exists and no solver library offers a standard 8-max cash set (GTO Wizard: Straddle and Straddle+Ante only, verified 2026-11-17). 8-max targets are DERIVED from the same rake variant's 6-max targets by the players-behind seat mapping (a seat's width is governed by how many players act behind it). 8-max seats in action order with players behind: UTG 7, UTG+1 6, MP 5, HJ 4, CO 3, BTN 2, SB 1, BB 0. MP (5 behind) takes the 6-max UTG values, HJ (4 behind) the 6-max MP values, and CO / BTN / SB keep their 6-max targets outright. For the two seats with no 6-max counterpart: in the RAKED variant UTG+1 (6 behind) and UTG (7 behind) take the values the 9-max derivation assigned to the same behind-counts (RFI bands 15-17% and 13-15%, and the 9-max BB/SB response values vs its UTG+2 / UTG+1 opens). In the NO-RAKE variant the same two seats step down from the no-rake 6-max UTG anchor by the raked curve's per-step ratios (BB defense: call x0.872 then x0.920, three_bet x0.754 then x0.930; SB defense: call x0.857 then x0.933, three_bet x0.800 then x0.900; RFI: -2.0pp per extra player behind, the raked curve's step at the tight end). 8-max sets are labelled derived-by-mapping in their provenance and carry an empty sources array.",
+ "_comment_derivation_9max": "No free published 9-max PLO4 chart exists (research report section 5). 9-max targets are DERIVED from the 6-max solver targets by the players-behind seat mapping (a seat's width is governed by how many players act behind it): 9-max LJ (5 behind) ~= 6-max UTG, HJ ~= MP, CO/BTN/SB keep their 6-max targets, and the three new early seats extrapolate the curve (UTG 10-13%, UTG+1 13-15%, UTG+2 15-17%). 9-max sets are labelled derived-by-mapping in their provenance and carry an empty sources array.",
+ "_comment_eightmax": "8-MAX families (v1.3): eightmax.raked and eightmax.norake carry the 8-max targets for the two rake variants, derived from the SAME variant's 6-max targets by the players-behind seat mapping (see _comment_derivation_8max). Coverage mirrors the 6-max families: RFI for every non-BB seat (the SB set is sb_play, as at 6-max), responses BB vs every opener / SB vs every non-blind opener / BTN vs the btn_vs openers, and the three v1.1 continuation matchups (BTN vs BB, BTN vs SB, CO vs BTN) against the variant's own 8-max sets with the v1.1 internal parameters. btn_vs names the openers the BTN responds to: HJ and CO, the seats with 4 and 3 players behind them - the same behind-count slots as 6-max's MP and CO (9-max likewise uses HJ and CO). Every 8-max target kind is 'derived': in --check mode RFI sets must land inside their bands and response totals are reported as deltas only, exactly like the 9-max family. Set ids: constructed-v1.3-8max-... (raked) and constructed-v1.3-8max-norake-... (no-rake).",
+ "_comment_gtw_raked": "GTO Wizard RAKED anchors (added 2026-11-17, cross_check_source_3 + gtw_raked_*_6max): totals from GTO Wizard Cash 6-max Classic PLO100 (5% rake, 2bb cap) 100bb, collected 2026-11-17 (strategy-view header totals only; no range data transcribed). RFI: UTG 17.3 / HJ 21.5 / CO 28.6 / BTN 42.6 / SB raise 31.9 with limp 9.9. BB defense 3-bet/call: vs UTG 4.3/24.2, vs HJ 5.5/25.4, vs CO 7.0/28.0, vs BTN 10.1/32.2, vs SB open 11.0/62.4. SB vs BTN 9.2/5.3. These are ADDITIONAL cross-check anchors for the RAKED family, reported by --check as informational deltas only (like the Upswing totals); the v1 construction targets are NOT changed in v1.2. Two deltas stand out and are flagged for a v1.3 retarget decision: (1) BTN RFI - GTO Wizard raked opens 42.6% while our target is 49% (band 48-50), which matches the NO-RAKE anchor (48.9) instead; rake costs the button ~6pp of opens. (2) BB calls run wider in the GTO Wizard raked solution than our PLO.com-anchored targets (e.g. vs UTG call 24.2 vs our 16.3; vs SB open 62.4 vs our extrapolated 32). Corroboration: the SB raise-or-fold reconciliation of the raked totals (raise 31.9 + 0.5 x limp 9.9 = 36.85) lands on our SB target 37.",
+ "_comment_norake_6max": "NO-RAKE 6-max family (v1.2): same construction machinery, seed, weights and components as the raked family - only the targets and the cross-check source differ. Anchors (kind: anchor) are GTO Wizard Cash 6-max Classic cEV (no rake) 100bb totals collected 2026-11-17 (strategy-view header totals; totals only, no range data transcribed): RFI UTG 18.5 / HJ 23.4 / CO 31.7 / BTN 48.9; BB defense 3-bet/call vs UTG 3.9/32.0, vs HJ 5.0/34.4, vs CO 6.5/38.5, vs BTN 9.6/45.6, vs SB open 9.8/74.8; SB vs BTN 9.5/10.0. GTO Wizard names the second seat HJ; it is the seat this schema calls MP. SB RFI: GTO Wizard’s SB plays raise 28.4 + limp 26.4 in a limp-inclusive tree; our SB set is raise-or-fold, so the set-point applies the v1 reconciliation rule (raise + 0.5 x limp = 28.4 + 13.2 = 41.6) - most of the cEV limp slice is weak completes that fold in a raise-or-fold model, half is the documented convention carried over from v1 (PLO.com raise 33.6 + 0.5 x limp 6.8 = 37.0). Entries marked interpolated have no GTO Wizard anchor: SB vs CO/MP/UTG are scaled from the SB vs BTN anchor by the v1 SB interpolation ratios; BTN vs CO/MP apply a conservative share of the cEV blind-defense call widening to the raked anchors. Continuations reuse the v1.1 internal construction parameters (no published anchor exists for either variant) against the no-rake input sets.",
+ "_comment_rake": "Construction models NO rake in EITHER variant (equities are rake-free showdown equities). The rake dimension records which game the TARGETS describe: the raked family’s cross-check targets were published for a 5% / 1bb-cap rake game; the no-rake family’s targets are GTO Wizard cEV (no-rake) totals. No-rake defense targets run much wider (a no-rake game rewards flatting where a raked game pushes 3-bet-or-fold), which is the entire point of carrying both variants.",
+ "_comment_ramp": "Boundary handling: instead of a hard in/out cliff at the target frequency, classes straddling the boundary receive fractional frequencies from a linear ramp over +/- ramp_band/2 of cumulative combo mass around the target. A deterministic residual correction on boundary classes then makes each set's achieved total match its target to <1e-9 (before 6-decimal rounding in the emitted JSON).",
+ "_comment_reference": "The reference range for equity_vs_reference is the top fraction (by equity vs a random hand, combo-weighted) of all classes - a generic continuing range.",
+ "_comment_response_targets": "vs_rfi targets per (responder, opener): three_bet / call as fractions of ALL combos the responder can hold. kind: anchor = published solver total (research report section 4.2; BB vs BTN 9.4/30.4 and SB vs BTN 8.9/5.7 are PLO.com, BB vs CO 7/21 and the BB-vs-BTN corroboration are ThinkGTO totals compared in research only), interpolated = monotone interpolation between anchors along opener width, extrapolated = reasoned extension (BB vs SB: blind-vs-blind, opener is the wide SB range and BB closes the action, so defense runs slightly above the vs-BTN line), derived = 9-max transfer by opener width (same-seat values carried over; early-seat values tightened per the seat-mapping rule, BB defend vs 9-max UTG < 20% total).",
+ "_comment_rfi_targets": "RFI targets per position: target = construction set-point (fraction of all 270,725 combos opened), band = published solver-derived consensus band used by --check, kind: anchor = corroborated solver-derived total (PLO.com anchored, ThinkGTO-corroborated in research), derived = 9-max seat-mapping derivation. 6-max: UTG 17-19, MP 21-23, CO 29-31, BTN 48-50, SB 34-40 (SB is raise-or-fold here: PLO.com's 33.6% raise + 6.8% limp reconciles to the same ~40% continue; ThinkGTO's raise-or-fold tree opens 40%).",
+ "_comment_samples": "Monte Carlo samples per class for each equity pass. Preflop hand-vs-range equity has no feasible exact enumeration (C(48,4) opponent combos x C(44,5) boards per class), so equities are seeded Monte Carlo estimates; the sample counts and seed are recorded in class-table.json next to the numbers. Standard error at 20000 samples is ~0.35pp.",
+ "_comment_seed": "Master seed for every Monte Carlo equity pass. Each (pass, class/opener) stream derives its seed from this value, so a full generation run is bit-for-bit reproducible.",
+ "_comment_upswing": "Cross-check source #2: Upswing Advanced PLO Preflop Guide, owner-provided copy (Justin's own PDF + Notion RFI breakdown, personal use). Per-position RFI totals extracted from the guide's section headers on 2026-11-07 for cross-checking ONLY - its hand matrix is NOT transcribed into any set; the sets remain constructed. Upswing names the 6-max seats UTG/HJ/CO/BTN/SB; HJ is the seat our schema calls MP. Totals (upswing_rfi_6max): UTG 17.9, HJ 21.8, CO 30.0, BTN 47.2, SB 29.7. SB caveat: 29.7 is Upswing's raise total inside a limp-inclusive SB strategy, whereas our SB set uses the raise-or-fold model (target 37, band 34-40, reconciled from PLO.com raise+limp and ThinkGTO raise-or-fold in research); the SB Upswing delta is therefore expected to be large and is reported informationally, never as a check failure.",
+ "_comment_weights": "Score = w_equity_vs_random*eq_random + w_equity_vs_reference*eq_reference + w_pair*pair_component + w_suitedness*suitedness_component + w_connectedness*connectedness_component + w_high_card*high_card_component. All components are in [0,1]. For response (vs_rfi) scoring, equity_vs_opener takes the equity_vs_reference weight slot and equity_vs_reference is not used. Equity dominates (0.60 combined); playability breaks the many near-ties equity alone cannot separate.",
+ "btn_vs": {
+  "6max": [
+   "MP",
+   "CO"
+  ],
+  "9max": [
+   "HJ",
+   "CO"
+  ]
+ },
+ "call_equity_floor": 0.3,
+ "components": {
+  "pair_base": {
+   "none": 0.05,
+   "one_pair": 0.5,
+   "quads": 0.85,
+   "trips": 0.12,
+   "two_pair": 0.7
+  },
+  "pair_rank_bonus": 0.15,
+  "suitedness": {
+   "double": 1.0,
+   "rainbow": 0.1,
+   "single": 0.55,
+   "three": 0.7
+  }
+ },
+ "continuations_v11": {
+  "call_fraction_of_continue": 0.82,
+  "continue_fraction_of_open": 0.5,
+  "cross_check": "no published anchor - method disclosed",
+  "four_bet_fraction_of_continue": 0.18,
+  "matchups": [
+   {
+    "continuer": "BTN",
+    "opener_rfi_set": "constructed-v1-6max-btn-rfi",
+    "three_bettor": "BB",
+    "three_bettor_set": "constructed-v1-6max-bb-vs-btn"
+   },
+   {
+    "continuer": "BTN",
+    "opener_rfi_set": "constructed-v1-6max-btn-rfi",
+    "three_bettor": "SB",
+    "three_bettor_set": "constructed-v1-6max-sb-vs-btn"
+   },
+   {
+    "continuer": "CO",
+    "opener_rfi_set": "constructed-v1-6max-co-rfi",
+    "three_bettor": "BTN",
+    "three_bettor_set": "constructed-v1-6max-btn-vs-co"
+   }
+  ],
+  "method": "constructed-equity-v1.1",
+  "samples_vs_three_bettor": 4000
+ },
+ "cross_check_defense_tolerance": 0.03,
+ "cross_check_source": {
+  "licence": "Publisher statement on page: numbers are free to cite with a link back to the page. Cited as aggregate cross-check targets only; no dataset transcribed.",
+  "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
+  "retrieved": "2026-11-07",
+  "url": "https://plo.com/plo-6-max-opening-ranges"
+ },
+ "cross_check_source_2": {
+  "licence": "Owner-provided copy supplied by the tool's owner for personal use. Cited as cross-check totals only; the guide's hand matrix is not transcribed into any range set.",
+  "name": "Upswing Advanced PLO Preflop Guide (owner-provided copy, personal use)",
+  "retrieved": "2026-11-07"
+ },
+ "cross_check_source_3": {
+  "licence": "Viewed under the tool owner’s GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+  "name": "GTO Wizard - PLO Cash 6-max Classic, PLO100 rake (5%, 2bb cap) solution totals cited as cross-check targets; ranges constructed independently",
+  "retrieved": "2026-11-17",
+  "url": "https://app.gtowizard.com/solutions/plo"
+ },
+ "derivation_note_9max": "derived-by-mapping: targets derived from the 6-max cross-check targets by the players-behind seat mapping (research report section 5); no published 9-max PLO4 chart exists and none is cited as a source.",
+ "derivation_note_8max": "derived-by-mapping: targets derived from the same rake variant's 6-max targets by the players-behind seat mapping; no published 8-max PLO4 chart exists (GTO Wizard offers no standard 8-max cash set - Straddle / Straddle+Ante only) and none is cited as a source.",
+ "eightmax": {
+  "btn_vs": [
+   "HJ",
+   "CO"
+  ],
+  "norake": {
+   "continuations": {
+    "call_fraction_of_continue": 0.82,
+    "continue_fraction_of_open": 0.5,
+    "cross_check": "no published anchor - method disclosed",
+    "four_bet_fraction_of_continue": 0.18,
+    "matchups": [
+     {
+      "continuer": "BTN",
+      "opener_rfi_set": "constructed-v1.3-8max-norake-btn-rfi",
+      "three_bettor": "BB",
+      "three_bettor_set": "constructed-v1.3-8max-norake-bb-vs-btn"
+     },
+     {
+      "continuer": "BTN",
+      "opener_rfi_set": "constructed-v1.3-8max-norake-btn-rfi",
+      "three_bettor": "SB",
+      "three_bettor_set": "constructed-v1.3-8max-norake-sb-vs-btn"
+     },
+     {
+      "continuer": "CO",
+      "opener_rfi_set": "constructed-v1.3-8max-norake-co-rfi",
+      "three_bettor": "BTN",
+      "three_bettor_set": "constructed-v1.3-8max-norake-btn-vs-co"
+     }
+    ],
+    "method": "constructed-equity-v1.1",
+    "samples_vs_three_bettor": 4000
+   },
+   "rake_note": "Constructed ranges: no rake modelled in construction (rake-free equities). This variant's targets are derived by the players-behind seat mapping from the no-rake (cEV) 6-max anchors (GTO Wizard Cash 6-max Classic cEV, 100bb), so its defense ranges run wider than the raked variant's, whose targets were published for a 5% / 1bb-cap rake game. No published 8-max totals exist in either variant; every 8-max target is a labelled derivation.",
+   "response_targets": {
+    "BB": {
+     "BTN": {
+      "call": 0.456,
+      "kind": "derived",
+      "three_bet": 0.096
+     },
+     "CO": {
+      "call": 0.385,
+      "kind": "derived",
+      "three_bet": 0.065
+     },
+     "HJ": {
+      "call": 0.344,
+      "kind": "derived",
+      "three_bet": 0.05
+     },
+     "MP": {
+      "call": 0.32,
+      "kind": "derived",
+      "three_bet": 0.039
+     },
+     "SB": {
+      "call": 0.748,
+      "kind": "derived",
+      "three_bet": 0.098
+     },
+     "UTG": {
+      "call": 0.257,
+      "kind": "derived",
+      "three_bet": 0.027
+     },
+     "UTG+1": {
+      "call": 0.279,
+      "kind": "derived",
+      "three_bet": 0.029
+     }
+    },
+    "BTN": {
+     "CO": {
+      "call": 0.17,
+      "kind": "derived",
+      "three_bet": 0.085
+     },
+     "HJ": {
+      "call": 0.185,
+      "kind": "derived",
+      "three_bet": 0.048
+     }
+    },
+    "SB": {
+     "BTN": {
+      "call": 0.1,
+      "kind": "derived",
+      "three_bet": 0.095
+     },
+     "CO": {
+      "call": 0.089,
+      "kind": "derived",
+      "three_bet": 0.069
+     },
+     "HJ": {
+      "call": 0.078,
+      "kind": "derived",
+      "three_bet": 0.053
+     },
+     "MP": {
+      "call": 0.067,
+      "kind": "derived",
+      "three_bet": 0.042
+     },
+     "UTG": {
+      "call": 0.053,
+      "kind": "derived",
+      "three_bet": 0.031
+     },
+     "UTG+1": {
+      "call": 0.057,
+      "kind": "derived",
+      "three_bet": 0.034
+     }
+    }
+   },
+   "rfi_targets": {
+    "BTN": {
+     "band": [
+      0.479,
+      0.499
+     ],
+     "kind": "derived",
+     "target": 0.489
+    },
+    "CO": {
+     "band": [
+      0.307,
+      0.327
+     ],
+     "kind": "derived",
+     "target": 0.317
+    },
+    "HJ": {
+     "band": [
+      0.224,
+      0.244
+     ],
+     "kind": "derived",
+     "target": 0.234
+    },
+    "MP": {
+     "band": [
+      0.175,
+      0.195
+     ],
+     "kind": "derived",
+     "target": 0.185
+    },
+    "SB": {
+     "band": [
+      0.386,
+      0.446
+     ],
+     "kind": "derived",
+     "target": 0.416
+    },
+    "UTG": {
+     "band": [
+      0.13,
+      0.16
+     ],
+     "kind": "derived",
+     "target": 0.145
+    },
+    "UTG+1": {
+     "band": [
+      0.15,
+      0.18
+     ],
+     "kind": "derived",
+     "target": 0.165
+    }
+   }
+  },
+  "raked": {
+   "continuations": {
+    "call_fraction_of_continue": 0.82,
+    "continue_fraction_of_open": 0.5,
+    "cross_check": "no published anchor - method disclosed",
+    "four_bet_fraction_of_continue": 0.18,
+    "matchups": [
+     {
+      "continuer": "BTN",
+      "opener_rfi_set": "constructed-v1.3-8max-btn-rfi",
+      "three_bettor": "BB",
+      "three_bettor_set": "constructed-v1.3-8max-bb-vs-btn"
+     },
+     {
+      "continuer": "BTN",
+      "opener_rfi_set": "constructed-v1.3-8max-btn-rfi",
+      "three_bettor": "SB",
+      "three_bettor_set": "constructed-v1.3-8max-sb-vs-btn"
+     },
+     {
+      "continuer": "CO",
+      "opener_rfi_set": "constructed-v1.3-8max-co-rfi",
+      "three_bettor": "BTN",
+      "three_bettor_set": "constructed-v1.3-8max-btn-vs-co"
+     }
+    ],
+    "method": "constructed-equity-v1.1",
+    "samples_vs_three_bettor": 4000
+   },
+   "response_targets": {
+    "BB": {
+     "BTN": {
+      "call": 0.3,
+      "kind": "derived",
+      "three_bet": 0.09
+     },
+     "CO": {
+      "call": 0.21,
+      "kind": "derived",
+      "three_bet": 0.07
+     },
+     "HJ": {
+      "call": 0.187,
+      "kind": "derived",
+      "three_bet": 0.057
+     },
+     "MP": {
+      "call": 0.187,
+      "kind": "derived",
+      "three_bet": 0.057
+     },
+     "SB": {
+      "call": 0.32,
+      "kind": "derived",
+      "three_bet": 0.1
+     },
+     "UTG": {
+      "call": 0.15,
+      "kind": "derived",
+      "three_bet": 0.04
+     },
+     "UTG+1": {
+      "call": 0.163,
+      "kind": "derived",
+      "three_bet": 0.043
+     }
+    },
+    "BTN": {
+     "CO": {
+      "call": 0.131,
+      "kind": "derived",
+      "three_bet": 0.081
+     },
+     "HJ": {
+      "call": 0.145,
+      "kind": "derived",
+      "three_bet": 0.045
+     }
+    },
+    "SB": {
+     "BTN": {
+      "call": 0.045,
+      "kind": "derived",
+      "three_bet": 0.09
+     },
+     "CO": {
+      "call": 0.04,
+      "kind": "derived",
+      "three_bet": 0.065
+     },
+     "HJ": {
+      "call": 0.035,
+      "kind": "derived",
+      "three_bet": 0.05
+     },
+     "MP": {
+      "call": 0.035,
+      "kind": "derived",
+      "three_bet": 0.05
+     },
+     "UTG": {
+      "call": 0.028,
+      "kind": "derived",
+      "three_bet": 0.036
+     },
+     "UTG+1": {
+      "call": 0.03,
+      "kind": "derived",
+      "three_bet": 0.04
+     }
+    }
+   },
+   "rfi_targets": {
+    "BTN": {
+     "band": [
+      0.48,
+      0.5
+     ],
+     "kind": "derived",
+     "target": 0.49
+    },
+    "CO": {
+     "band": [
+      0.29,
+      0.31
+     ],
+     "kind": "derived",
+     "target": 0.3
+    },
+    "HJ": {
+     "band": [
+      0.21,
+      0.23
+     ],
+     "kind": "derived",
+     "target": 0.22
+    },
+    "MP": {
+     "band": [
+      0.17,
+      0.19
+     ],
+     "kind": "derived",
+     "target": 0.18
+    },
+    "SB": {
+     "band": [
+      0.34,
+      0.4
+     ],
+     "kind": "derived",
+     "target": 0.37
+    },
+    "UTG": {
+     "band": [
+      0.13,
+      0.15
+     ],
+     "kind": "derived",
+     "target": 0.14
+    },
+    "UTG+1": {
+     "band": [
+      0.15,
+      0.17
+     ],
+     "kind": "derived",
+     "target": 0.16
+    }
+   }
+  }
+ },
+ "gtw_raked_defense_6max": {
+  "BB": {
+   "BTN": {
+    "call": 0.322,
+    "three_bet": 0.101
+   },
+   "CO": {
+    "call": 0.28,
+    "three_bet": 0.07
+   },
+   "MP": {
+    "call": 0.254,
+    "three_bet": 0.055
+   },
+   "SB": {
+    "call": 0.624,
+    "three_bet": 0.11
+   },
+   "UTG": {
+    "call": 0.242,
+    "three_bet": 0.043
+   }
+  },
+  "SB": {
+   "BTN": {
+    "call": 0.053,
+    "three_bet": 0.092
+   }
+  }
+ },
+ "gtw_raked_rfi_6max": {
+  "BTN": 0.426,
+  "CO": 0.286,
+  "MP": 0.215,
+  "SB": 0.319,
+  "UTG": 0.173
+ },
+ "mc_samples": {
+  "vs_opener": 4000,
+  "vs_random": 20000,
+  "vs_reference": 12000
+ },
+ "norake_6max": {
+  "continuations": {
+   "call_fraction_of_continue": 0.82,
+   "continue_fraction_of_open": 0.5,
+   "cross_check": "no published anchor - method disclosed",
+   "four_bet_fraction_of_continue": 0.18,
+   "matchups": [
+    {
+     "continuer": "BTN",
+     "opener_rfi_set": "constructed-v1.2-6max-norake-btn-rfi",
+     "three_bettor": "BB",
+     "three_bettor_set": "constructed-v1.2-6max-norake-bb-vs-btn"
+    },
+    {
+     "continuer": "BTN",
+     "opener_rfi_set": "constructed-v1.2-6max-norake-btn-rfi",
+     "three_bettor": "SB",
+     "three_bettor_set": "constructed-v1.2-6max-norake-sb-vs-btn"
+    },
+    {
+     "continuer": "CO",
+     "opener_rfi_set": "constructed-v1.2-6max-norake-co-rfi",
+     "three_bettor": "BTN",
+     "three_bettor_set": "constructed-v1.2-6max-norake-btn-vs-co"
+    }
+   ],
+   "method": "constructed-equity-v1.1",
+   "samples_vs_three_bettor": 4000
+  },
+  "cross_check_source": {
+   "licence": "Viewed under the tool owner’s GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+   "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+   "retrieved": "2026-11-17",
+   "url": "https://app.gtowizard.com/solutions/plo"
+  },
+  "rake_note": "Constructed ranges: no rake modelled in construction (rake-free equities). This variant’s targets are anchored on no-rake (cEV) solver totals (GTO Wizard Cash 6-max Classic cEV, 100bb), so its defense ranges run wider than the raked variant’s, whose targets were published for a 5% / 1bb-cap rake game.",
+  "response_targets": {
+   "BB": {
+    "BTN": {
+     "call": 0.456,
+     "kind": "anchor",
+     "three_bet": 0.096
+    },
+    "CO": {
+     "call": 0.385,
+     "kind": "anchor",
+     "three_bet": 0.065
+    },
+    "MP": {
+     "call": 0.344,
+     "kind": "anchor",
+     "three_bet": 0.05
+    },
+    "SB": {
+     "call": 0.748,
+     "kind": "anchor",
+     "three_bet": 0.098
+    },
+    "UTG": {
+     "call": 0.32,
+     "kind": "anchor",
+     "three_bet": 0.039
+    }
+   },
+   "BTN": {
+    "CO": {
+     "call": 0.17,
+     "kind": "interpolated",
+     "three_bet": 0.085
+    },
+    "MP": {
+     "call": 0.185,
+     "kind": "interpolated",
+     "three_bet": 0.048
+    }
+   },
+   "SB": {
+    "BTN": {
+     "call": 0.1,
+     "kind": "anchor",
+     "three_bet": 0.095
+    },
+    "CO": {
+     "call": 0.089,
+     "kind": "interpolated",
+     "three_bet": 0.069
+    },
+    "MP": {
+     "call": 0.078,
+     "kind": "interpolated",
+     "three_bet": 0.053
+    },
+    "UTG": {
+     "call": 0.067,
+     "kind": "interpolated",
+     "three_bet": 0.042
+    }
+   }
+  },
+  "rfi_targets": {
+   "BTN": {
+    "band": [
+     0.479,
+     0.499
+    ],
+    "kind": "anchor",
+    "target": 0.489
+   },
+   "CO": {
+    "band": [
+     0.307,
+     0.327
+    ],
+    "kind": "anchor",
+    "target": 0.317
+   },
+   "MP": {
+    "band": [
+     0.224,
+     0.244
+    ],
+    "kind": "anchor",
+    "target": 0.234
+   },
+   "SB": {
+    "band": [
+     0.386,
+     0.446
+    ],
+    "kind": "anchor",
+    "target": 0.416
+   },
+   "UTG": {
+    "band": [
+     0.175,
+     0.195
+    ],
+    "kind": "anchor",
+    "target": 0.185
+   }
+  }
+ },
+ "rake_note": "Constructed ranges: no rake modelled in construction (rake-free equities and targets as construction assumptions). Cross-check targets (PLO.com) were published for 5% rake, 1bb cap, 100bb, no ante.",
+ "ramp_band": 0.02,
+ "realisation": {
+  "in_position": 0.92,
+  "out_of_position": 0.84
+ },
+ "reference_top_fraction": 0.25,
+ "response_targets": {
+  "6max": {
+   "BB": {
+    "BTN": {
+     "call": 0.3,
+     "kind": "anchor",
+     "three_bet": 0.09
+    },
+    "CO": {
+     "call": 0.21,
+     "kind": "anchor",
+     "three_bet": 0.07
+    },
+    "MP": {
+     "call": 0.187,
+     "kind": "interpolated",
+     "three_bet": 0.057
+    },
+    "SB": {
+     "call": 0.32,
+     "kind": "extrapolated",
+     "three_bet": 0.1
+    },
+    "UTG": {
+     "call": 0.163,
+     "kind": "anchor",
+     "three_bet": 0.043
+    }
+   },
+   "BTN": {
+    "CO": {
+     "call": 0.131,
+     "kind": "anchor",
+     "three_bet": 0.081
+    },
+    "MP": {
+     "call": 0.145,
+     "kind": "interpolated",
+     "three_bet": 0.045
+    }
+   },
+   "SB": {
+    "BTN": {
+     "call": 0.045,
+     "kind": "anchor",
+     "three_bet": 0.09
+    },
+    "CO": {
+     "call": 0.04,
+     "kind": "interpolated",
+     "three_bet": 0.065
+    },
+    "MP": {
+     "call": 0.035,
+     "kind": "interpolated",
+     "three_bet": 0.05
+    },
+    "UTG": {
+     "call": 0.03,
+     "kind": "interpolated",
+     "three_bet": 0.04
+    }
+   }
+  },
+  "9max": {
+   "BB": {
+    "BTN": {
+     "call": 0.3,
+     "kind": "derived",
+     "three_bet": 0.09
+    },
+    "CO": {
+     "call": 0.21,
+     "kind": "derived",
+     "three_bet": 0.07
+    },
+    "HJ": {
+     "call": 0.187,
+     "kind": "derived",
+     "three_bet": 0.057
+    },
+    "LJ": {
+     "call": 0.187,
+     "kind": "derived",
+     "three_bet": 0.057
+    },
+    "SB": {
+     "call": 0.32,
+     "kind": "derived",
+     "three_bet": 0.1
+    },
+    "UTG": {
+     "call": 0.135,
+     "kind": "derived",
+     "three_bet": 0.035
+    },
+    "UTG+1": {
+     "call": 0.15,
+     "kind": "derived",
+     "three_bet": 0.04
+    },
+    "UTG+2": {
+     "call": 0.163,
+     "kind": "derived",
+     "three_bet": 0.043
+    }
+   },
+   "BTN": {
+    "CO": {
+     "call": 0.131,
+     "kind": "derived",
+     "three_bet": 0.081
+    },
+    "HJ": {
+     "call": 0.145,
+     "kind": "derived",
+     "three_bet": 0.045
+    }
+   },
+   "SB": {
+    "BTN": {
+     "call": 0.045,
+     "kind": "derived",
+     "three_bet": 0.09
+    },
+    "CO": {
+     "call": 0.04,
+     "kind": "derived",
+     "three_bet": 0.065
+    },
+    "HJ": {
+     "call": 0.035,
+     "kind": "derived",
+     "three_bet": 0.05
+    },
+    "LJ": {
+     "call": 0.035,
+     "kind": "derived",
+     "three_bet": 0.05
+    },
+    "UTG": {
+     "call": 0.025,
+     "kind": "derived",
+     "three_bet": 0.032
+    },
+    "UTG+1": {
+     "call": 0.028,
+     "kind": "derived",
+     "three_bet": 0.036
+    },
+    "UTG+2": {
+     "call": 0.03,
+     "kind": "derived",
+     "three_bet": 0.04
+    }
+   }
+  }
+ },
+ "rfi_targets": {
+  "6max": {
+   "BTN": {
+    "band": [
+     0.48,
+     0.5
+    ],
+    "kind": "anchor",
+    "target": 0.49
+   },
+   "CO": {
+    "band": [
+     0.29,
+     0.31
+    ],
+    "kind": "anchor",
+    "target": 0.3
+   },
+   "MP": {
+    "band": [
+     0.21,
+     0.23
+    ],
+    "kind": "anchor",
+    "target": 0.22
+   },
+   "SB": {
+    "band": [
+     0.34,
+     0.4
+    ],
+    "kind": "anchor",
+    "target": 0.37
+   },
+   "UTG": {
+    "band": [
+     0.17,
+     0.19
+    ],
+    "kind": "anchor",
+    "target": 0.18
+   }
+  },
+  "9max": {
+   "BTN": {
+    "band": [
+     0.48,
+     0.5
+    ],
+    "kind": "derived",
+    "target": 0.49
+   },
+   "CO": {
+    "band": [
+     0.29,
+     0.31
+    ],
+    "kind": "derived",
+    "target": 0.3
+   },
+   "HJ": {
+    "band": [
+     0.21,
+     0.23
+    ],
+    "kind": "derived",
+    "target": 0.22
+   },
+   "LJ": {
+    "band": [
+     0.17,
+     0.19
+    ],
+    "kind": "derived",
+    "target": 0.18
+   },
+   "SB": {
+    "band": [
+     0.34,
+     0.4
+    ],
+    "kind": "derived",
+    "target": 0.37
+   },
+   "UTG": {
+    "band": [
+     0.1,
+     0.13
+    ],
+    "kind": "derived",
+    "target": 0.115
+   },
+   "UTG+1": {
+    "band": [
+     0.13,
+     0.15
+    ],
+    "kind": "derived",
+    "target": 0.14
+   },
+   "UTG+2": {
+    "band": [
+     0.15,
+     0.17
+    ],
+    "kind": "derived",
+    "target": 0.16
+   }
+  }
+ },
+ "seed": 5046601,
+ "stack_bb": 100,
+ "upswing_rfi_6max": {
+  "BTN": 0.472,
+  "CO": 0.3,
+  "MP": 0.218,
+  "SB": 0.297,
+  "UTG": 0.179
+ },
+ "version": "ranges-config-v1.3",
+ "weights": {
+  "connectedness": 0.1,
+  "equity_vs_random": 0.35,
+  "equity_vs_reference": 0.25,
+  "high_card": 0.08,
+  "pair": 0.12,
+  "suitedness": 0.1
+ }
+}
