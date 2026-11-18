@@ -3,7 +3,9 @@ import { parseCombo, type Card } from '../lib/cards';
 import { classifyOmahaHand, HAND_CATEGORIES, type HandCategory } from '../lib/handCategories';
 import {
   aggregateFrequencies,
+  comboNodeEv,
   liveRange,
+  nodeHasActionEvs,
   rangeEv,
   type LiveCombo,
   type SolveData,
@@ -294,6 +296,13 @@ function HandTable({
 }) {
   const [expanded, setExpanded] = useState(false);
   const isActor = node.player === model.player;
+  // Per-action EVs (issue #8) exist only for the player to act — their
+  // actions are the node's actions — so only the acting player's table
+  // gains the EV (node) column, and only when this node carries them.
+  const hasActionEvs = useMemo(
+    () => isActor && nodeHasActionEvs(node),
+    [isActor, node],
+  );
   const rows = useMemo(() => {
     const sorted = [...model.live];
     sorted.sort((a, b) => {
@@ -332,6 +341,15 @@ function HandTable({
                 <th scope="col" className="num px-2 py-1.5 text-right font-semibold">
                   EV (solve)
                 </th>
+                {hasActionEvs ? (
+                  <th
+                    scope="col"
+                    className="num px-2 py-1.5 text-right font-semibold"
+                    title="The combo's EV at this node: its per-action EVs weighted by its own frequencies here"
+                  >
+                    EV (node)
+                  </th>
+                ) : null}
                 <th scope="col" className="num px-2 py-1.5 text-right font-semibold">
                   Weight
                 </th>
@@ -354,6 +372,7 @@ function HandTable({
                 const cards = parseCombo(row.combo);
                 const isSel = row.combo === selectedCombo;
                 const freqs = isActor ? (node.strategy[row.combo] ?? []) : [];
+                const nodeEv = hasActionEvs ? comboNodeEv(node, row.combo) : null;
                 return (
                   <tr
                     key={row.combo}
@@ -373,6 +392,11 @@ function HandTable({
                     <td className="num px-2 py-1.5 text-right font-mono text-ink-dim">
                       {row.ev === null ? '—' : row.ev.toFixed(2)}
                     </td>
+                    {hasActionEvs ? (
+                      <td className="num px-2 py-1.5 text-right font-mono text-ink-dim">
+                        {nodeEv === null ? '—' : nodeEv.toFixed(2)}
+                      </td>
+                    ) : null}
                     <td className="num px-2 py-1.5 text-right font-mono text-ink-dim">
                       {row.weight.toFixed(2)}
                     </td>
@@ -419,10 +443,12 @@ function HandTable({
  * down the line taken (see liveRange in solveTree.ts); the acting
  * player's action splits come from the node's own strategy rows;
  * categories are made-hand strength under Omaha rules (exactly two
- * hole cards), computed from the cards themselves. Every EV shown is
- * the combo's WHOLE-SOLVE EV, labelled as such — the payload carries
- * no per-action or per-node EVs (issue #8), so nothing here is
- * presented as a node EV.
+ * hole cards), computed from the cards themselves. Every EV is
+ * labelled by its basis: the chart and the EV (solve) columns are
+ * whole-solve EVs, and when the payload carries per-action EVs
+ * (issue #8) the acting player's hand table adds an EV (node)
+ * column — the combo's own strategy-weighted action EVs at this
+ * node. Payloads without the field render exactly as before.
  */
 export function RangesView({ data, node, path, boardCards, selectedCombo, onSelectCombo }: Props) {
   const models = useMemo(
@@ -430,6 +456,7 @@ export function RangesView({ data, node, path, boardCards, selectedCombo, onSele
     [data, path, node, boardCards],
   );
   const actor = node.player;
+  const actorHasActionEvs = useMemo(() => nodeHasActionEvs(node), [node]);
   const categoryRows = useMemo(
     () =>
       HAND_CATEGORIES.filter((cat) =>
@@ -565,6 +592,13 @@ export function RangesView({ data, node, path, boardCards, selectedCombo, onSele
           Sorted by whole-solve EV, the same "EV (solve)" the Strategy tables show. Reach is a
           combo's share of its player's live range at this node; Weight is its starting range
           weight. Click a row for full hand detail.
+          {actorHasActionEvs ? (
+            <>
+              {' '}
+              EV (node), in the {actor} table, is each combo's value at this node — its
+              per-action EVs from the solve, weighted by its own strategy here.
+            </>
+          ) : null}
         </p>
       </div>
     </div>
