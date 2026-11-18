@@ -20,7 +20,7 @@
 
 import { RANK_ORDER, type Suit } from './cards';
 
-export type TableSize = '6max' | '9max';
+export type TableSize = '6max' | '8max' | '9max';
 export type SetContext = 'rfi' | 'vs_rfi' | 'three_bet' | 'sb_play' | 'vs_three_bet';
 
 /**
@@ -154,7 +154,7 @@ function isSource(v: unknown): v is PreflopSource {
   );
 }
 
-const TABLE_SIZES: readonly string[] = ['6max', '9max'];
+const TABLE_SIZES: readonly string[] = ['6max', '8max', '9max'];
 // 'vs_three_bet' is the v1.1 continuation sets' context in the served
 // index/documents. It must be a recognised context or the shape guards
 // reject the whole index; it stays non-solve-compatible below (the
@@ -406,6 +406,7 @@ export function setLabel(
 /** Position display order per table size. */
 export const POSITION_ORDER: Record<TableSize, string[]> = {
   '6max': ['UTG', 'MP', 'CO', 'BTN', 'SB', 'BB'],
+  '8max': ['UTG', 'UTG+1', 'MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'],
   '9max': ['UTG', 'UTG+1', 'UTG+2', 'LJ', 'HJ', 'CO', 'BTN', 'SB', 'BB'],
 };
 

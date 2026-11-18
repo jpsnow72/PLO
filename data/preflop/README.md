@@ -77,8 +77,28 @@ its targets describe. Construction models no rake in either variant
   (raise 28.4% + 0.5 × limp 26.4% = 41.6%). Its continuation sets reuse
   the v1.1 internal parameters against the no-rake input sets.
 
-Regenerate with the v1.2 config (the canonical one — a v1-config run
-rewrites `index.json` without the v1.2 entries):
+**v1.3 8-max families (config `ranges-config-v1.3.json`)**: 8-max sets
+for **both** rake variants (ids `constructed-v1.3-8max-…` and
+`constructed-v1.3-8max-norake-…`), 25 per variant: RFI for the seven
+non-BB seats, responses (BB vs all seven opens, SB vs the six non-blind
+opens, BTN vs HJ/CO), and the three v1.1 continuation matchups against
+the variant's own 8-max sets. **No published 8-max PLO4 chart exists
+and no solver library offers a standard 8-max cash set** (GTO Wizard:
+Straddle / Straddle+Ante only, verified 2026-11-17), so there is no
+cross-check target: every 8-max target is **derived-by-mapping** from
+the same variant's 6-max targets by the players-behind seat mapping
+(8-max MP takes the 6-max UTG values, HJ the MP values, CO/BTN/SB carry
+over; UTG and UTG+1 take the values the 9-max derivation assigned to
+the same players-behind counts in the raked variant, and the raked
+curve's ratio steps down from the no-rake UTG anchor in the no-rake
+variant). Like the 9-max sets, the 8-max sets cite no source — empty
+`sources`, the mapping stated in `provenance.derivation` — and every
+set records its `rake` variant. See `PREFLOP-8MAX-NOTES.md` at the
+repository root for the full mapping tables and the regeneration
+runbook.
+
+Regenerate with the v1.3 config (the canonical one — a run with an
+older config rewrites `index.json` without the newer entries):
 
 ```
 cargo run --release -p plo-solve --bin build-ranges -- --check   # validate only
@@ -96,9 +116,12 @@ audited back to its inputs.
   document.
 - `ranges-config-v1.json` — all tunables of the constructed-range builder
   (weights, target frequencies with provenance tags, Monte Carlo settings).
-- `ranges-config-v1.2.json` — the canonical builder config: everything in
-  v1 (the raked family, unchanged) plus the `norake_6max` section (the
-  no-rake family's GTO Wizard cEV targets). `build-ranges` defaults to it.
+- `ranges-config-v1.2.json` — everything in v1 (the raked family,
+  unchanged) plus the `norake_6max` section (the no-rake family's GTO
+  Wizard cEV targets).
+- `ranges-config-v1.3.json` — the canonical builder config: everything in
+  v1.2 plus the `eightmax` section (the 8-max families for both rake
+  variants, derived by seat mapping). `build-ranges` defaults to it.
 - `sets/` — generated constructed range sets, one JSON file per set.
 - `class-table.json` — generated per-class features/equities/scores.
 - `index.json` — catalogue of the range sets present in this directory.
@@ -115,13 +138,13 @@ audited back to its inputs.
 ## Range-set documents
 
 Required fields: `schema_version` (1), `id` (slug), `table_size`
-(`6max` | `9max`), `position`, `context`, `stack_bb`, `rake_note`,
+(`6max` | `8max` | `9max`), `position`, `context`, `stack_bb`, `rake_note`,
 `source {name, url, licence, retrieved}`, and `hands`. Constructed sets
 additionally record `rake` (`raked` | `no-rake`, the v1.2 dimension) and
 a `provenance` block; transcribed charts predate `rake` and may omit it.
 
-Positions — 6max: `UTG MP CO BTN SB BB`. 9max: `UTG UTG+1 UTG+2 LJ HJ CO
-BTN SB BB`.
+Positions — 6max: `UTG MP CO BTN SB BB`. 8max: `UTG UTG+1 MP HJ CO BTN
+SB BB`. 9max: `UTG UTG+1 UTG+2 LJ HJ CO BTN SB BB`.
 
 Contexts and the actions allowed in each:
 

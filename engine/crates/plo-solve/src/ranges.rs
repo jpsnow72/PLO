@@ -1,6 +1,6 @@
 //! `ranges` — Constructed preflop starting ranges, method `constructed-equity-v1`.
 //!
-//! This module builds PLO4 preflop range sets (6-max and 9-max, 100bb) WITHOUT any
+//! This module builds PLO4 preflop range sets (6-max, 8-max and 9-max, 100bb) WITHOUT any
 //! external range data: every canonical hand class (16,432 suit-isomorphism classes
 //! covering all 270,725 four-card combinations) is scored by a transparent,
 //! config-driven formula combining
@@ -46,6 +46,17 @@
 //! [`build_continuation_set_styled`] with a different [`FamilySpec`] and
 //! target maps; the v1 entry points keep their signatures as raked wrappers.
 //!
+//! v1.3 extension (config `ranges-config-v1.3`): the 8-MAX families, both
+//! rake variants, built from the config's `eightmax` section. No published
+//! 8-max PLO4 chart exists and no solver library offers a standard 8-max
+//! cash set, so every 8-max target is DERIVED from the same variant's
+//! 6-max targets by the players-behind seat mapping (8-max MP takes the
+//! 6-max UTG values, HJ the MP values, CO/BTN/SB carry over; UTG and
+//! UTG+1 take the values the 9-max derivation assigned to the same
+//! players-behind counts, or the raked curve's ratio steps applied to
+//! the no-rake anchors). Like the 9-max family, the 8-max sets cite no
+//! source and carry the derivation in their provenance.
+//!
 //! Equity note: exact preflop hand-vs-range equity would need
 //! C(48,4) opponent combos x C(44,5) boards per class, which is not feasible to
 //! enumerate, so equities are Monte Carlo estimates with a fixed seed (fully
@@ -72,6 +83,8 @@ pub const CLASS_COUNT: usize = 16_432;
 
 /// Positions in preflop action order, 6-max.
 pub const POSITIONS_6MAX: [&str; 6] = ["UTG", "MP", "CO", "BTN", "SB", "BB"];
+/// Positions in preflop action order, 8-max (v1.3).
+pub const POSITIONS_8MAX: [&str; 8] = ["UTG", "UTG+1", "MP", "HJ", "CO", "BTN", "SB", "BB"];
 /// Positions in preflop action order, 9-max.
 pub const POSITIONS_9MAX: [&str; 9] = ["UTG", "UTG+1", "UTG+2", "LJ", "HJ", "CO", "BTN", "SB", "BB"];
 /// Postflop acting order (SB first, BTN last) — decides in/out of position for
@@ -81,6 +94,7 @@ pub const POSTFLOP_ORDER: [&str; 10] = ["SB", "BB", "UTG", "UTG+1", "UTG+2", "MP
 pub fn positions_for(table_size: &str) -> Option<&'static [&'static str]> {
     match table_size {
         "6max" => Some(&POSITIONS_6MAX),
+        "8max" => Some(&POSITIONS_8MAX),
         "9max" => Some(&POSITIONS_9MAX),
         _ => None,
     }
@@ -550,6 +564,36 @@ pub struct NoRakeConfig {
     pub continuations: Option<ContinuationsConfig>,
 }
 
+/// One rake variant of the config's `eightmax` section (v1.3). Every
+/// target is a labelled derivation from the same variant's 6-max targets
+/// by the players-behind seat mapping (see the config's
+/// `_comment_derivation_8max`); no 8-max cross-check source exists.
+#[derive(Clone, Debug)]
+pub struct EightMaxVariant {
+    /// The variant's own rake note (the no-rake variant); `None` for the
+    /// raked variant, whose sets carry the config's top-level note.
+    pub rake_note: Option<String>,
+    /// RFI targets by position (8-max seats).
+    pub rfi_targets: BTreeMap<String, RfiTarget>,
+    /// Response targets by responder, then opener (8-max).
+    pub response_targets: BTreeMap<String, BTreeMap<String, PairTarget>>,
+    /// Continuation matchups against this variant's own 8-max sets; same
+    /// internal construction parameters as the 6-max families.
+    pub continuations: Option<ContinuationsConfig>,
+}
+
+/// The config's `eightmax` section (v1.3): the 8-max families for both
+/// rake variants, derived from the 6-max families by seat mapping.
+#[derive(Clone, Debug)]
+pub struct EightMaxConfig {
+    /// The openers the BTN responds to at 8-max (the 4- and 3-behind
+    /// seats, HJ and CO — the same behind-count slots as 6-max's
+    /// `btn_vs` entries).
+    pub btn_vs: Vec<String>,
+    pub raked: EightMaxVariant,
+    pub norake: EightMaxVariant,
+}
+
 /// Everything that distinguishes one emitted family of sets from another:
 /// the recorded `rake` variant, its rake note, the set-id stem, and the
 /// provenance shape (cross-check `sources`, whether the first source is
@@ -572,7 +616,14 @@ pub struct FamilySpec {
 /// Parses one continuations section (`continuations_v11`, or the no-rake
 /// section's `continuations`) into a [`ContinuationsConfig`] with the
 /// given set-id prefix. Mirrors the v1.1 section's validation rules.
-fn parse_continuations_section(sec: &JsonValue, id_prefix: &str) -> Result<ContinuationsConfig, String> {
+/// `positions` is the seat list the matchups are validated against (the
+/// 6-max list for the v1.1/v1.2 families, the 8-max list for v1.3).
+fn parse_continuations_section(
+    sec: &JsonValue,
+    id_prefix: &str,
+    positions: &[&str],
+    table_label: &str,
+) -> Result<ContinuationsConfig, String> {
     let obj_num = |obj: &JsonValue, key: &str| {
         let v = obj.get(key).ok_or_else(|| format!("continuations object missing '{key}'"))?;
         v.as_f64().ok_or_else(|| format!("continuations field '{key}' must be a number"))
@@ -605,11 +656,9 @@ fn parse_continuations_section(sec: &JsonValue, id_prefix: &str) -> Result<Conti
     for m in arr {
         let continuer = obj_str(m, "continuer")?;
         let three_bettor = obj_str(m, "three_bettor")?;
-        if !POSITIONS_6MAX.contains(&continuer.as_str())
-            || !POSITIONS_6MAX.contains(&three_bettor.as_str())
-        {
+        if !positions.contains(&continuer.as_str()) || !positions.contains(&three_bettor.as_str()) {
             return Err(format!(
-                "continuations matchup {continuer} vs {three_bettor}: continuations are 6max only"
+                "continuations matchup {continuer} vs {three_bettor}: not {table_label} positions"
             ));
         }
         if continuer == three_bettor {
@@ -671,6 +720,9 @@ pub struct RangesConfig {
     /// GTO Wizard raked (PLO100) defense totals by responder, then opener.
     pub gtw_raked_defense: BTreeMap<String, BTreeMap<String, PairTarget>>,
     pub derivation_note_9max: String,
+    /// The derivation text recorded on every 8-max set (v1.3); empty when
+    /// the config has no `eightmax` section.
+    pub derivation_note_8max: String,
     pub btn_vs: BTreeMap<String, Vec<String>>,
     pub rfi_targets: BTreeMap<String, BTreeMap<String, RfiTarget>>,
     pub response_targets: BTreeMap<String, BTreeMap<String, BTreeMap<String, PairTarget>>>,
@@ -679,6 +731,9 @@ pub struct RangesConfig {
     /// Optional v1.2 section (`norake_6max`): the no-rake 6-max family.
     /// Absent (the v1 config) = raked family only, exactly as before.
     pub norake: Option<NoRakeConfig>,
+    /// Optional v1.3 section (`eightmax`): the 8-max families for both
+    /// rake variants. Absent (v1/v1.2 configs) = no 8-max sets.
+    pub eightmax: Option<EightMaxConfig>,
     /// FNV-1a 64-bit hash of the raw config file bytes (identification only).
     pub config_hash: String,
 }
@@ -997,6 +1052,8 @@ impl RangesConfig {
                     Some(csec) => Some(parse_continuations_section(
                         csec,
                         "constructed-v1.2-6max-norake",
+                        &POSITIONS_6MAX,
+                        "6max",
                     )?),
                     None => None,
                 };
@@ -1011,6 +1068,137 @@ impl RangesConfig {
                     response_targets: nr_resp,
                     continuations: nr_continuations,
                 })
+            }
+            None => None,
+        };
+        // Optional v1.3 section: the 8-max families (both rake variants).
+        // Parsing it must not disturb any v1/v1.2 field: every value above
+        // is read exactly as before, and the existing generation stages
+        // never consult this section.
+        let derivation_note_8max = root
+            .get("derivation_note_8max")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let eightmax = match root.get("eightmax") {
+            Some(sec) => {
+                if derivation_note_8max.is_empty() {
+                    return Err(
+                        "config 'eightmax' section requires 'derivation_note_8max'".to_string()
+                    );
+                }
+                let parse_variant = |vsec: &JsonValue,
+                                     id_prefix: &str|
+                 -> Result<EightMaxVariant, String> {
+                    let mut vrfi: BTreeMap<String, RfiTarget> = BTreeMap::new();
+                    if let JsonValue::Object(pos_entries) = vsec
+                        .get("rfi_targets")
+                        .ok_or("eightmax variant missing 'rfi_targets'")?
+                    {
+                        for (pos, t) in pos_entries {
+                            if !POSITIONS_8MAX.contains(&pos.as_str()) || pos == "BB" {
+                                return Err(format!(
+                                    "eightmax RFI target for '{pos}': not an 8max non-BB position"
+                                ));
+                            }
+                            let band = t
+                                .get("band")
+                                .and_then(|b| b.as_array())
+                                .ok_or("eightmax rfi target missing 'band'")?;
+                            if band.len() != 2 {
+                                return Err(
+                                    "eightmax rfi target 'band' must have 2 entries".to_string()
+                                );
+                            }
+                            vrfi.insert(
+                                pos.clone(),
+                                RfiTarget {
+                                    target: obj_num(t, "target")?,
+                                    band: [
+                                        band[0].as_f64().ok_or("band[0] must be a number")?,
+                                        band[1].as_f64().ok_or("band[1] must be a number")?,
+                                    ],
+                                    kind: obj_str(t, "kind")?,
+                                },
+                            );
+                        }
+                    } else {
+                        return Err("eightmax 'rfi_targets' must be an object".to_string());
+                    }
+                    let mut vresp: BTreeMap<String, BTreeMap<String, PairTarget>> =
+                        BTreeMap::new();
+                    if let JsonValue::Object(resp_entries) = vsec
+                        .get("response_targets")
+                        .ok_or("eightmax variant missing 'response_targets'")?
+                    {
+                        for (resp, openers) in resp_entries {
+                            if !POSITIONS_8MAX.contains(&resp.as_str()) {
+                                return Err(format!(
+                                    "eightmax response target for '{resp}': not an 8max position"
+                                ));
+                            }
+                            let mut omap = BTreeMap::new();
+                            if let JsonValue::Object(op_entries) = openers {
+                                for (op, t) in op_entries {
+                                    if !POSITIONS_8MAX.contains(&op.as_str()) {
+                                        return Err(format!(
+                                            "eightmax response target vs '{op}': not an 8max position"
+                                        ));
+                                    }
+                                    omap.insert(
+                                        op.clone(),
+                                        PairTarget {
+                                            three_bet: obj_num(t, "three_bet")?,
+                                            call: obj_num(t, "call")?,
+                                            kind: obj_str(t, "kind")?,
+                                        },
+                                    );
+                                }
+                            }
+                            vresp.insert(resp.clone(), omap);
+                        }
+                    } else {
+                        return Err("eightmax 'response_targets' must be an object".to_string());
+                    }
+                    let vcontinuations = match vsec.get("continuations") {
+                        Some(csec) => Some(parse_continuations_section(
+                            csec,
+                            id_prefix,
+                            &POSITIONS_8MAX,
+                            "8max",
+                        )?),
+                        None => None,
+                    };
+                    Ok(EightMaxVariant {
+                        rake_note: vsec
+                            .get("rake_note")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
+                        rfi_targets: vrfi,
+                        response_targets: vresp,
+                        continuations: vcontinuations,
+                    })
+                };
+                let raked_sec = sec.get("raked").ok_or("eightmax missing 'raked'")?;
+                let norake_sec = sec.get("norake").ok_or("eightmax missing 'norake'")?;
+                let raked = parse_variant(raked_sec, "constructed-v1.3-8max")?;
+                let norake = parse_variant(norake_sec, "constructed-v1.3-8max-norake")?;
+                let mut btn_vs_8max: Vec<String> = Vec::new();
+                let btn_arr = sec
+                    .get("btn_vs")
+                    .and_then(|v| v.as_array())
+                    .ok_or("eightmax 'btn_vs' must be an array")?;
+                for item in btn_arr {
+                    let p = item
+                        .as_str()
+                        .ok_or("eightmax 'btn_vs' entries must be strings")?
+                        .to_string();
+                    if !POSITIONS_8MAX.contains(&p.as_str()) {
+                        return Err(format!("eightmax btn_vs entry '{p}': not an 8max position"));
+                    }
+                    btn_vs_8max.push(p);
+                }
+                Some(EightMaxConfig { btn_vs: btn_vs_8max, raked, norake })
             }
             None => None,
         };
@@ -1054,11 +1242,13 @@ impl RangesConfig {
                 .as_str()
                 .ok_or("config 'derivation_note_9max' must be a string")?
                 .to_string(),
+            derivation_note_8max,
             btn_vs,
             rfi_targets,
             response_targets,
             continuations,
             norake,
+            eightmax,
             config_hash: fnv1a64_hex(text.as_bytes()),
         })
     }
@@ -1111,6 +1301,39 @@ impl RangesConfig {
         })
     }
 
+    /// The [`FamilySpec`] for the raked 8-max family (v1.3), or `None`
+    /// when the config has no `eightmax` section. Like the 9-max family
+    /// it cites no sources and carries the seat-mapping derivation.
+    pub fn eightmax_raked_family(&self) -> Option<FamilySpec> {
+        self.eightmax.as_ref().map(|_| FamilySpec {
+            rake: RAKE_RAKED.to_string(),
+            rake_note: self.rake_note.clone(),
+            id_prefix: "constructed-v1.3-8max".to_string(),
+            sources: Vec::new(),
+            top_source: false,
+            derivation: Some(self.derivation_note_8max.clone()),
+        })
+    }
+
+    /// The [`FamilySpec`] for the no-rake 8-max family (v1.3), or `None`
+    /// when the config has no `eightmax` section. Its targets derive
+    /// from the no-rake 6-max anchors, so — unlike the no-rake 6-max
+    /// family — it cites no source either and carries the derivation.
+    pub fn eightmax_norake_family(&self) -> Option<FamilySpec> {
+        self.eightmax.as_ref().map(|em| FamilySpec {
+            rake: RAKE_NO_RAKE.to_string(),
+            rake_note: em
+                .norake
+                .rake_note
+                .clone()
+                .unwrap_or_else(|| self.rake_note.clone()),
+            id_prefix: "constructed-v1.3-8max-norake".to_string(),
+            sources: Vec::new(),
+            top_source: false,
+            derivation: Some(self.derivation_note_8max.clone()),
+        })
+    }
+
     /// Finds the continuations section + matchup that emits set `id`,
     /// searching the raked family's section first, then the no-rake one.
     pub fn continuation_matchup(
@@ -1125,6 +1348,18 @@ impl RangesConfig {
         if let Some(c) = self.norake.as_ref().and_then(|nr| nr.continuations.as_ref()) {
             if let Some(m) = c.matchup_for_set_id(id) {
                 return Some((c, m));
+            }
+        }
+        if let Some(em) = &self.eightmax {
+            if let Some(c) = &em.raked.continuations {
+                if let Some(m) = c.matchup_for_set_id(id) {
+                    return Some((c, m));
+                }
+            }
+            if let Some(c) = &em.norake.continuations {
+                if let Some(m) = c.matchup_for_set_id(id) {
+                    return Some((c, m));
+                }
             }
         }
         None
@@ -1539,6 +1774,16 @@ const SEED_TAG_CONTINUATION_BASE: u64 = 900_000;
 const SEED_TAG_NORAKE_OPENER_BASE: u64 = 500_000;
 /// Base tag for the no-rake family's equity-vs-three-bettor streams.
 const SEED_TAG_NORAKE_CONTINUATION_BASE: u64 = 700_000;
+/// Base tag for the v1.3 8-max raked family's equity-vs-opener streams
+/// (300k + the opener tag, which stays below ~111k, stays clear of the
+/// raked (< ~111k), no-rake 6-max (500k) and continuation (900k) ranges).
+const SEED_TAG_EIGHTMAX_OPENER_BASE: u64 = 300_000;
+/// Base tag for the v1.3 8-max raked family's equity-vs-three-bettor streams.
+const SEED_TAG_EIGHTMAX_CONTINUATION_BASE: u64 = 1_100_000;
+/// Base tag for the v1.3 8-max no-rake family's equity-vs-opener streams.
+const SEED_TAG_EIGHTMAX_NORAKE_OPENER_BASE: u64 = 1_300_000;
+/// Base tag for the v1.3 8-max no-rake family's equity-vs-three-bettor streams.
+const SEED_TAG_EIGHTMAX_NORAKE_CONTINUATION_BASE: u64 = 1_500_000;
 
 /// Deterministic parallel map over `0..n` producing one f64 per index.
 /// Per-index results depend only on the index (each equity stream has its
@@ -1921,7 +2166,7 @@ pub fn build_continuation_set(
         .as_ref()
         .ok_or("config has no continuations_v11 section")?;
     let family = cfg.raked_family("6max");
-    build_continuation_set_styled(cfg, classes, eq_vs_three_bettor, opener_freq, matchup, cont, &family)
+    build_continuation_set_styled(cfg, classes, eq_vs_three_bettor, opener_freq, matchup, cont, &family, "6max")
 }
 
 /// Builds one continuation set against an explicit continuations section
@@ -1929,6 +2174,9 @@ pub fn build_continuation_set(
 /// `continuations_v11`, the no-rake family its own section whose matchups
 /// name the no-rake input sets). Continuation sets never cite sources:
 /// provenance is the construction `derivation` for both families.
+/// `table_size` is recorded on the emitted document ("6max" for the
+/// v1.1/v1.2 families, "8max" for the v1.3 families).
+#[allow(clippy::too_many_arguments)]
 pub fn build_continuation_set_styled(
     cfg: &RangesConfig,
     classes: &[ScoredClass],
@@ -1937,6 +2185,7 @@ pub fn build_continuation_set_styled(
     matchup: &ContinuationMatchup,
     cont: &ContinuationsConfig,
     family: &FamilySpec,
+    table_size: &str,
 ) -> Result<RangeSetDoc, String> {
     let continuer = matchup.continuer.as_str();
     let three_bettor = matchup.three_bettor.as_str();
@@ -2054,7 +2303,7 @@ pub fn build_continuation_set_styled(
     );
     Ok(RangeSetDoc {
         id: cont.set_id(matchup),
-        table_size: "6max".to_string(),
+        table_size: table_size.to_string(),
         position: continuer.to_string(),
         context: "vs_three_bet".to_string(),
         context_detail: Some(format!(
@@ -2401,14 +2650,174 @@ pub fn generate(cfg: &RangesConfig) -> Result<Generation, String> {
                     )
                 });
                 let doc = build_continuation_set_styled(
-                    cfg, &classes, &eq, &opener_freq, matchup, cont, &family,
+                    cfg, &classes, &eq, &opener_freq, matchup, cont, &family, "6max",
                 )?;
                 sets.push(doc);
             }
         }
     }
+    // v1.3 8-max families (both rake variants): targets derived from the
+    // variant's 6-max family by the players-behind seat mapping (config
+    // `eightmax` section), built with the styled builders and their own
+    // seeded equity passes per variant.
+    if let Some(em) = &cfg.eightmax {
+        let raked_family = cfg.eightmax_raked_family().expect("eightmax section present");
+        build_eightmax_variant(
+            cfg,
+            &classes,
+            &em.raked,
+            &em.btn_vs,
+            &raked_family,
+            SEED_TAG_EIGHTMAX_OPENER_BASE,
+            SEED_TAG_EIGHTMAX_CONTINUATION_BASE,
+            &mut sets,
+        )?;
+        let norake_family = cfg.eightmax_norake_family().expect("eightmax section present");
+        build_eightmax_variant(
+            cfg,
+            &classes,
+            &em.norake,
+            &em.btn_vs,
+            &norake_family,
+            SEED_TAG_EIGHTMAX_NORAKE_OPENER_BASE,
+            SEED_TAG_EIGHTMAX_NORAKE_CONTINUATION_BASE,
+            &mut sets,
+        )?;
+    }
     sets.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(Generation { classes, sets })
+}
+
+/// Builds one rake variant of the v1.3 8-max family: RFI sets for every
+/// non-BB seat, response sets for BB / SB / BTN (equities vs each opener
+/// computed once and shared by the responders facing it), and the
+/// variant's continuation sets — the same three stages as the no-rake
+/// 6-max family, driven by the `eightmax` section's per-variant targets
+/// and family styling. `opener_tag_base` / `continuation_tag_base` keep
+/// this variant's Monte Carlo streams clear of every other family's.
+#[allow(clippy::too_many_arguments)]
+fn build_eightmax_variant(
+    cfg: &RangesConfig,
+    classes: &[ScoredClass],
+    variant: &EightMaxVariant,
+    btn_openers: &[String],
+    family: &FamilySpec,
+    opener_tag_base: u64,
+    continuation_tag_base: u64,
+    sets: &mut Vec<RangeSetDoc>,
+) -> Result<(), String> {
+    let table = "8max";
+    let positions = positions_for(table).unwrap();
+    let mut rfi_docs: BTreeMap<String, RangeSetDoc> = BTreeMap::new();
+    for &pos in positions {
+        if pos == "BB" {
+            continue;
+        }
+        let target = variant
+            .rfi_targets
+            .get(pos)
+            .ok_or_else(|| format!("no 8max RFI target for {pos}"))?;
+        let doc = build_rfi_set_styled(cfg, classes, table, pos, target, family)?;
+        rfi_docs.insert(pos.to_string(), doc);
+    }
+    for doc in rfi_docs.values() {
+        sets.push(doc.clone());
+    }
+    let mut response_docs: BTreeMap<(String, String), RangeSetDoc> = BTreeMap::new();
+    let mut opener_eq: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+    let responders: Vec<(&str, Vec<&str>)> = {
+        let mut v: Vec<(&str, Vec<&str>)> = Vec::new();
+        // BB vs everyone else.
+        v.push(("BB", positions.iter().copied().filter(|&p| p != "BB").collect()));
+        // SB vs every non-blind opener.
+        v.push((
+            "SB",
+            positions.iter().copied().filter(|&p| p != "SB" && p != "BB").collect(),
+        ));
+        // BTN vs the section's btn_vs list.
+        v.push(("BTN", btn_openers.iter().map(|s| s.as_str()).collect()));
+        v
+    };
+    for (responder, openers) in responders {
+        for opener in openers {
+            if !opener_eq.contains_key(opener) {
+                let rfi = rfi_docs
+                    .get(opener)
+                    .ok_or_else(|| format!("missing 8max RFI doc for {opener}"))?;
+                let ofreq = action_freqs(rfi, classes, "raise");
+                let pool = opener_pool(&classes, &ofreq);
+                let tag = opener_tag_base + opener_seed_tag(table, opener);
+                let eq = par_map(classes.len(), &|i| {
+                    equity_vs_pool(
+                        &classes[i].class.representative,
+                        &pool,
+                        cfg.samples_vs_opener,
+                        derive_seed(cfg.seed, tag, i),
+                    )
+                });
+                opener_eq.insert(opener.to_string(), eq);
+            }
+            let eq = &opener_eq[opener];
+            let target = variant
+                .response_targets
+                .get(responder)
+                .and_then(|m| m.get(opener))
+                .ok_or_else(|| format!("no 8max response target for {responder} vs {opener}"))?;
+            let doc = build_response_set_styled(cfg, classes, eq, table, responder, opener, target, family)?;
+            response_docs.insert((responder.to_string(), opener.to_string()), doc.clone());
+            sets.push(doc);
+        }
+    }
+    if let Some(cont) = &variant.continuations {
+        for (mi, matchup) in cont.matchups.iter().enumerate() {
+            let rfi = rfi_docs.get(&matchup.continuer).ok_or_else(|| {
+                format!("missing 8max RFI doc for {}", matchup.continuer)
+            })?;
+            if rfi.id != matchup.opener_rfi_set {
+                return Err(format!(
+                    "eightmax continuations matchup {} vs {}: opener_rfi_set '{}' does not match the generated RFI set '{}'",
+                    matchup.continuer, matchup.three_bettor, matchup.opener_rfi_set, rfi.id
+                ));
+            }
+            let tb_doc = response_docs
+                .get(&(matchup.three_bettor.clone(), matchup.continuer.clone()))
+                .ok_or_else(|| {
+                    format!(
+                        "missing 8max response doc for {} vs {}",
+                        matchup.three_bettor, matchup.continuer
+                    )
+                })?;
+            if tb_doc.id != matchup.three_bettor_set {
+                return Err(format!(
+                    "eightmax continuations matchup {} vs {}: three_bettor_set '{}' does not match the generated response set '{}'",
+                    matchup.continuer, matchup.three_bettor, matchup.three_bettor_set, tb_doc.id
+                ));
+            }
+            let opener_freq = action_freqs(rfi, classes, "raise");
+            let tb_freq = action_freqs(tb_doc, classes, "three_bet");
+            let pool = opener_pool(&classes, &tb_freq);
+            if pool.is_empty() {
+                return Err(format!(
+                    "eightmax continuation {} vs {}: three-bettor's three_bet slice is empty",
+                    matchup.continuer, matchup.three_bettor
+                ));
+            }
+            let tag = continuation_tag_base + (mi as u64) * 10_000;
+            let eq = par_map(classes.len(), &|i| {
+                equity_vs_pool(
+                    &classes[i].class.representative,
+                    &pool,
+                    cont.samples_vs_three_bettor,
+                    derive_seed(cfg.seed, tag, i),
+                )
+            });
+            let doc = build_continuation_set_styled(
+                cfg, classes, &eq, &opener_freq, matchup, cont, family, table,
+            )?;
+            sets.push(doc);
+        }
+    }
+    Ok(())
 }
 
 fn opener_seed_tag(table: &str, opener: &str) -> u64 {
@@ -2499,7 +2908,7 @@ pub fn validate_rangeset(doc: &JsonValue) -> Vec<String> {
                 errors.push(format!("position '{position}' is not a {table} position"));
             }
         }
-        None => errors.push(format!("table_size '{table}' must be 6max or 9max")),
+        None => errors.push(format!("table_size '{table}' must be 6max, 8max or 9max")),
     }
     let context = doc.get("context").and_then(|v| v.as_str()).unwrap_or("");
     let allowed = CONTEXT_ACTIONS.iter().find(|(c, _)| *c == context).map(|(_, a)| *a);
@@ -2708,7 +3117,8 @@ pub fn parse_opener(context_detail: &str) -> String {
 /// config's continuation targets are fractions of the opener's raising
 /// range, not of all combos); callers are responsible for passing those.
 /// `rake` selects the target family: `"no-rake"` sets check against the
-/// `norake_6max` targets, everything else against the raked maps.
+/// `norake_6max` targets, everything else against the raked maps. 8-max
+/// sets (either variant) check against the config's `eightmax` section.
 pub fn check_doc_totals(
     cfg: &RangesConfig,
     id: &str,
@@ -2723,7 +3133,12 @@ pub fn check_doc_totals(
     let mut failures = 0usize;
     if context == "rfi" || context == "sb_play" {
         let achieved = totals.get("raise").copied().unwrap_or(0.0);
-        let target = if rake == RAKE_NO_RAKE {
+        let target = if table_size == "8max" {
+            cfg.eightmax.as_ref().and_then(|em| {
+                let v = if rake == RAKE_NO_RAKE { &em.norake } else { &em.raked };
+                v.rfi_targets.get(position)
+            })
+        } else if rake == RAKE_NO_RAKE {
             cfg.norake.as_ref().and_then(|nr| nr.rfi_targets.get(position))
         } else {
             cfg.rfi_targets.get(table_size).and_then(|m| m.get(position))
@@ -2773,7 +3188,12 @@ pub fn check_doc_totals(
         }
     } else if context == "vs_rfi" {
         let opener = opener.unwrap_or("");
-        let target = if rake == RAKE_NO_RAKE {
+        let target = if table_size == "8max" {
+            cfg.eightmax.as_ref().and_then(|em| {
+                let v = if rake == RAKE_NO_RAKE { &em.norake } else { &em.raked };
+                v.response_targets.get(position).and_then(|m| m.get(opener))
+            })
+        } else if rake == RAKE_NO_RAKE {
             cfg.norake
                 .as_ref()
                 .and_then(|nr| nr.response_targets.get(position))
