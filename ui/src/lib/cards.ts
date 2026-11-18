@@ -120,3 +120,61 @@ export function canonicalClass(combo: string): string {
 export function classLabel(hi: string, lo: string): string {
   return `${hi}${lo}`;
 }
+
+/**
+ * Suitedness shape of a 4-card combo, in the same vocabulary as the
+ * preflop class table's `features.suitedness` (see SUITEDNESS_FILTERS
+ * in lib/preflop.ts): [2,2] double, [2,1,1] single, [3,1] three,
+ * [4] four (monotone), [1,1,1,1] rainbow. Computed from the combo's
+ * own cards only — exact, no payload support needed.
+ */
+export type SuitednessShape = 'double' | 'single' | 'three' | 'four' | 'rainbow';
+
+export function comboSuitedness(cards: Card[]): SuitednessShape {
+  const counts = new Map<Suit, number>();
+  for (const c of cards) counts.set(c.suit, (counts.get(c.suit) ?? 0) + 1);
+  const shape = [...counts.values()].sort((a, b) => b - a);
+  if (shape.length === 1) return 'four';
+  if (shape.length === 4) return 'rainbow';
+  if (shape[0] === 3) return 'three';
+  if (shape[0] === 2 && shape[1] === 2) return 'double';
+  return 'single';
+}
+
+export type FlushRelation = 'flush' | 'draw' | 'none';
+
+/**
+ * A combo's flush relation to a board, under Omaha rules (a flush
+ * uses exactly two hole cards and three board cards):
+ *  - 'flush': some suit has >= 3 board cards and >= 2 hole cards.
+ *  - 'draw': not a flush, but some suit has >= 2 board cards and
+ *    >= 2 hole cards (four to a flush with a card to come).
+ *  - 'none': neither. On a board with at most one card per suit no
+ *    combo can be better than 'none'.
+ */
+export function flushRelation(cards: Card[], board: Card[]): FlushRelation {
+  const suits: Suit[] = ['s', 'h', 'd', 'c'];
+  let draw = false;
+  for (const suit of suits) {
+    const onBoard = board.filter((c) => c.suit === suit).length;
+    const inHand = cards.filter((c) => c.suit === suit).length;
+    if (onBoard >= 3 && inHand >= 2) return 'flush';
+    if (onBoard >= 2 && inHand >= 2) draw = true;
+  }
+  return draw ? 'draw' : 'none';
+}
+
+/**
+ * The sub-matrix key of a combo inside its canonical class: the two
+ * lowest ranks, high first — the "remaining cards" once the class's
+ * top two ranks are fixed. e.g. "As Ah Kd Qc" (class AA) -> "KQ".
+ * Returns null for an unparseable combo.
+ */
+export function remainingClass(combo: string): string | null {
+  const cards = parseCombo(combo);
+  if (!cards) return null;
+  const ranks = cards
+    .map((c) => c.rank)
+    .sort((a, b) => (RANK_ORDER[b] ?? 0) - (RANK_ORDER[a] ?? 0));
+  return `${ranks[2]}${ranks[3]}`;
+}
