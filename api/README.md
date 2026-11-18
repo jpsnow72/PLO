@@ -45,7 +45,7 @@ Configuration (environment variables):
 | GET    | `/api/solves/:id`       | Job record: `status` (`queued`/`running`/`done`/`error`), `nash_distance_pct` + `iterations` when done, `error` when failed. |
 | GET    | `/api/solves/:id/result`| The finished solve JSON (engine output, verbatim). `409` until done.     |
 | GET    | `/api/jobs`             | All job records known to this process.                                    |
-| GET    | `/api/library`          | Finished solves in `DATA_DIR/library` (id, board, kind, Nash distance, iterations, size). |
+| GET    | `/api/library`          | Finished solves in `DATA_DIR/library` (id, board, kind, Nash distance, iterations, size, spot id, starting pot, effective stack, locked). |
 | GET    | `/api/library/:id`      | One library solve JSON, verbatim.                                         |
 | POST   | `/api/library/ingest`   | **[admin]** Body = `{ spot, result }` (see "Ingesting finished solves"). Stores a solve produced elsewhere (the local runner) in the library. Idempotent per (spot id, result). |
 | GET    | `/api/preflop/index`    | The preflop range-set index (`data/preflop/index.json`), verbatim.        |
