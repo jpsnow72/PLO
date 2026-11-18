@@ -51,6 +51,7 @@ import {
   type QuizTopicStats,
 } from '../lib/quiz';
 import type { Heuristic } from '../lib/study';
+import { useStore } from '../store/useStore';
 import { ApproximationBadge } from '../components/ApproximationBadge';
 import { CardRow } from '../components/CardChip';
 import { FrequencyBar, pctText } from '../components/FrequencyBar';
@@ -176,6 +177,25 @@ export function StartingHandsPage() {
   const [spot, setSpot] = useState<SpotKind | ''>('');
   const [position, setPosition] = useState('');
   const [openerSel, setOpenerSel] = useState('');
+
+  // Drill hand-off from the Quiz's preflop drill entries (issue #22):
+  // when a set id is waiting, preselect every facet from its study
+  // option once the option list resolves it, then clear the hand-off
+  // so later visits start from the plain picker. The keep-valid
+  // effects below settle any facet the option does not pin down.
+  const preflopDrillSetId = useStore((s) => s.preflopDrillSetId);
+  const setPreflopDrillSetId = useStore((s) => s.setPreflopDrillSetId);
+  useEffect(() => {
+    if (!preflopDrillSetId) return;
+    const opt = options.find((o) => o.entry.id === preflopDrillSetId);
+    if (!opt) return; // index still loading — retry when options change
+    setSize(opt.entry.table_size);
+    setVariant(opt.variant);
+    setSpot(opt.spot);
+    setPosition(opt.entry.position);
+    if (opt.opener) setOpenerSel(opt.opener);
+    setPreflopDrillSetId(null);
+  }, [preflopDrillSetId, options, setPreflopDrillSetId]);
 
   const sizes = useMemo(() => {
     const seen: TableSize[] = [];

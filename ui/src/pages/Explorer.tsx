@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { AccuracyBadge, ApproximationBadge } from '../components/AccuracyBadge';
 import { ActionList } from '../components/ActionList';
 import { BlockersView } from '../components/BlockersView';
@@ -43,6 +43,8 @@ export function ExplorerPage() {
   const chooseRunout = useStore((s) => s.chooseRunout);
   const goToStep = useStore((s) => s.goToStep);
   const resetPath = useStore((s) => s.resetPath);
+  const setTrainerFocus = useStore((s) => s.setTrainerFocus);
+  const navigate = useNavigate();
 
   const node = currentNodeOf(solve, path);
   const [selectedCombo, setSelectedCombo] = useState<string | null>(null);
@@ -161,13 +163,37 @@ export function ExplorerPage() {
               {node.player} to act{' '}
               <span className="font-normal text-ink-dim">— pick an action to follow the line</span>
             </h2>
-            <button
-              type="button"
-              onClick={resetPath}
-              className="ml-auto rounded px-1.5 py-0.5 text-xs text-ink-dim hover:bg-navy-800 hover:text-ink"
-            >
-              Reset line
-            </button>
+            <span className="ml-auto flex items-center gap-1">
+              <button
+                type="button"
+                onClick={resetPath}
+                className="rounded px-1.5 py-0.5 text-xs text-ink-dim hover:bg-navy-800 hover:text-ink"
+              >
+                Reset line
+              </button>
+              <button
+                type="button"
+                disabled={node.actions.length < 2 || (solveSource !== 'sample' && !solveId)}
+                title={
+                  node.actions.length < 2
+                    ? 'This node has no decision to drill'
+                    : 'Drill this exact node in the Quiz Trainer — hands are dealt from this node’s range and graded against its strategy'
+                }
+                onClick={() => {
+                  setTrainerFocus({
+                    kind: 'spot',
+                    solveId: solveSource === 'sample' || !solveId ? 'sample' : solveId,
+                    solveName,
+                    solveSource: solveSource ?? 'sample',
+                    history: node.history,
+                  });
+                  navigate('/quiz');
+                }}
+                className="rounded bg-navy-800 px-2 py-0.5 text-xs font-semibold text-table-light ring-1 ring-navy-600 hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Practice this spot
+              </button>
+            </span>
           </div>
 
           {terminalAction ? (
