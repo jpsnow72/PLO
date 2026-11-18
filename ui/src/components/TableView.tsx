@@ -10,6 +10,7 @@ import {
 import type { Player } from '../lib/types';
 import type { PathStep } from '../store/useStore';
 import { CardBack, CardRow } from './CardChip';
+import { DrawingOverlay, DrawingToolbar } from './DrawingOverlay';
 
 interface Props {
   solve: SolveData;
@@ -98,7 +99,12 @@ export function TableView({ solve, node, path, boardCards, terminalAction, pendi
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className="flex w-full flex-col items-center">
+      {/* Drawing mode (issue #20): the toolbar sits above the table;
+          the overlay covers the seats + felt block below. Strokes
+          are stored per solve in the store, so they stay put while
+          walking the tree even though this view remounts per node. */}
+      <DrawingToolbar />
+      <div className="relative flex w-full flex-col items-center">
         <Seat
           player="OOP"
           stack={money.stackBehind.OOP}
@@ -140,6 +146,7 @@ export function TableView({ solve, node, path, boardCards, terminalAction, pendi
           presence={presence.IP}
           toAct={!handOver && node.player === 'IP'}
         />
+        <DrawingOverlay />
       </div>
 
       {pendingStreet && !handOver ? (
