@@ -16,7 +16,13 @@
 //!
 //! Flop subtrees are cross-checked against the (naive-validated) turn
 //! pass run standalone on each subtree game, shifted by the subtree's
-//! flop commitment — the seam correction in conditional terms.
+//! flop commitment — the seam correction in conditional terms. The
+//! comparison is restricted to records whose flop-profile normaliser
+//! `Z(i)` is positive (recomputed below by forward reach propagation):
+//! at `Z(i) == 0` the conditional value is undefined and both passes
+//! record `0.0` by convention, so a shifted comparison there would test
+//! the convention, not the seam (gate finding, EV-OUTPUT-NOTES.md).
+//! Counted witnesses keep the restricted check non-vacuous.
 //!
 //! The identities are algebraic in the solved profile, so the spots run
 //! few iterations: they hold for any average strategy, converged or not.
@@ -28,13 +34,30 @@ use plo_eval::{eval_omaha, HandRank, PloRange};
 use plo_solve::{
     compute_action_evs_turn, expand_bucket_strategies, format_flop_solve_result_json,
     format_solve_result_json, format_turn_solve_result_json, parse_flop_spot_json, solve_flop,
-    solve_river, solve_turn, ComboEv, DcfrConfig, FlopGame, JsonValue, Node, NodeActionEvs,
+    solve_river, solve_turn, ComboEv, DcfrConfig, FlopChild, FlopGame, FlopNode, JsonValue,
+    Node, NodeActionEvs,
     NodeLock, NodeStrategy, Player, RiverGame, RiverSpot, TerminalNode, TreeConfig, TurnGame,
     TurnNode, TurnSpot, RIVER_DEAL_PROB,
 };
 
 const TOL: f64 = 1e-6;
 const IDENTITY_TOL: f64 = 1e-9;
+/// Domain threshold for the flop seam cross-check: a subtree record is
+/// compared only when the flop pass's normaliser `Z(i)` at its node —
+/// the opponent reach mass live against the combo — exceeds this. At
+/// `Z == 0` the conditional EV is undefined and both passes record
+/// `0.0` by convention; genuinely reached records in this spot carry
+/// `Z` many orders of magnitude above the threshold (range weights are
+/// 1.0 and at most a handful of frequency factors lie on any path).
+const SEAM_Z_MIN: f64 = 1e-9;
+/// Non-vacuity witnesses for the seam cross-check: the spot carries
+/// ~147 live subtrees x ~196 decision nodes x ~3 combos (~78k records),
+/// and subtrees 49..=57 (commitment 75) passed the *unrestricted* check
+/// at the gate — possible only if essentially all of their ~4.7k
+/// records were genuinely compared, since any `Z == 0` record there
+/// would have failed as `0 != 0 - 75`. The minima sit far below that.
+const MIN_SEAM_COMPARED: usize = 1_000;
+const MIN_SEAM_SHIFTED_COMPARED: usize = 500;
 /// Serialized values are rounded to 3 decimals: |parsed - exact| <= 0.0005.
 const ROUND_TOL: f64 = 5.1e-4;
 
@@ -418,6 +441,23 @@ fn turn_ranks(game: &TurnGame) -> Vec<[Vec<HandRank>; 2]> {
 }
 
 fn turn_forward_reach(game: &TurnGame, strategies: &[NodeStrategy]) -> Vec<[Vec<f64>; 2]> {
+    let init = [
+        game.combos[0].iter().map(|c| c.weight).collect::<Vec<f64>>(),
+        game.combos[1].iter().map(|c| c.weight).collect::<Vec<f64>>(),
+    ];
+    turn_forward_reach_from(game, strategies, init)
+}
+
+/// Forward reach propagation through a turn game from caller-supplied
+/// root reaches (the standalone evaluator starts from the range
+/// weights; the flop seam check starts from the flop-derived reach
+/// mapped into the subtree). Chance nodes pass reach through
+/// unchanged — deal probabilities multiply values, never reaches.
+fn turn_forward_reach_from(
+    game: &TurnGame,
+    strategies: &[NodeStrategy],
+    init: [Vec<f64>; 2],
+) -> Vec<[Vec<f64>; 2]> {
     fn fill(
         game: &TurnGame,
         strategies: &[NodeStrategy],
@@ -446,13 +486,82 @@ fn turn_forward_reach(game: &TurnGame, strategies: &[NodeStrategy]) -> Vec<[Vec<
             TurnNode::Terminal(_) => {}
         }
     }
+    let mut reach = vec![[Vec::new(), Vec::new()]; game.nodes.len()];
+    fill(game, strategies, 0, init, &mut reach);
+    reach
+}
+
+/// Forward reach propagation over the flop tree (combo-level
+/// `strategies`, i.e. the expanded profile), returning the reach
+/// entering each subtree group: the reach at the decision node whose
+/// action closed the street, with the closing action's frequency
+/// applied to the acting player's component. The turn-card deal is not
+/// applied — deal probabilities multiply values, never reaches.
+fn flop_group_entry_reach(game: &FlopGame, strategies: &[NodeStrategy]) -> Vec<[Vec<f64>; 2]> {
+    fn fill(
+        game: &FlopGame,
+        strategies: &[NodeStrategy],
+        node_id: usize,
+        cur: [Vec<f64>; 2],
+        groups: &mut [[Vec<f64>; 2]],
+    ) {
+        if let FlopNode::Decision(d) = &game.nodes[node_id] {
+            let ns = &strategies[d.decision_id];
+            let p = pidx(d.player);
+            for (a, &child) in d.children.iter().enumerate() {
+                let mut next = cur.clone();
+                for (i, v) in next[p].iter_mut().enumerate() {
+                    *v *= ns.freq(i, a);
+                }
+                match child {
+                    FlopChild::Node(child_id) => fill(game, strategies, child_id, next, groups),
+                    FlopChild::Subtrees(g) => groups[g] = next,
+                }
+            }
+        }
+    }
     let init = [
         game.combos[0].iter().map(|c| c.weight).collect::<Vec<f64>>(),
         game.combos[1].iter().map(|c| c.weight).collect::<Vec<f64>>(),
     ];
-    let mut reach = vec![[Vec::new(), Vec::new()]; game.nodes.len()];
-    fill(game, strategies, 0, init, &mut reach);
-    reach
+    let mut groups = vec![[Vec::new(), Vec::new()]; game.subtree_groups.len()];
+    fill(game, strategies, 0, init, &mut groups);
+    groups
+}
+
+/// The flop pass's normaliser `Z(i)` for one subtree record,
+/// recomputed by forward reach propagation: the opponent reach mass
+/// live at the record's node against combo `i` — opponent combos that
+/// neither overlap combo `i` nor contain the node's river card. This
+/// mirrors `reach_mass` in the pass exactly; the pass's `opp_reach`
+/// inside a subtree starts from the flop reach mapped in, which is
+/// what `sub_reach` propagates. `Z == 0` marks the records whose
+/// conditional value is undefined (the pass records `0.0` there by
+/// convention), which the seam comparison must exclude.
+fn seam_z(
+    sub_game: &TurnGame,
+    sub_reach: &[[Vec<f64>; 2]],
+    rec: &NodeActionEvs,
+    combo_idx: usize,
+) -> f64 {
+    let d = sub_game.decision_node(rec.decision_id);
+    let p = rec.player;
+    let q = popp(p);
+    let opp_reach = &sub_reach[d.node_id][pidx(q)];
+    let my_mask = sub_game.combos[pidx(p)][combo_idx].mask;
+    let mut z = 0.0f64;
+    for (j, oc) in sub_game.combos[pidx(q)].iter().enumerate() {
+        if opp_reach[j] == 0.0 || my_mask.overlaps(oc.mask) {
+            continue;
+        }
+        if let Some(rc) = d.river_card {
+            if oc.mask.contains(rc) {
+                continue;
+            }
+        }
+        z += opp_reach[j];
+    }
+    z
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -772,8 +881,24 @@ fn flop_action_evs_identities_and_subtree_consistency() {
 
     // Subtrees: identities, plus the seam cross-check — every subtree
     // record equals the standalone turn pass on that subtree game shifted
-    // by the subtree's flop commitment.
+    // by the subtree's flop commitment. The comparison is restricted to
+    // records with flop-profile `Z(i) > SEAM_Z_MIN`: at `Z == 0` the
+    // conditional value is undefined, both passes record `0.0` by
+    // convention, and `0.0 != 0.0 - committed` would indict the seam for
+    // a convention (gate finding, EV-OUTPUT-NOTES.md). The per-node
+    // identities above are NOT restricted — they hold for convention
+    // zeros too (`sum_a freq * 0 == 0`).
     assert_eq!(res.action_evs.subtrees.len(), res.subtree_strategies.len());
+    let group_reach = flop_group_entry_reach(&game, &expanded);
+    let mut group_of = vec![usize::MAX; game.subtrees.len()];
+    for (g, group) in game.subtree_groups.iter().enumerate() {
+        for &k in &group.subtrees {
+            group_of[k] = g;
+        }
+    }
+    let mut seam_compared = 0usize;
+    let mut seam_shifted_compared = 0usize;
+    let mut seam_excluded = 0usize;
     for (k, sub) in game.subtrees.iter().enumerate() {
         let Some(sub_game) = &sub.game else {
             assert!(res.action_evs.subtrees[k].is_empty(), "dead subtree {k} has no records");
@@ -783,9 +908,31 @@ fn flop_action_evs_identities_and_subtree_consistency() {
         check_identities(&res.subtree_strategies[k], records, "flop-subtree");
         let standalone = compute_action_evs_turn(sub_game, &res.subtree_strategies[k]);
         assert_eq!(records.len(), standalone.len(), "subtree {k} record count");
+        // Propagate this subtree's reach from the flop profile: group
+        // entry reach, mapped through the subtree's combo maps.
+        let entry = &group_reach[group_of[k]];
+        let mut init: [Vec<f64>; 2] = [Vec::new(), Vec::new()];
+        for p in [Player::Oop, Player::Ip] {
+            let mut v = vec![0.0f64; sub_game.combos[pidx(p)].len()];
+            for (j, m) in sub.map_for(p).iter().enumerate() {
+                if let Some(sj) = m {
+                    v[*sj] = entry[pidx(p)][j];
+                }
+            }
+            init[pidx(p)] = v;
+        }
+        let sub_reach = turn_forward_reach_from(sub_game, &res.subtree_strategies[k], init);
         for (rec, solo) in records.iter().zip(standalone.iter()) {
             assert_eq!(rec.decision_id, solo.decision_id);
             for i in 0..rec.num_combos {
+                if seam_z(sub_game, &sub_reach, rec, i) <= SEAM_Z_MIN {
+                    seam_excluded += 1;
+                    continue;
+                }
+                seam_compared += 1;
+                if sub.committed != 0.0 {
+                    seam_shifted_compared += 1;
+                }
                 assert_close(
                     rec.node_evs[i],
                     solo.node_evs[i] - sub.committed,
@@ -803,6 +950,26 @@ fn flop_action_evs_identities_and_subtree_consistency() {
             }
         }
     }
+    // Non-vacuity witnesses: the restricted comparison must actually
+    // cover a substantial record set, including records where the seam
+    // shift is nonzero (a shift of 0 would let a missing correction
+    // pass unnoticed). The exclusion must also have engaged at least
+    // once — the gate-finding record (subtree 58, `X/X|r:4d/X`,
+    // Ks Kh Qd Jc) is a `Z == 0` record by construction.
+    assert!(
+        seam_compared >= MIN_SEAM_COMPARED,
+        "seam cross-check compared only {seam_compared} records with Z > {SEAM_Z_MIN} \
+         (minimum {MIN_SEAM_COMPARED}); the check must not pass vacuously"
+    );
+    assert!(
+        seam_shifted_compared >= MIN_SEAM_SHIFTED_COMPARED,
+        "seam cross-check compared only {seam_shifted_compared} records in \
+         nonzero-commitment subtrees (minimum {MIN_SEAM_SHIFTED_COMPARED})"
+    );
+    assert!(
+        seam_excluded >= 1,
+        "seam cross-check excluded no Z == 0 records; the domain restriction did not engage"
+    );
 
     // Payload: the formatted flop output parses, and every emitted node
     // (flop street + all subtrees) carries combo_action_evs with one row

@@ -131,11 +131,69 @@ run few iterations — they hold for any average strategy.
 4. **Locked profile:** a pure-check root lock on the river spot —
    identities and the root identity hold against the locked solve's
    stored EVs, and each root combo's node EV equals its check-action EV.
-5. **Flop seam:** every subtree record equals the standalone turn pass
-   on that subtree game shifted by exactly the subtree's flop
-   commitment (1e-6), for node EVs and per-action EVs alike.
+5. **Flop seam:** every subtree record with flop-profile `Z(i) > 0`
+   (recomputed in the test by forward reach propagation) equals the
+   standalone turn pass on that subtree game shifted by exactly the
+   subtree's flop commitment (1e-6), for node EVs and per-action EVs
+   alike. Records at `Z(i) == 0` are excluded — their conditional
+   value is undefined and both passes record the `0.0` convention —
+   and counted witnesses assert the restricted comparison still
+   covers ≥1,000 records, ≥500 of them in nonzero-commitment
+   subtrees. See the gate finding below.
 6. **Payload:** formatted outputs parse; every node carries
    `combo_action_evs` with row-for-row alignment against `strategy` and
    row lengths equal to `actions`; serialized root values match the
    engine records within the 3-decimal rounding. A byte-faithful legacy
    (pre-#8) payload parses with the field absent.
+
+## Gate finding (2026-11-17) — flop seam test premise, engine sound
+
+The first gate run of this branch failed exactly one test (suite
+30 passed / 1 failed): `flop_action_evs_identities_and_subtree_consistency`,
+panicking at the seam comparison with
+
+```text
+subtree 58 seam shift at X/X|r:4d/X combo 0: expected -75, got 0 (tol 0.000001)
+```
+
+Adjudication, verified from the sources and the spot definition
+(board `9c 8d 3h`, OOP `As Ah Kd Qc / Ts Js Qh Kh / 7s 6s 5d 4d`,
+IP `Ks Kh Qd Jc / Th Jh Qs Ks / 7h 6h 5s 4s`, pot 100, stacks 150,
+single 75% size):
+
+- Subtree groups are built in tree order: group 0 is flop history
+  `X/X` (subtrees 0–48), group 1 is `X/B(75)/C` (subtrees 49–97).
+  Subtree 58 is in group 1, so its flop commitment is 75, and its
+  turn-card index is 9. Turn cards enumerate the deck minus the board
+  in ascending card-id order (`id = suit*13 + rank`), which makes
+  index 9 the **Qc**.
+- The subtree's OOP range therefore filters out `As Ah Kd Qc` (it
+  contains the turn card), leaving `Ts Js Qh Kh` and `7s 6s 5d 4d`.
+  The failing node, `X/X|r:4d/X`, is IP to act on the river, and its
+  combo 0 is **Ks Kh Qd Jc**.
+- The normaliser `Z` for that record sums opponent reach over OOP
+  combos that neither overlap the hero combo nor contain the dealt
+  river card. Against Ks Kh Qd Jc with river card 4d, the candidate
+  set is **empty**: `Ts Js Qh Kh` overlaps (Kh), `7s 6s 5d 4d`
+  contains the 4d, and `As Ah Kd Qc` is not in the subtree game.
+  So `Z = 0` *exactly, combinatorially* — independent of the solved
+  profile — in both the flop pass and the standalone turn pass.
+- Both passes therefore record the documented `Z = 0` convention,
+  `0.0`. The test compared the flop record `0.0` against the
+  standalone record shifted by the commitment, `0.0 - 75 = -75`:
+  it subtracted the seam correction from a value that was never a
+  conditional EV. That is a test-premise defect, not a seam defect —
+  the per-node identities (which hold for convention zeros) and the
+  seam comparisons in subtrees 0–57 all passed in the same run, and
+  no engine code changed.
+
+Fix (test only): the seam comparison now recomputes `Z(i)` for every
+subtree record by forward reach propagation (flop tree over the
+expanded profile → group entry reach → mapped into the subtree →
+turn-game propagation) and compares only records with `Z > 1e-9`.
+Non-vacuity witnesses assert ≥1,000 compared records overall and
+≥500 in nonzero-commitment subtrees (subtrees 49–57 passing the old
+unrestricted check is only possible if essentially all of their
+~4.7k records were genuinely compared), and that the exclusion
+engaged at least once. No tolerance was weakened and the seam check
+itself is unchanged on its valid domain.
