@@ -750,26 +750,21 @@ fn v12_raked_family_cites_gtw_raked_anchors_informational_only() {
 
     // Raked 6-max provenance cites all three sources; the top-level
     // source stays PLO.com.
-    let samples = small_samples();
-    let hands: Vec<WeightedHand> = vec![
-        (parse_hand("AsAhKdQc").unwrap(), 1.0),
-        (parse_hand("7s6d5h4c").unwrap(), 0.5),
-    ];
-    let doc = build_rfi_set(
-        &cfg,
-        "6max",
-        "BTN",
-        &hands,
-        &samples,
-        &class_table(),
-        "deadbeef".to_string(),
-    );
-    let parsed = JsonValue::parse(&doc.to_json(&cfg)).expect("emitted JSON parses");
-    let sources = parsed["provenance"]["sources"].as_array().unwrap();
+    let test_cfg = small_samples(&cfg, 800, 400, 0, 0);
+    let classes = score_all_classes(&test_cfg);
+    let doc = build_rfi_set(&test_cfg, &classes, "6max", "BTN").expect("raked BTN RFI");
+    let parsed = JsonValue::parse(&doc.to_json(&test_cfg)).expect("emitted JSON parses");
+    let prov = parsed.get("provenance").expect("provenance block present");
+    let sources = prov
+        .get("sources")
+        .and_then(|v| v.as_array())
+        .expect("sources array");
     assert_eq!(sources.len(), 3, "PLO.com + Upswing + GTW raked");
-    assert!(parsed["provenance"]["source"]["name"]
-        .as_str()
-        .unwrap()
+    assert!(parsed
+        .get("source")
+        .and_then(|s| s.get("name"))
+        .and_then(|v| v.as_str())
+        .expect("top-level source name")
         .contains("PLO.com"));
     assert_eq!(validate_rangeset(&parsed), Vec::<String>::new());
 }
