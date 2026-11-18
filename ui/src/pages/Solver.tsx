@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApproximationBadge } from '../components/AccuracyBadge';
+import { CardRow } from '../components/CardChip';
 import { CardPicker } from '../components/CardPicker';
 import { pctText } from '../components/FrequencyBar';
 import { parseCardList, RANKS_DESC } from '../lib/cards';
@@ -632,6 +633,16 @@ export function SolverPage() {
                 Pick cards
               </button>
             </div>
+            {/* Graphical preview of the board as typed (rendering only —
+                the text input above stays the source of truth). */}
+            {(() => {
+              const cards = parseCardList(form.board);
+              return cards && cards.length >= 3 && cards.length <= 5 ? (
+                <div className="mt-2">
+                  <CardRow cards={cards} size="sm" />
+                </div>
+              ) : null;
+            })()}
             {/* Street chips: the street follows the board (3/4/5 cards). */}
             <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Street">
               {(['Flop', 'Turn', 'River'] as const).map((streetName, i) => {

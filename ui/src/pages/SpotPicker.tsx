@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AccuracyBadge } from '../components/AccuracyBadge';
+import { CardRow } from '../components/CardChip';
 import { fetchLibrary, fetchLibrarySolve, fetchSampleSolve } from '../lib/api';
+import { parseCardList } from '../lib/cards';
 import { parseSolve } from '../lib/solveTree';
 import { boardFamilies, FAMILY_BLURB, FAMILY_LABEL, type TextureFamily } from '../lib/texture';
 import type { LibraryItem } from '../lib/types';
@@ -151,7 +153,14 @@ export function SpotPickerPage() {
                         onClick={() => void open(s)}
                         className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-navy-850 px-3 py-2 text-left hover:bg-navy-800"
                       >
-                        <span className="font-mono text-sm text-ink">{s.board}</span>
+                        {(() => {
+                          const boardCards = parseCardList(s.board);
+                          return boardCards ? (
+                            <CardRow cards={boardCards} size="sm" />
+                          ) : (
+                            <span className="font-mono text-sm text-ink">{s.board}</span>
+                          );
+                        })()}
                         <span className="text-xs capitalize text-ink-dim">
                           {s.kind}
                           {s.source === 'sample' ? ' · sample' : ''}

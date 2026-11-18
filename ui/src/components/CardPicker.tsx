@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
-import { RANKS_DESC, SUIT_SYMBOL, type Suit } from '../lib/cards';
-import { SUIT_COLOR } from './CardChip';
+import { cardName, RANKS_DESC, SUIT_SYMBOL, type Card, type Suit } from '../lib/cards';
+import { CardChip, SUIT_COLOR } from './CardChip';
 
 const SUIT_ROWS: { suit: Suit; name: string }[] = [
   { suit: 's', name: 'Spades' },
@@ -107,6 +107,7 @@ export function CardPicker({
               <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}>
                 {RANKS_DESC.map((rank) => {
                   const label = `${rank}${suit}`;
+                  const card: Card = { rank, suit, label };
                   const isDead = dead.has(label);
                   const isEnabled = !isDead && (enabled === null || enabled.has(label));
                   const isChosen = chosen.has(label);
@@ -117,18 +118,21 @@ export function CardPicker({
                       disabled={!isEnabled}
                       onClick={() => onPick(label)}
                       aria-pressed={isChosen}
-                      aria-label={`Card ${label}${isDead ? ' (already known)' : ''}${!isDead && !isEnabled ? ' (not available here)' : ''}`}
-                      className={`flex h-9 flex-col items-center justify-center rounded-md border text-xs font-semibold leading-none transition-transform ${
+                      aria-label={`Card ${cardName(card)}${isDead ? ' (already known)' : ''}${!isDead && !isEnabled ? ' (not available here)' : ''}`}
+                      className={`flex rounded-md transition-transform ${
                         isChosen
-                          ? 'border-accent bg-navy-800 ring-2 ring-accent'
+                          ? 'ring-2 ring-accent'
                           : isEnabled
-                            ? 'border-navy-700 bg-navy-850 hover:scale-105 hover:border-table'
-                            : 'border-navy-800 bg-navy-900 opacity-35'
+                            ? 'hover:scale-105'
+                            : 'opacity-35'
                       }`}
-                      style={{ color: SUIT_COLOR[suit] }}
                     >
-                      <span>{rank}</span>
-                      <span className="text-[10px]">{SUIT_SYMBOL[suit]}</span>
+                      <CardChip
+                        card={card}
+                        size="xs"
+                        className="pointer-events-none"
+                        style={{ height: '2.25rem', width: '100%' }}
+                      />
                     </button>
                   );
                 })}
