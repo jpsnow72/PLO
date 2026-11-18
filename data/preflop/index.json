@@ -8,6 +8,7 @@
       "position": "BB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "source": {
         "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
         "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -16,8 +17,8 @@
       },
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -27,6 +28,7 @@
       "position": "BB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "source": {
         "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
         "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -35,8 +37,8 @@
       },
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -46,6 +48,7 @@
       "position": "BB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "source": {
         "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
         "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -54,8 +57,8 @@
       },
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -65,6 +68,7 @@
       "position": "BB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "source": {
         "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
         "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -73,8 +77,8 @@
       },
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -84,6 +88,7 @@
       "position": "BB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "source": {
         "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
         "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -92,8 +97,8 @@
       },
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -103,6 +108,7 @@
       "position": "BTN",
       "context": "rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "source": {
         "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
         "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -111,8 +117,8 @@
       },
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -122,6 +128,7 @@
       "position": "BTN",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "source": {
         "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
         "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -130,8 +137,8 @@
       },
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -141,6 +148,7 @@
       "position": "BTN",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "source": {
         "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
         "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -149,8 +157,8 @@
       },
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -160,6 +168,7 @@
       "position": "CO",
       "context": "rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "source": {
         "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
         "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -168,8 +177,8 @@
       },
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -179,6 +188,7 @@
       "position": "MP",
       "context": "rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "source": {
         "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
         "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -187,8 +197,8 @@
       },
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -198,6 +208,7 @@
       "position": "SB",
       "context": "sb_play",
       "stack_bb": 100.0,
+      "rake": "raked",
       "source": {
         "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
         "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -206,8 +217,8 @@
       },
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -217,6 +228,7 @@
       "position": "SB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "source": {
         "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
         "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -225,8 +237,8 @@
       },
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -236,6 +248,7 @@
       "position": "SB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "source": {
         "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
         "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -244,8 +257,8 @@
       },
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -255,6 +268,7 @@
       "position": "SB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "source": {
         "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
         "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -263,8 +277,8 @@
       },
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -274,6 +288,7 @@
       "position": "SB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "source": {
         "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
         "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -282,8 +297,8 @@
       },
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -293,6 +308,7 @@
       "position": "UTG",
       "context": "rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "source": {
         "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
         "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -301,8 +317,8 @@
       },
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -312,10 +328,11 @@
       "position": "BB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -325,10 +342,11 @@
       "position": "BB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -338,10 +356,11 @@
       "position": "BB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -351,10 +370,11 @@
       "position": "BB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -364,10 +384,11 @@
       "position": "BB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -377,10 +398,11 @@
       "position": "BB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -390,10 +412,11 @@
       "position": "BB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -403,10 +426,11 @@
       "position": "BB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -416,10 +440,11 @@
       "position": "BTN",
       "context": "rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -429,10 +454,11 @@
       "position": "BTN",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -442,10 +468,11 @@
       "position": "BTN",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -455,10 +482,11 @@
       "position": "CO",
       "context": "rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -468,10 +496,11 @@
       "position": "HJ",
       "context": "rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -481,10 +510,11 @@
       "position": "LJ",
       "context": "rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -494,10 +524,11 @@
       "position": "SB",
       "context": "sb_play",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -507,10 +538,11 @@
       "position": "SB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -520,10 +552,11 @@
       "position": "SB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -533,10 +566,11 @@
       "position": "SB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -546,10 +580,11 @@
       "position": "SB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -559,10 +594,11 @@
       "position": "SB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -572,10 +608,11 @@
       "position": "SB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -585,10 +622,11 @@
       "position": "SB",
       "context": "vs_rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -598,10 +636,11 @@
       "position": "UTG",
       "context": "rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -611,10 +650,11 @@
       "position": "UTG+1",
       "context": "rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -624,10 +664,11 @@
       "position": "UTG+2",
       "context": "rfi",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -637,10 +678,11 @@
       "position": "BTN",
       "context": "vs_three_bet",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1.1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -650,10 +692,11 @@
       "position": "BTN",
       "context": "vs_three_bet",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1.1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     },
     {
@@ -663,10 +706,373 @@
       "position": "CO",
       "context": "vs_three_bet",
       "stack_bb": 100.0,
+      "rake": "raked",
       "provenance": {
         "method": "constructed-equity-v1.1",
-        "config_version": "ranges-config-v1",
-        "config_hash": "fnv1a64:e97ea5844cc8cbb1"
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-bb-vs-btn",
+      "path": "sets/constructed-v1.2-6max-norake-bb-vs-btn.json",
+      "table_size": "6max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "source": {
+        "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+        "url": "https://app.gtowizard.com/solutions/plo",
+        "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+        "retrieved": "2026-11-17"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-bb-vs-co",
+      "path": "sets/constructed-v1.2-6max-norake-bb-vs-co.json",
+      "table_size": "6max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "source": {
+        "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+        "url": "https://app.gtowizard.com/solutions/plo",
+        "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+        "retrieved": "2026-11-17"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-bb-vs-mp",
+      "path": "sets/constructed-v1.2-6max-norake-bb-vs-mp.json",
+      "table_size": "6max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "source": {
+        "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+        "url": "https://app.gtowizard.com/solutions/plo",
+        "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+        "retrieved": "2026-11-17"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-bb-vs-sb",
+      "path": "sets/constructed-v1.2-6max-norake-bb-vs-sb.json",
+      "table_size": "6max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "source": {
+        "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+        "url": "https://app.gtowizard.com/solutions/plo",
+        "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+        "retrieved": "2026-11-17"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-bb-vs-utg",
+      "path": "sets/constructed-v1.2-6max-norake-bb-vs-utg.json",
+      "table_size": "6max",
+      "position": "BB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "source": {
+        "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+        "url": "https://app.gtowizard.com/solutions/plo",
+        "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+        "retrieved": "2026-11-17"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-btn-rfi",
+      "path": "sets/constructed-v1.2-6max-norake-btn-rfi.json",
+      "table_size": "6max",
+      "position": "BTN",
+      "context": "rfi",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "source": {
+        "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+        "url": "https://app.gtowizard.com/solutions/plo",
+        "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+        "retrieved": "2026-11-17"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-btn-vs-bb-3bet",
+      "path": "sets/constructed-v1.2-6max-norake-btn-vs-bb-3bet.json",
+      "table_size": "6max",
+      "position": "BTN",
+      "context": "vs_three_bet",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "provenance": {
+        "method": "constructed-equity-v1.1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-btn-vs-co",
+      "path": "sets/constructed-v1.2-6max-norake-btn-vs-co.json",
+      "table_size": "6max",
+      "position": "BTN",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "source": {
+        "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+        "url": "https://app.gtowizard.com/solutions/plo",
+        "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+        "retrieved": "2026-11-17"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-btn-vs-mp",
+      "path": "sets/constructed-v1.2-6max-norake-btn-vs-mp.json",
+      "table_size": "6max",
+      "position": "BTN",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "source": {
+        "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+        "url": "https://app.gtowizard.com/solutions/plo",
+        "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+        "retrieved": "2026-11-17"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-btn-vs-sb-3bet",
+      "path": "sets/constructed-v1.2-6max-norake-btn-vs-sb-3bet.json",
+      "table_size": "6max",
+      "position": "BTN",
+      "context": "vs_three_bet",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "provenance": {
+        "method": "constructed-equity-v1.1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-co-rfi",
+      "path": "sets/constructed-v1.2-6max-norake-co-rfi.json",
+      "table_size": "6max",
+      "position": "CO",
+      "context": "rfi",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "source": {
+        "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+        "url": "https://app.gtowizard.com/solutions/plo",
+        "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+        "retrieved": "2026-11-17"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-co-vs-btn-3bet",
+      "path": "sets/constructed-v1.2-6max-norake-co-vs-btn-3bet.json",
+      "table_size": "6max",
+      "position": "CO",
+      "context": "vs_three_bet",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "provenance": {
+        "method": "constructed-equity-v1.1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-mp-rfi",
+      "path": "sets/constructed-v1.2-6max-norake-mp-rfi.json",
+      "table_size": "6max",
+      "position": "MP",
+      "context": "rfi",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "source": {
+        "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+        "url": "https://app.gtowizard.com/solutions/plo",
+        "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+        "retrieved": "2026-11-17"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-sb-sbplay",
+      "path": "sets/constructed-v1.2-6max-norake-sb-sbplay.json",
+      "table_size": "6max",
+      "position": "SB",
+      "context": "sb_play",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "source": {
+        "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+        "url": "https://app.gtowizard.com/solutions/plo",
+        "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+        "retrieved": "2026-11-17"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-sb-vs-btn",
+      "path": "sets/constructed-v1.2-6max-norake-sb-vs-btn.json",
+      "table_size": "6max",
+      "position": "SB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "source": {
+        "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+        "url": "https://app.gtowizard.com/solutions/plo",
+        "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+        "retrieved": "2026-11-17"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-sb-vs-co",
+      "path": "sets/constructed-v1.2-6max-norake-sb-vs-co.json",
+      "table_size": "6max",
+      "position": "SB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "source": {
+        "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+        "url": "https://app.gtowizard.com/solutions/plo",
+        "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+        "retrieved": "2026-11-17"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-sb-vs-mp",
+      "path": "sets/constructed-v1.2-6max-norake-sb-vs-mp.json",
+      "table_size": "6max",
+      "position": "SB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "source": {
+        "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+        "url": "https://app.gtowizard.com/solutions/plo",
+        "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+        "retrieved": "2026-11-17"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-sb-vs-utg",
+      "path": "sets/constructed-v1.2-6max-norake-sb-vs-utg.json",
+      "table_size": "6max",
+      "position": "SB",
+      "context": "vs_rfi",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "source": {
+        "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+        "url": "https://app.gtowizard.com/solutions/plo",
+        "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+        "retrieved": "2026-11-17"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
+      }
+    },
+    {
+      "id": "constructed-v1.2-6max-norake-utg-rfi",
+      "path": "sets/constructed-v1.2-6max-norake-utg-rfi.json",
+      "table_size": "6max",
+      "position": "UTG",
+      "context": "rfi",
+      "stack_bb": 100.0,
+      "rake": "no-rake",
+      "source": {
+        "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
+        "url": "https://app.gtowizard.com/solutions/plo",
+        "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+        "retrieved": "2026-11-17"
+      },
+      "provenance": {
+        "method": "constructed-equity-v1",
+        "config_version": "ranges-config-v1.2",
+        "config_hash": "fnv1a64:617b9baba306d7ec"
       }
     }
   ]

@@ -6,14 +6,15 @@
   "context": "vs_rfi",
   "context_detail": "vs UTG+1 open (constructed response set)",
   "stack_bb": 100.0,
+  "rake": "raked",
   "rake_note": "Constructed ranges: no rake modelled in construction (rake-free equities and targets as construction assumptions). Cross-check targets (PLO.com) were published for 5% rake, 1bb cap, 100bb, no ante.",
   "notes": "CONSTRUCTED range (method constructed-equity-v1) — built by build-ranges from exact card features and seeded Monte Carlo equities against config targets; NOT solver output, NOT GTO. Target (call 2.8000, three_bet 3.6000) vs achieved (call 2.8000, three_bet 3.6000) in % of all combos. Target kind: derived.",
   "provenance": {
     "method": "constructed-equity-v1",
     "tool": "build-ranges (plo-solve)",
     "tool_version": "0.1.0",
-    "config_version": "ranges-config-v1",
-    "config_hash": "fnv1a64:9d2190cf87c815ad",
+    "config_version": "ranges-config-v1.2",
+    "config_hash": "fnv1a64:617b9baba306d7ec",
     "sources": [],
     "derivation": "derived-by-mapping: targets derived from the 6-max cross-check targets by the players-behind seat mapping (research report section 5); no published 9-max PLO4 chart exists and none is cited as a source."
   },

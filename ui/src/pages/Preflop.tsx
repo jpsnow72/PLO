@@ -13,6 +13,9 @@ import {
   matrixFilteredTotal,
   multiplicityOf,
   pairRankSummary,
+  RAKE_LABEL,
+  RAKE_VARIANTS,
+  rakeOf,
   rankLabel,
   setLabel,
   setTotalCombos,
@@ -24,6 +27,7 @@ import {
   type PreflopIndex,
   type PreflopSetDoc,
   type PreflopSetIndexEntry,
+  type RakeVariant,
   type SetContext,
   type SuitednessFilter,
   type TableSize,
@@ -118,6 +122,7 @@ export function PreflopPage() {
   const [classTableMissing, setClassTableMissing] = useState(false);
 
   const [tableSize, setTableSize] = useState<TableSize>('6max');
+  const [rake, setRake] = useState<RakeVariant>('raked');
   const [group, setGroup] = useState<ContextGroup>('first-in');
   const [position, setPosition] = useState<string | null>(null);
   const [opener, setOpener] = useState<string | null>(null);
@@ -168,10 +173,18 @@ export function PreflopPage() {
 
   const groupSets = useMemo<PreflopSetIndexEntry[]>(() => {
     if (!index) return [];
+    // The rake filter is load-bearing, not cosmetic: with both variants
+    // catalogued, a position/context pair exists twice, and the selection
+    // below picks the first match — filtering by variant first is what
+    // keeps the raked and no-rake sets from shadowing each other.
+    // (Entries from a pre-v1.2 index carry no rake field = 'raked'.)
     return index.rangesets.filter(
-      (e) => e.table_size === tableSize && GROUP_CONTEXTS[group].includes(e.context),
+      (e) =>
+        e.table_size === tableSize &&
+        rakeOf(e) === rake &&
+        GROUP_CONTEXTS[group].includes(e.context),
     );
-  }, [index, tableSize, group]);
+  }, [index, tableSize, rake, group]);
 
   const positions = useMemo(
     () => sortPositions([...new Set(groupSets.map((e) => e.position))], tableSize),
@@ -393,6 +406,21 @@ export function PreflopPage() {
               <span className="ml-auto text-xs text-ink-faint">
                 {index.rangesets.filter((e) => e.table_size === tableSize).length} sets at this
                 table size
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="w-24 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                Rake
+              </span>
+              {RAKE_VARIANTS.map((r) => (
+                <Pill key={r} active={rake === r} onClick={() => setRake(r)}>
+                  {RAKE_LABEL[r]}
+                </Pill>
+              ))}
+              <span className="text-xs text-ink-faint">
+                {rake === 'no-rake'
+                  ? 'Targets anchored on no-rake (cEV) totals — 6-max only'
+                  : 'Targets anchored on raked-game totals'}
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
