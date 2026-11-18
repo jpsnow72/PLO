@@ -248,6 +248,90 @@ export function comboWeight(data: SolveData, player: Player, combo: string): num
   return data.weights[player].get(combo) ?? 1;
 }
 
+// ---------- Per-action EVs (issue #8) ---------------------------------------
+
+/**
+ * Defensive read of a node's per-action EV table (`combo_action_evs`:
+ * combo -> EV per action, aligned with `actions`, in chips). Returns
+ * the row for `combo`, or null when the payload carries no such table
+ * or the row is absent/misaligned — the same pattern the quiz grader
+ * uses (quiz.ts), so every surface agrees on what "available" means.
+ * Callers treat null as "not available" and fall back to their
+ * no-field rendering; nothing is ever estimated.
+ */
+export function comboActionEvs(node: SolveNode, combo: string): number[] | null {
+  const raw = (node as unknown as Record<string, unknown>).combo_action_evs;
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+  const row = (raw as Record<string, unknown>)[combo];
+  if (!Array.isArray(row) || row.length !== node.actions.length) return null;
+  if (!row.every((v) => typeof v === 'number' && Number.isFinite(v))) return null;
+  return row as number[];
+}
+
+/** True when at least one of the node's strategy rows has a readable
+ *  per-action EV row — i.e. this node carries the #8 field. */
+export function nodeHasActionEvs(node: SolveNode): boolean {
+  return Object.keys(node.strategy).some((combo) => comboActionEvs(node, combo) !== null);
+}
+
+/**
+ * The combo's EV at this node: its per-action EVs weighted by its own
+ * frequencies here (Σ freq × action EV). Null when the payload has no
+ * per-action EVs for the combo, or the combo has no live strategy row
+ * at this node (a blocked combo's all-zero row is not a value).
+ */
+export function comboNodeEv(node: SolveNode, combo: string): number | null {
+  const evs = comboActionEvs(node, combo);
+  const freqs = node.strategy[combo];
+  if (!evs || !freqs) return null;
+  let freqSum = 0;
+  let ev = 0;
+  freqs.forEach((f, i) => {
+    freqSum += f;
+    ev += f * (evs[i] ?? 0);
+  });
+  return freqSum > 0 ? ev : null;
+}
+
+/**
+ * EV Diff for a combo at this node: the EV of the solver's most-taken
+ * action for the combo minus the EV of its best action, in chips —
+ * always <= 0, and 0 when the main line is a best action (in
+ * particular when the strategy is pure on the best action). Null when
+ * per-action EVs are unavailable or the combo is not live here.
+ */
+export function comboEvDiff(node: SolveNode, combo: string): number | null {
+  const evs = comboActionEvs(node, combo);
+  const freqs = node.strategy[combo];
+  if (!evs || !freqs) return null;
+  let freqSum = 0;
+  let main = 0;
+  freqs.forEach((f, i) => {
+    freqSum += f;
+    if (f > (freqs[main] ?? 0)) main = i;
+  });
+  if (freqSum <= 0) return null;
+  return (evs[main] ?? 0) - Math.max(...evs);
+}
+
+/**
+ * EV Diff for one specific action of a combo at this node: that
+ * action's EV minus the combo's best action EV, in chips (<= 0, and 0
+ * when the action is a best action for the combo). Null when
+ * per-action EVs are unavailable.
+ */
+export function actionEvDiff(
+  node: SolveNode,
+  combo: string,
+  actionIdx: number,
+): number | null {
+  const evs = comboActionEvs(node, combo);
+  if (!evs) return null;
+  const ev = evs[actionIdx];
+  if (ev === undefined) return null;
+  return ev - Math.max(...evs);
+}
+
 export interface LineMoney {
   /**
    * Chips each player has put into the pot along the current path, inside
