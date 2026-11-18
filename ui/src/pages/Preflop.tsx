@@ -398,9 +398,9 @@ export function PreflopPage() {
               <span className="w-24 text-xs font-semibold uppercase tracking-wide text-ink-faint">
                 Table
               </span>
-              {(['6max', '9max'] as TableSize[]).map((t) => (
+              {(['6max', '8max', '9max'] as TableSize[]).map((t) => (
                 <Pill key={t} active={tableSize === t} onClick={() => setTableSize(t)}>
-                  {t === '6max' ? '6-max' : '9-max'}
+                  {t === '6max' ? '6-max' : t === '8max' ? '8-max' : '9-max'}
                 </Pill>
               ))}
               <span className="ml-auto text-xs text-ink-faint">
@@ -419,8 +419,8 @@ export function PreflopPage() {
               ))}
               <span className="text-xs text-ink-faint">
                 {rake === 'no-rake'
-                  ? 'Targets anchored on no-rake (cEV) totals — 6-max only'
-                  : 'Targets anchored on raked-game totals'}
+                  ? 'Targets anchored on no-rake (cEV) totals (8-max: derived from the 6-max anchors by seat mapping)'
+                  : 'Targets anchored on raked-game totals (8-max: derived from the 6-max targets by seat mapping)'}
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
