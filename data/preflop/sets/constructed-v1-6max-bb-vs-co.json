@@ -6,6 +6,7 @@
   "context": "vs_rfi",
   "context_detail": "vs CO open (constructed response set)",
   "stack_bb": 100.0,
+  "rake": "raked",
   "rake_note": "Constructed ranges: no rake modelled in construction (rake-free equities and targets as construction assumptions). Cross-check targets (PLO.com) were published for 5% rake, 1bb cap, 100bb, no ante.",
   "notes": "CONSTRUCTED range (method constructed-equity-v1) — built by build-ranges from exact card features and seeded Monte Carlo equities against config targets; NOT solver output, NOT GTO. Target (call 21.0000, three_bet 7.0000) vs achieved (call 21.0000, three_bet 7.0000) in % of all combos. Target kind: anchor.",
   "source": {
@@ -18,8 +19,8 @@
     "method": "constructed-equity-v1",
     "tool": "build-ranges (plo-solve)",
     "tool_version": "0.1.0",
-    "config_version": "ranges-config-v1",
-    "config_hash": "fnv1a64:9d2190cf87c815ad",
+    "config_version": "ranges-config-v1.2",
+    "config_hash": "fnv1a64:617b9baba306d7ec",
     "sources": [{
       "name": "PLO.com - PLO 6-Max Opening Ranges (solver totals cited as cross-check targets; ranges constructed independently)",
       "url": "https://plo.com/plo-6-max-opening-ranges",
@@ -30,6 +31,12 @@
       "name": "Upswing Advanced PLO Preflop Guide (owner-provided copy, personal use)",
       "licence": "Owner-provided copy supplied by the tool's owner for personal use. Cited as cross-check totals only; the guide's hand matrix is not transcribed into any range set.",
       "retrieved": "2026-11-07"
+    },
+    {
+      "name": "GTO Wizard - PLO Cash 6-max Classic, PLO100 rake (5%, 2bb cap) solution totals cited as cross-check targets; ranges constructed independently",
+      "url": "https://app.gtowizard.com/solutions/plo",
+      "licence": "Viewed under the tool ownerâs GTO Wizard subscription (Open Week, Nov 2026). Aggregate action totals cited as cross-check targets only, for personal use; no range data transcribed.",
+      "retrieved": "2026-11-17"
     }]
   },
   "hands": {

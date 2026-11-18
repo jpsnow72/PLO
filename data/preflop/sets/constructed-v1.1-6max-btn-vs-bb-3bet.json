@@ -6,14 +6,15 @@
   "context": "vs_three_bet",
   "context_detail": "BTN opens, BB 3-bets, BTN continues (constructed)",
   "stack_bb": 100.0,
+  "rake": "raked",
   "rake_note": "Constructed ranges: no rake modelled in construction (rake-free equities and targets as construction assumptions). Cross-check targets (PLO.com) were published for 5% rake, 1bb cap, 100bb, no ante.",
   "notes": "CONSTRUCTED range (method constructed-equity-v1.1) - built by build-ranges from the opener's constructed RFI set and the three-bettor's constructed three_bet slice; NOT solver output, NOT GTO. Target (call 41.0000, four_bet 9.0000) vs achieved (call 41.0000, four_bet 9.0000) in % OF THE OPENER'S RAISING RANGE (opening-range-weighted), not of all combos. Target kind: internal - internal construction parameters, no published anchor (cross_check: no published anchor - method disclosed).",
   "provenance": {
     "method": "constructed-equity-v1.1",
     "tool": "build-ranges (plo-solve)",
     "tool_version": "0.1.0",
-    "config_version": "ranges-config-v1",
-    "config_hash": "fnv1a64:e97ea5844cc8cbb1",
+    "config_version": "ranges-config-v1.2",
+    "config_hash": "fnv1a64:617b9baba306d7ec",
     "sources": [],
     "derivation": "constructed-equity-v1.1 continuation: eligible classes = the opener's RFI classes (input set constructed-v1-6max-btn-rfi, raise frequency > 0); scored against the three-bettor's three_bet slice (input set constructed-v1-6max-bb-vs-btn) with realisation 0.92 (continuer in position postflop). Continuation targets are INTERNAL CONSTRUCTION PARAMETERS - fractions of the opener's raising range by weight (continue 50.0% of the opening range; of the continue slice, call 82.0% / four_bet 18.0%). cross_check: no published anchor - method disclosed."
   },
