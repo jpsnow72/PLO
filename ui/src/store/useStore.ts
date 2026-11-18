@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { fetchAuthMe, fetchSampleSolve } from '../lib/api';
+import { DRAW_COLORS, DRAW_WIDTHS, type DrawStroke, type DrawTool } from '../lib/drawing';
 import {
   parseSolve,
   resolveStep,
@@ -67,6 +68,27 @@ interface AppState {
   // Jobs submitted from the wizard this session.
   sessionJobs: JobRecord[];
   upsertJob: (job: JobRecord) => void;
+
+  // Drawing annotations over the Explorer's table (issue #20).
+  // Session-local: strokes belong to the loaded solve, survive
+  // walking its tree, and are cleared by loadRawSolve when another
+  // solve loads. Nothing is persisted or sent to the API. The state
+  // lives here (not in the Table view) because the Explorer remounts
+  // that view per node.
+  drawingActive: boolean;
+  drawingTool: DrawTool;
+  drawingColor: string;
+  drawingWidth: number;
+  drawingStrokes: DrawStroke[];
+  setDrawingActive: (active: boolean) => void;
+  setDrawingTool: (tool: DrawTool) => void;
+  setDrawingColor: (hex: string) => void;
+  setDrawingWidth: (width: number) => void;
+  addDrawingStroke: (stroke: DrawStroke) => void;
+  /** Remove the strokes at the given indexes (the eraser). */
+  removeDrawingStrokes: (indexes: number[]) => void;
+  undoDrawingStroke: () => void;
+  clearDrawingStrokes: () => void;
 }
 
 const ROOT_STEP: PathStep = { nodeHistory: 'root', label: 'Start of hand', kind: 'root' };
@@ -146,6 +168,9 @@ export const useStore = create<AppState>((set, get) => ({
       path: [ROOT_STEP],
       pendingRunout: null,
       terminalAction: null,
+      // Annotations annotate one solve's line — a new solve starts clean.
+      drawingStrokes: [],
+      drawingActive: false,
     });
     return true;
   },
@@ -222,4 +247,24 @@ export const useStore = create<AppState>((set, get) => ({
       next[idx] = job;
       return { sessionJobs: next };
     }),
+
+  drawingActive: false,
+  drawingTool: 'pen',
+  drawingColor: DRAW_COLORS[0]!.hex,
+  drawingWidth: DRAW_WIDTHS[1]!.value,
+  drawingStrokes: [],
+  setDrawingActive: (active) => set({ drawingActive: active }),
+  setDrawingTool: (tool) => set({ drawingTool: tool }),
+  setDrawingColor: (hex) => set({ drawingColor: hex, drawingTool: 'pen' }),
+  setDrawingWidth: (width) => set({ drawingWidth: width }),
+  addDrawingStroke: (stroke) =>
+    set((s) => ({ drawingStrokes: [...s.drawingStrokes, stroke] })),
+  removeDrawingStrokes: (indexes) =>
+    set((s) => {
+      if (indexes.length === 0) return s;
+      const drop = new Set(indexes);
+      return { drawingStrokes: s.drawingStrokes.filter((_, i) => !drop.has(i)) };
+    }),
+  undoDrawingStroke: () => set((s) => ({ drawingStrokes: s.drawingStrokes.slice(0, -1) })),
+  clearDrawingStrokes: () => set({ drawingStrokes: [] }),
 }));
