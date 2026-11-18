@@ -15,6 +15,8 @@
 //                river_include_all_in; solved exactly unless the spot JSON
 //                requests bucketing (the wizard never does)
 //   both: max_iterations, target_exploitability_pct
+//   optional: locks (engine + API accept them; the wizard does not emit
+//   them — the visual lock editor is issue #9, see SOLVER-PARITY-NOTES.md)
 
 import { parseCardList, parseCombo } from './cards';
 
@@ -58,7 +60,18 @@ export interface WizardForm {
   turn: StreetSizes;
   river: StreetSizes;
   tier: AccuracyTier;
+  /**
+   * Custom accuracy target (% of pot), or null to use the tier preset
+   * (TIER_TARGET_PCT[tier]). Emitted as target_exploitability_pct either
+   * way — the engine contract takes the number, not the tier name.
+   */
+  targetPctOverride: number | null;
   maxIterations: number;
+}
+
+/** The target a form will actually emit: the override when set, else the tier preset. */
+export function targetPctFor(form: WizardForm): number {
+  return form.targetPctOverride ?? TIER_TARGET_PCT[form.tier];
 }
 
 export function emptyStreetSizes(betSizes: number[]): StreetSizes {
@@ -82,6 +95,7 @@ export function defaultWizardForm(): WizardForm {
     turn: emptyStreetSizes([0.5, 1.0]),
     river: emptyStreetSizes([0.5, 1.0]),
     tier: 'balanced',
+    targetPctOverride: null,
     maxIterations: 200000,
   };
 }
@@ -191,6 +205,18 @@ export function buildSpot(form: WizardForm): SpotBuild {
   }
   if (!(form.pot > 0)) errors.push('Pot must be positive');
   if (!(form.stacks > 0)) errors.push('Effective stacks must be positive');
+  // Accuracy fields are emitted verbatim (max_iterations /
+  // target_exploitability_pct), so they are validated here like every
+  // other field — a NaN or a non-positive cap must never reach the API.
+  if (!Number.isInteger(form.maxIterations) || form.maxIterations <= 0) {
+    errors.push('Max iterations must be a positive whole number');
+  }
+  if (form.targetPctOverride !== null) {
+    const t = form.targetPctOverride;
+    if (!Number.isFinite(t) || t <= 0 || t > 5) {
+      errors.push('Custom target must be a Nash distance between 0 and 5% of pot');
+    }
+  }
   if (errors.length > 0) return { spot: null, errors, street: null };
 
   const street: SpotBuild['street'] =
@@ -201,7 +227,7 @@ export function buildSpot(form: WizardForm): SpotBuild {
     pot: form.pot,
     stacks: form.stacks,
     max_iterations: form.maxIterations,
-    target_exploitability_pct: TIER_TARGET_PCT[form.tier],
+    target_exploitability_pct: targetPctFor(form),
   };
   if (form.oopRangeSet) {
     base.oop_range_set = form.oopRangeSet;
