@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AccuracyBadge, ApproximationBadge } from '../components/AccuracyBadge';
 import { ActionList } from '../components/ActionList';
-import { actionColor, prettyAction } from '../components/actionStyle';
 import { CardPicker } from '../components/CardPicker';
 import { CardRow } from '../components/CardChip';
 import { ExplainPanel } from '../components/ExplainPanel';
@@ -43,7 +42,6 @@ export function ExplorerPage() {
   const resetPath = useStore((s) => s.resetPath);
 
   const node = currentNodeOf(solve, path);
-  const [colorActionIdx, setColorActionIdx] = useState(0);
   const [selectedCombo, setSelectedCombo] = useState<string | null>(null);
   const [view, setView] = useState<ExplorerView>('strategy');
   const [pickerDismissed, setPickerDismissed] = useState(false);
@@ -63,21 +61,13 @@ export function ExplorerPage() {
     [solve, node],
   );
 
-  // On arriving at a new node, colour the grid by its most-taken action
-  // and clear the combo selection (ranges differ per node).
+  // On arriving at a new node, clear the combo selection (ranges
+  // differ per node). The matrix is keyed by node history, so its own
+  // lock/filter state resets the same way.
   const nodeHistory = node?.history;
   useEffect(() => {
     setSelectedCombo(null);
-    if (aggregates.length > 0) {
-      let best = 0;
-      aggregates.forEach((f, i) => {
-        if (f > (aggregates[best] ?? 0)) best = i;
-      });
-      setColorActionIdx(best);
-    } else {
-      setColorActionIdx(0);
-    }
-  }, [nodeHistory, aggregates]);
+  }, [nodeHistory]);
 
   if (loadStatus === 'loading' || (loadStatus === 'idle' && !solve)) {
     return <p className="text-ink-dim">Loading solve…</p>;
@@ -235,36 +225,11 @@ export function ExplorerPage() {
             />
           ) : view === 'matrix' ? (
             <div className="flex flex-col gap-3">
-              <div>
-                <h3 className="text-sm font-semibold text-ink">{node.player} range</h3>
-                <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="Colour grid by action">
-                  {node.actions.map((label, i) => (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => setColorActionIdx(i)}
-                      aria-pressed={i === colorActionIdx}
-                      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs ${
-                        i === colorActionIdx
-                          ? 'bg-navy-800 font-semibold text-ink ring-1 ring-accent'
-                          : 'text-ink-dim hover:bg-navy-800 hover:text-ink'
-                      }`}
-                    >
-                      <span
-                        className="h-2 w-2 rounded-full"
-                        style={{ backgroundColor: actionColor(label) }}
-                        aria-hidden="true"
-                      />
-                      {prettyAction(label)}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <h3 className="text-sm font-semibold text-ink">{node.player} range</h3>
               <RangeGrid
                 key={node.history}
                 data={solve}
                 node={node}
-                colorActionIdx={colorActionIdx}
                 selectedCombo={selectedCombo}
                 onSelectCombo={setSelectedCombo}
               />
