@@ -12,8 +12,8 @@
     "method": "constructed-equity-v1",
     "tool": "build-ranges (plo-solve)",
     "tool_version": "0.1.0",
-    "config_version": "ranges-config-v1.2",
-    "config_hash": "fnv1a64:617b9baba306d7ec",
+    "config_version": "ranges-config-v1.3",
+    "config_hash": "fnv1a64:71075a11989c54d0",
     "sources": [],
     "derivation": "derived-by-mapping: targets derived from the 6-max cross-check targets by the players-behind seat mapping (research report section 5); no published 9-max PLO4 chart exists and none is cited as a source."
   },
