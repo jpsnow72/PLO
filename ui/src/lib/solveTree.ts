@@ -298,24 +298,22 @@ export interface RangePresence {
 }
 
 /**
- * How much of `player`'s starting range is still live at the node a path
- * leads to. A combo's presence is its range weight times, for every
- * decision node of that player along the path, the frequency of the
- * action the line actually took there (found by matching child
- * histories, so street-closing actions count too). Combos containing a
- * dealt board card are impossible and excluded; for the player to act,
- * the current node's own all-zero (card-blocked) rows drop out the same
- * way. Frequencies come straight from ancestor nodes' strategy rows —
- * nothing is modelled.
+ * Per-combo reach at the node a path leads to: combo -> its range
+ * weight times, for every decision node of that player along the path,
+ * the frequency of the action the line actually took there (found by
+ * matching child histories, so street-closing actions count too).
+ * Combos containing a dealt board card are impossible and excluded;
+ * for the player to act, the current node's own all-zero
+ * (card-blocked) rows drop out the same way. Frequencies come straight
+ * from ancestor nodes' strategy rows — nothing is modelled. Only
+ * combos with reach > 0 are returned.
  */
-export function rangePresence(
+function comboReach(
   data: SolveData,
   path: { nodeHistory: string }[],
   player: Player,
-): RangePresence {
+): Map<string, number> {
   const weights = data.weights[player];
-  let totalWeight = 0;
-  for (const w of weights.values()) totalWeight += w;
 
   const lastStep = path[path.length - 1];
   const current = lastStep ? data.nodesByHistory.get(lastStep.nodeHistory) : undefined;
@@ -340,8 +338,7 @@ export function rangePresence(
     if (actionIdx >= 0) decisions.push({ node: from, actionIdx });
   }
 
-  let combos = 0;
-  let liveWeight = 0;
+  const reach = new Map<string, number>();
   for (const [combo, w] of weights) {
     if (combo.split(' ').some((c) => dead.has(c))) continue;
     let presence = w;
@@ -356,14 +353,68 @@ export function rangePresence(
       const row = current.strategy[combo];
       if (!row || row.reduce((a, b) => a + b, 0) <= 0) presence = 0;
     }
-    if (presence > 0) {
-      combos += 1;
-      liveWeight += presence;
-    }
+    if (presence > 0) reach.set(combo, presence);
   }
+  return reach;
+}
+
+/**
+ * How much of `player`'s starting range is still live at the node a
+ * path leads to, aggregated from comboReach.
+ */
+export function rangePresence(
+  data: SolveData,
+  path: { nodeHistory: string }[],
+  player: Player,
+): RangePresence {
+  const weights = data.weights[player];
+  let totalWeight = 0;
+  for (const w of weights.values()) totalWeight += w;
+
+  const reach = comboReach(data, path, player);
+  let liveWeight = 0;
+  for (const r of reach.values()) liveWeight += r;
   return {
-    combos,
+    combos: reach.size,
     share: totalWeight === 0 ? 0 : liveWeight / totalWeight,
     totalCombos: weights.size,
   };
+}
+
+export interface LiveCombo {
+  combo: string;
+  /** Starting range weight from the *_evs lists. */
+  weight: number;
+  /**
+   * Reach weight at this node: the starting weight times the product
+   * of the player's taken-action frequencies along the path (see
+   * comboReach). This is how much of the combo actually arrives here.
+   */
+  reach: number;
+  /** Whole-solve EV of the combo, null when the payload has none. */
+  ev: number | null;
+}
+
+/**
+ * Every combo of `player`'s range still live at the node a path leads
+ * to, with its starting weight, reach weight and whole-solve EV.
+ * Sorted by reach descending, then combo string.
+ */
+export function liveRange(
+  data: SolveData,
+  path: { nodeHistory: string }[],
+  player: Player,
+): LiveCombo[] {
+  const reach = comboReach(data, path, player);
+  const out: LiveCombo[] = [];
+  for (const [combo, r] of reach) {
+    out.push({
+      combo,
+      weight: data.weights[player].get(combo) ?? 0,
+      reach: r,
+      ev: data.evs[player].get(combo) ?? null,
+    });
+  }
+  out.sort((a, b) => b.reach - a.reach || a.combo.localeCompare(b.combo));
+  return out;
 }
