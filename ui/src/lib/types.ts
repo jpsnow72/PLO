@@ -83,10 +83,17 @@ export interface LibraryItem {
   board: string;
   oop_range_set?: string | null;
   ip_range_set?: string | null;
+  /** Catalog spot id when this solve was produced for a catalog entry. */
+  spot_id?: string | null;
   nash_distance_pct: number;
   iterations: number;
   finished_at: string | null;
   size_bytes: number;
+  /** Root geometry from the stored solve; null when the payload lacks it. */
+  starting_pot?: number | null;
+  effective_stack?: number | null;
+  /** True when the solve was nodelocked (badged LOCKED, never GTO). */
+  locked?: boolean;
 }
 
 /** Admin session state, from GET /api/auth/me. */
