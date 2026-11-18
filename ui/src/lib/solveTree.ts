@@ -247,3 +247,123 @@ export function comboEv(data: SolveData, player: Player, combo: string): number 
 export function comboWeight(data: SolveData, player: Player, combo: string): number {
   return data.weights[player].get(combo) ?? 1;
 }
+
+export interface LineMoney {
+  /**
+   * Chips each player has put into the pot along the current path, inside
+   * the solved tree. The starting pot is pre-tree money; the payload does
+   * not split it between the players, so it is attributed to neither.
+   */
+  committed: Record<Player, number>;
+  /** Stack behind at the current node: effective stack minus committed. */
+  stackBehind: Record<Player, number>;
+}
+
+/**
+ * Per-player money along a path, derived from the payload's own pot
+ * figures: the pot only changes when a player acts, so the pot difference
+ * between consecutive path nodes is exactly what the player to act at the
+ * earlier node put in with that action. A street-closing action's chips
+ * land in the runout subtree root's pot, so runout steps attribute the
+ * same way. No action amounts are parsed or assumed.
+ */
+export function lineMoney(data: SolveData, path: { nodeHistory: string }[]): LineMoney {
+  const committed: Record<Player, number> = { OOP: 0, IP: 0 };
+  for (let i = 0; i + 1 < path.length; i++) {
+    const fromStep = path[i];
+    const toStep = path[i + 1];
+    if (!fromStep || !toStep) continue;
+    const from = data.nodesByHistory.get(fromStep.nodeHistory);
+    const to = data.nodesByHistory.get(toStep.nodeHistory);
+    if (!from || !to) continue;
+    const delta = to.pot - from.pot;
+    if (delta > 0) committed[from.player] += delta;
+  }
+  return {
+    committed,
+    stackBehind: {
+      OOP: Math.max(0, data.raw.effective_stack - committed.OOP),
+      IP: Math.max(0, data.raw.effective_stack - committed.IP),
+    },
+  };
+}
+
+export interface RangePresence {
+  /** Combos of the player's range that can still be held at this node. */
+  combos: number;
+  /** Reach-weighted share of the player's starting range still live, 0..1. */
+  share: number;
+  /** Total combos in the player's starting range (the *_evs lists). */
+  totalCombos: number;
+}
+
+/**
+ * How much of `player`'s starting range is still live at the node a path
+ * leads to. A combo's presence is its range weight times, for every
+ * decision node of that player along the path, the frequency of the
+ * action the line actually took there (found by matching child
+ * histories, so street-closing actions count too). Combos containing a
+ * dealt board card are impossible and excluded; for the player to act,
+ * the current node's own all-zero (card-blocked) rows drop out the same
+ * way. Frequencies come straight from ancestor nodes' strategy rows —
+ * nothing is modelled.
+ */
+export function rangePresence(
+  data: SolveData,
+  path: { nodeHistory: string }[],
+  player: Player,
+): RangePresence {
+  const weights = data.weights[player];
+  let totalWeight = 0;
+  for (const w of weights.values()) totalWeight += w;
+
+  const lastStep = path[path.length - 1];
+  const current = lastStep ? data.nodesByHistory.get(lastStep.nodeHistory) : undefined;
+
+  // Dead cards: the full board at the current node.
+  const dead = new Set<string>(data.boardCards.map((c) => c.label));
+  if (current?.turn_card) dead.add(current.turn_card);
+  if (current?.river_card) dead.add(current.river_card);
+
+  // This player's decision nodes along the path, with the action taken.
+  const decisions: { node: SolveNode; actionIdx: number }[] = [];
+  for (let i = 0; i + 1 < path.length; i++) {
+    const fromStep = path[i];
+    const toStep = path[i + 1];
+    if (!fromStep || !toStep) continue;
+    const from = data.nodesByHistory.get(fromStep.nodeHistory);
+    if (!from || from.player !== player) continue;
+    const actionIdx = from.actions.findIndex((label) => {
+      const h = childHistory(from, label);
+      return toStep.nodeHistory === h || toStep.nodeHistory.startsWith(`${h}|`);
+    });
+    if (actionIdx >= 0) decisions.push({ node: from, actionIdx });
+  }
+
+  let combos = 0;
+  let liveWeight = 0;
+  for (const [combo, w] of weights) {
+    if (combo.split(' ').some((c) => dead.has(c))) continue;
+    let presence = w;
+    for (const d of decisions) {
+      const freqs = d.node.strategy[combo];
+      presence *= freqs ? (freqs[d.actionIdx] ?? 0) : 0;
+      if (presence === 0) break;
+    }
+    // For the player to act, the current node's own rows also gate:
+    // card-blocked combos carry all-zero rows there.
+    if (presence > 0 && current && current.player === player) {
+      const row = current.strategy[combo];
+      if (!row || row.reduce((a, b) => a + b, 0) <= 0) presence = 0;
+    }
+    if (presence > 0) {
+      combos += 1;
+      liveWeight += presence;
+    }
+  }
+  return {
+    combos,
+    share: totalWeight === 0 ? 0 : liveWeight / totalWeight,
+    totalCombos: weights.size,
+  };
+}

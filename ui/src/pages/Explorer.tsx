@@ -12,6 +12,7 @@ import { MultiwayLens } from '../components/MultiwayLens';
 import { NodeStrip } from '../components/NodeStrip';
 import { RangeGrid } from '../components/RangeGrid';
 import { StrategyTables } from '../components/StrategyTables';
+import { TableView } from '../components/TableView';
 import { parseCard } from '../lib/cards';
 import { aggregateFrequencies, rangeEv } from '../lib/solveTree';
 import { currentNodeOf, useStore } from '../store/useStore';
@@ -23,7 +24,7 @@ function terminalMessage(actionLabel: string): string {
   return 'No further decision nodes on this line in this solve (the hand is all-in or complete).';
 }
 
-type ExplorerView = 'strategy' | 'matrix';
+type ExplorerView = 'strategy' | 'matrix' | 'table';
 
 export function ExplorerPage() {
   const solve = useStore((s) => s.solve);
@@ -197,12 +198,13 @@ export function ExplorerPage() {
 
           <ActionList actions={node.actions} aggregates={aggregates} onChoose={chooseAction} />
 
-          {/* View tabs: Strategy tables / Matrix (range grid) */}
+          {/* View tabs: Strategy tables / Matrix (range grid) / Table */}
           <div className="mt-1 flex gap-1.5 border-b border-navy-700" role="tablist" aria-label="Explorer views">
             {(
               [
                 { key: 'strategy', label: 'Strategy' },
                 { key: 'matrix', label: 'Matrix' },
+                { key: 'table', label: 'Table' },
               ] as { key: ExplorerView; label: string }[]
             ).map((t) => (
               <button
@@ -231,7 +233,7 @@ export function ExplorerPage() {
               selectedCombo={selectedCombo}
               onSelectCombo={setSelectedCombo}
             />
-          ) : (
+          ) : view === 'matrix' ? (
             <div className="flex flex-col gap-3">
               <div>
                 <h3 className="text-sm font-semibold text-ink">{node.player} range</h3>
@@ -267,6 +269,16 @@ export function ExplorerPage() {
                 onSelectCombo={setSelectedCombo}
               />
             </div>
+          ) : (
+            <TableView
+              key={node.history}
+              solve={solve}
+              node={node}
+              path={path}
+              boardCards={currentBoardCards}
+              terminalAction={terminalAction}
+              pendingStreet={pendingStreet}
+            />
           )}
         </section>
 
