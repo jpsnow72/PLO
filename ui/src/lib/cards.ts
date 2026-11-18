@@ -41,6 +41,27 @@ export const SUIT_NAME: Record<Suit, string> = {
   c: 'clubs',
 };
 
+export const RANK_NAME: Record<string, string> = {
+  A: 'Ace',
+  K: 'King',
+  Q: 'Queen',
+  J: 'Jack',
+  T: 'Ten',
+  '9': 'Nine',
+  '8': 'Eight',
+  '7': 'Seven',
+  '6': 'Six',
+  '5': 'Five',
+  '4': 'Four',
+  '3': 'Three',
+  '2': 'Two',
+};
+
+/** Full spoken name of a card, e.g. "Ace of spades" — for aria labels/titles. */
+export function cardName(card: Card): string {
+  return `${RANK_NAME[card.rank] ?? card.rank} of ${SUIT_NAME[card.suit]}`;
+}
+
 const VALID_RANKS = new Set(Object.keys(RANK_ORDER));
 const VALID_SUITS = new Set<string>(['s', 'h', 'd', 'c']);
 

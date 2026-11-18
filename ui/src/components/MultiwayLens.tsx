@@ -425,26 +425,44 @@ export function MultiwayLens({ boardCards, selectedCombo, nodeRangeText }: Props
                       <div className="mb-1 text-[10px] font-semibold uppercase text-ink-faint">
                         Top decile ({result.hero_range_distribution.top_decile.length})
                       </div>
-                      <ul className="max-h-24 overflow-y-auto font-mono text-[11px] text-ink-dim">
-                        {result.hero_range_distribution.top_decile.slice(0, 10).map((c) => (
-                          <li key={c.combo} className="flex justify-between">
-                            <span>{c.combo}</span>
-                            <span className="text-ink">{(c.equity * 100).toFixed(1)}%</span>
-                          </li>
-                        ))}
+                      <ul className="max-h-24 overflow-y-auto text-[11px] text-ink-dim">
+                        {result.hero_range_distribution.top_decile.slice(0, 10).map((c) => {
+                          const cards = parseCombo(c.combo);
+                          return (
+                            <li key={c.combo} className="flex items-center justify-between py-0.5">
+                              {cards ? (
+                                <CardRow cards={cards} size="xs" />
+                              ) : (
+                                <span className="font-mono">{c.combo}</span>
+                              )}
+                              <span className="font-mono text-ink">
+                                {(c.equity * 100).toFixed(1)}%
+                              </span>
+                            </li>
+                          );
+                        })}
                       </ul>
                     </div>
                     <div className="rounded bg-navy-900 p-2">
                       <div className="mb-1 text-[10px] font-semibold uppercase text-ink-faint">
                         Bottom decile ({result.hero_range_distribution.bottom_decile.length})
                       </div>
-                      <ul className="max-h-24 overflow-y-auto font-mono text-[11px] text-ink-dim">
-                        {result.hero_range_distribution.bottom_decile.slice(0, 10).map((c) => (
-                          <li key={c.combo} className="flex justify-between">
-                            <span>{c.combo}</span>
-                            <span className="text-ink">{(c.equity * 100).toFixed(1)}%</span>
-                          </li>
-                        ))}
+                      <ul className="max-h-24 overflow-y-auto text-[11px] text-ink-dim">
+                        {result.hero_range_distribution.bottom_decile.slice(0, 10).map((c) => {
+                          const cards = parseCombo(c.combo);
+                          return (
+                            <li key={c.combo} className="flex items-center justify-between py-0.5">
+                              {cards ? (
+                                <CardRow cards={cards} size="xs" />
+                              ) : (
+                                <span className="font-mono">{c.combo}</span>
+                              )}
+                              <span className="font-mono text-ink">
+                                {(c.equity * 100).toFixed(1)}%
+                              </span>
+                            </li>
+                          );
+                        })}
                       </ul>
                     </div>
                   </div>

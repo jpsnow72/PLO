@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { canonicalClass, RANK_ORDER, RANKS_DESC } from '../lib/cards';
+import { canonicalClass, parseCombo, RANK_ORDER, RANKS_DESC } from '../lib/cards';
 import { comboWeight, liveCombos, type SolveData, type SolveNode } from '../lib/solveTree';
 import { actionColor } from './actionStyle';
+import { CardRow } from './CardChip';
 import { pctText } from './FrequencyBar';
 
 interface Props {
@@ -112,20 +113,26 @@ export function RangeGrid({ data, node, colorActionIdx, selectedCombo, onSelectC
             {selectedCellData.combos.map((combo) => {
               const freq = node.strategy[combo]?.[colorActionIdx] ?? 0;
               const isSel = combo === selectedCombo;
+              const cards = parseCombo(combo);
               return (
                 <li key={combo}>
                   <button
                     type="button"
                     onClick={() => onSelectCombo(combo)}
-                    className={`flex w-full items-center justify-between rounded-md px-2 py-1 font-mono text-xs ${
+                    className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-xs ${
                       isSel
                         ? 'bg-navy-800 text-ink ring-1 ring-table'
                         : 'text-ink-dim hover:bg-navy-800 hover:text-ink'
                     }`}
                     aria-pressed={isSel}
+                    aria-label={`Combo ${combo}`}
                   >
-                    <span>{combo}</span>
-                    <span>{pctText(freq)}</span>
+                    {cards ? (
+                      <CardRow cards={cards} size="xs" />
+                    ) : (
+                      <span className="font-mono">{combo}</span>
+                    )}
+                    <span className="font-mono">{pctText(freq)}</span>
                   </button>
                 </li>
               );

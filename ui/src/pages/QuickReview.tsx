@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { actionColor, prettyAction } from '../components/actionStyle';
 import { CardRow } from '../components/CardChip';
+import { parseCardList, parseCombo } from '../lib/cards';
 import { FrequencyBar, pctText } from '../components/FrequencyBar';
 import {
   ApiError,
@@ -281,12 +282,23 @@ export function QuickReviewPage() {
               <ul className="mt-2 flex flex-col gap-2">
                 {missedCards.map((c) => {
                   const topIdx = c.heroFreqs.indexOf(Math.max(...c.heroFreqs));
+                  const boardCards = parseCardList(c.boardLabel);
+                  const heroCards = parseCombo(c.heroCombo);
                   return (
                     <li key={c.key} className="rounded-md bg-navy-850 px-3 py-2 text-xs">
-                      <span className="font-mono text-ink">{c.boardLabel}</span>{' '}
+                      {boardCards ? (
+                        <CardRow cards={boardCards} size="xs" />
+                      ) : (
+                        <span className="font-mono text-ink">{c.boardLabel}</span>
+                      )}{' '}
                       <span className="text-ink-dim">
-                        · you held <span className="font-mono">{c.heroCombo}</span> ({c.player},{' '}
-                        {c.street})
+                        · you held{' '}
+                        {heroCards ? (
+                          <CardRow cards={heroCards} size="xs" />
+                        ) : (
+                          <span className="font-mono">{c.heroCombo}</span>
+                        )}{' '}
+                        ({c.player}, {c.street})
                       </span>
                       <br />
                       <span className="text-ink-dim">

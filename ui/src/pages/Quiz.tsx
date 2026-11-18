@@ -13,7 +13,7 @@ import {
   fetchSampleSolve,
   recordQuizAnswer,
 } from '../lib/api';
-import { parseCard, type Card } from '../lib/cards';
+import { parseCard, parseCombo, type Card } from '../lib/cards';
 import type { Heuristic } from '../lib/heuristics';
 import {
   buildHeuristicQuestions,
@@ -225,15 +225,27 @@ function SessionRail({
             {[...answered].reverse().map((r, ri) => {
               const key = `${r.entry.q.itemKey}-${answered.length - 1 - ri}`;
               const spotQ = r.entry.type === 'spot' ? r.entry.q : null;
+              const heroCards = spotQ ? parseCombo(spotQ.heroCombo) : null;
               return (
                 <li key={key} className="flex items-center gap-2 text-xs">
                   <span className={`font-bold ${bandTextClass(r.grade.band)}`} aria-hidden="true">
                     {bandIcon(r.grade.band)}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-ink-dim">
-                    {r.entry.type === 'spot'
-                      ? `${r.entry.q.heroCombo} · ${r.entry.q.street}`
-                      : `Heuristic · ${topicLabel(r.entry.q.topic)}`}
+                  <span className="flex min-w-0 flex-1 items-center gap-1.5 text-ink-dim">
+                    {spotQ ? (
+                      <>
+                        {heroCards ? (
+                          <CardRow cards={heroCards} size="xs" />
+                        ) : (
+                          <span className="truncate">{spotQ.heroCombo}</span>
+                        )}
+                        <span className="truncate">· {spotQ.street}</span>
+                      </>
+                    ) : (
+                      <span className="truncate">
+                        {`Heuristic · ${topicLabel(r.entry.q.topic)}`}
+                      </span>
+                    )}
                   </span>
                   <span className="font-mono text-ink-faint">
                     {r.grade.evLostChips !== null
