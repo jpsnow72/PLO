@@ -29,6 +29,7 @@ import {
   buildSpot,
   defaultWizardForm,
   parseRangeText,
+  targetPctFor,
   TIER_LABEL,
   type AccuracyTier,
   type StreetSizes,
@@ -472,6 +473,11 @@ export function SolverPage() {
 
   const activeJob = sessionJobs.find((j) => j.id === activeJobId) ?? null;
 
+  // Stack-to-pot ratio, derived live from the two money inputs so the
+  // geometry of the spot is visible before solving (the reference setup
+  // shows Pot and Effective Stack side by side the same way).
+  const spr = form.pot > 0 && form.stacks > 0 ? form.stacks / form.pot : null;
+
   // Preflop library for the range pickers. Soft-fail: without the index
   // the wizard is manual-only, exactly as before.
   useEffect(() => {
@@ -713,6 +719,13 @@ export function SolverPage() {
                 />
               </label>
             </div>
+            <p className="mt-2 text-xs text-ink-dim">
+              Stack-to-pot ratio (SPR):{' '}
+              <span className="font-mono text-sm font-semibold text-ink">
+                {spr === null ? '—' : spr.toFixed(1)}
+              </span>{' '}
+              <span className="text-ink-faint">(effective stacks ÷ pot)</span>
+            </p>
             <fieldset className="mt-3">
               <legend className="text-xs text-ink-dim">Accuracy tier</legend>
               <div className="mt-1 flex flex-col gap-1.5">
@@ -722,16 +735,58 @@ export function SolverPage() {
                       type="radio"
                       name="tier"
                       checked={form.tier === tier}
-                      onChange={() => patch({ tier })}
+                      onChange={() => patch({ tier, targetPctOverride: null })}
                       className="h-4 w-4 accent-[#2E9E6B]"
                     />
                     {TIER_LABEL[tier]}
                   </label>
                 ))}
               </div>
+              {/* The contract takes numbers, not tier names: both fields
+                  below are emitted verbatim (target_exploitability_pct /
+                  max_iterations). Editing the target overrides the preset. */}
+              <div className="mt-2 grid grid-cols-2 gap-3">
+                <label className="text-xs text-ink-dim">
+                  Target Nash distance (% of pot)
+                  <input
+                    type="number"
+                    min={0.01}
+                    max={5}
+                    step={0.05}
+                    value={targetPctFor(form)}
+                    onChange={(e) => patch({ targetPctOverride: Number(e.target.value) })}
+                    className="mt-1 w-full rounded-md border border-navy-700 bg-navy-850 px-2 py-1.5 text-sm text-ink"
+                  />
+                </label>
+                <label className="text-xs text-ink-dim">
+                  Max iterations
+                  <input
+                    type="number"
+                    min={1}
+                    step={1000}
+                    value={form.maxIterations}
+                    onChange={(e) => patch({ maxIterations: Number(e.target.value) })}
+                    className="mt-1 w-full rounded-md border border-navy-700 bg-navy-850 px-2 py-1.5 text-sm text-ink"
+                  />
+                </label>
+              </div>
+              {form.targetPctOverride !== null ? (
+                <p className="mt-1 text-xs text-ink-faint">
+                  Custom target — it overrides the tier preset.{' '}
+                  <button
+                    type="button"
+                    onClick={() => patch({ targetPctOverride: null })}
+                    className="font-semibold text-table-light underline"
+                  >
+                    Back to the {form.tier} preset
+                  </button>
+                </p>
+              ) : null}
               <p className="mt-1 text-xs text-ink-faint">
-                The solver stops when the measured Nash distance reaches the tier target (or the
-                iteration cap).
+                The solver stops at whichever comes first: the measured Nash distance reaching
+                the target, or the iteration cap. Every finished solve reports its measured
+                accuracy either way — a solve that misses its target is labelled DRAFT, never
+                certified.
               </p>
             </fieldset>
             <div className="mt-3 grid grid-cols-2 gap-3">
@@ -755,7 +810,8 @@ export function SolverPage() {
               </label>
             </div>
             <p className="mt-1 text-xs text-ink-faint">
-              Rake-aware solves arrive in V2 (with the low-stakes library configs).
+              All solves currently run with no rake. Rake-aware solves arrive in V2 (with the
+              low-stakes library configs).
             </p>
           </fieldset>
 
@@ -806,6 +862,18 @@ export function SolverPage() {
           </fieldset>
         </div>
 
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+            Bet sizes per street
+          </span>
+          <button
+            type="button"
+            onClick={() => patch({ turn: { ...form.flop }, river: { ...form.flop } })}
+            className="rounded-md bg-navy-800 px-2.5 py-1 text-xs text-ink-dim hover:text-ink"
+          >
+            Copy flop sizes to turn &amp; river
+          </button>
+        </div>
         <div className="grid gap-4 lg:grid-cols-3">
           <StreetEditor title="Flop sizes" value={form.flop} onChange={(flop) => patch({ flop })} />
           <StreetEditor title="Turn sizes" value={form.turn} onChange={(turn) => patch({ turn })} />
@@ -817,6 +885,26 @@ export function SolverPage() {
           sizes). Flop solves are exact unless a spot requests bucketing, and wide flop ranges
           can take a long time — they run as background jobs and land in the library when done.
         </p>
+
+        {/* Node locks: the engine + API accept them today (spot JSON
+            "locks"), but the visual editor is issue #9 — the honest
+            maximum here is a disabled affordance that says exactly that,
+            never a control that silently drops the user's intent. */}
+        <fieldset disabled className="rounded-lg border border-navy-700 bg-navy-900 p-3">
+          <legend className="px-1 text-sm font-semibold text-ink">Node locks</legend>
+          <label className="flex items-center gap-2 text-sm text-ink-faint">
+            <input type="checkbox" disabled className="h-4 w-4" />
+            Attach node locks to this solve
+          </label>
+          <p className="mt-1 text-xs text-ink-faint">
+            The engine and API already accept locks — fix one player&apos;s action frequencies
+            at a decision node and re-solve the rest of the tree around them; locked results are
+            badged LOCKED, never GTO. The visual editor (pick a node in the Explorer and set its
+            frequencies) is issue #9 and is not built yet, so locks can&apos;t be attached from
+            this form today — for now they can only be supplied in the spot JSON sent to the
+            API.
+          </p>
+        </fieldset>
 
         {errors.length > 0 ? (
           <div className="rounded-lg border border-red-900 bg-navy-900 p-3" role="alert">
