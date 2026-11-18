@@ -50,10 +50,21 @@ impl fmt::Display for Player {
     }
 }
 
-/// Configuration for building the river betting action tree.
+/// Configuration for building a betting action tree on one street.
+///
+/// The struct itself is street-agnostic: it carries a single bet-size menu.
+/// Per-street default menus live in the [`TreeConfig::flop_default`],
+/// [`TreeConfig::turn_default`] and [`TreeConfig::river_default`]
+/// constructors (approved 2026-11-17, gauged from GTO Wizard's solved
+/// trees); the JSON spot parsers start from those when a spot omits its
+/// size fields. [`TreeConfig::default`] keeps the historical shared menu
+/// (`[0.33, 0.75, 1.0]`) for code that builds spots programmatically with
+/// no street context.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TreeConfig {
-    /// Bet size menu as fractions of the pot when facing no bet (default: `[0.33, 0.75, 1.0]`).
+    /// Bet size menu as fractions of the pot when facing no bet
+    /// (street-agnostic default: `[0.33, 0.75, 1.0]`; per-street defaults:
+    /// flop `[0.33, 0.75]`, turn `[0.5, 1.0]`, river `[0.5, 1.0]`).
     pub bet_sizes: Vec<f64>,
     /// Whether to include an all-in bet when legal under pot-limit rules (default: `true`).
     pub include_all_in_bet: bool,
@@ -74,6 +85,34 @@ impl Default for TreeConfig {
             include_all_in_raise: true,
             max_raises: 2,
         }
+    }
+}
+
+impl TreeConfig {
+    /// Builds a config that differs from [`TreeConfig::default`] only in its
+    /// bet-size menu; raises stay pot-sized (`[1.0]`), all-in stays included
+    /// for both bets and raises, and the raise cap stays at 2.
+    fn with_bet_sizes(bet_sizes: Vec<f64>) -> Self {
+        Self {
+            bet_sizes,
+            ..Self::default()
+        }
+    }
+
+    /// Default flop menu: 33% and 75% pot bets (approved 2026-11-17).
+    pub fn flop_default() -> Self {
+        Self::with_bet_sizes(vec![0.33, 0.75])
+    }
+
+    /// Default turn menu: 50% and 100% (pot) bets (approved 2026-11-17).
+    pub fn turn_default() -> Self {
+        Self::with_bet_sizes(vec![0.5, 1.0])
+    }
+
+    /// Default river menu: 50% and 100% (pot) bets, plus the always-present
+    /// all-in via `include_all_in_bet` (approved 2026-11-17).
+    pub fn river_default() -> Self {
+        Self::with_bet_sizes(vec![0.5, 1.0])
     }
 }
 

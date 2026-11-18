@@ -348,8 +348,10 @@ pub fn parse_spot_json(input: &str) -> Result<(RiverSpot, DcfrConfig), SolveErro
         ));
     };
 
-    // 4. Optional tree configuration
-    let mut tree_config = TreeConfig::default();
+    // 4. Optional tree configuration. A river spot that omits its size
+    // fields starts from the per-street river default menu (50% / 100% pot,
+    // 2026-11-17); an explicit `bet_sizes` still overrides it.
+    let mut tree_config = TreeConfig::river_default();
     if let Some(bs) = root.get("bet_sizes").and_then(|v| v.as_array()) {
         let mut sizes = Vec::with_capacity(bs.len());
         for item in bs {
@@ -759,7 +761,9 @@ pub fn format_solve_result_json(game: &RiverGame, result: &SolveResult) -> Strin
 // fields: `turn_bet_sizes`, `river_bet_sizes`, `turn_raise_sizes`,
 // `river_raise_sizes`, `max_raises` (both streets), `turn_max_raises`,
 // `river_max_raises`. `bet_sizes` / `raise_sizes` act as defaults for both
-// streets when the per-street field is absent.
+// streets when the per-street field is absent; when neither is present the
+// street's own default menu applies (turn [0.5, 1.0], river [0.5, 1.0]
+// since 2026-11-17 — see `street_config_from_json`).
 // ============================================================================
 
 fn parse_board4_value(val: &JsonValue) -> Result<[Card; 4], SolveError> {
@@ -848,7 +852,15 @@ fn street_config_from_json(
     root: &JsonValue,
     prefix: &str,
 ) -> Result<TreeConfig, SolveError> {
-    let mut cfg = TreeConfig::default();
+    // Base = the street's own default menu (2026-11-17: flop [0.33, 0.75],
+    // turn [0.5, 1.0], river [0.5, 1.0]). The per-street field wins, then
+    // the shared `bet_sizes` / `raise_sizes` fallback, then this base.
+    let mut cfg = match prefix {
+        "flop" => TreeConfig::flop_default(),
+        "turn" => TreeConfig::turn_default(),
+        "river" => TreeConfig::river_default(),
+        _ => TreeConfig::default(),
+    };
     if let Some(sizes) = parse_number_array(root, &format!("{prefix}_bet_sizes"))?
         .or(parse_number_array(root, "bet_sizes")?)
     {

@@ -823,3 +823,40 @@ fn test_json_roundtrip_and_strategy_frequencies_sum_to_one() {
         }
     }
 }
+
+#[test]
+fn test_per_street_default_bet_menus() {
+    // Approved 2026-11-17 (gauged from GTO Wizard's solved trees):
+    // flop bets 33%/75% pot, turn bets 50%/100%, river bets 50%/100% with
+    // all-in always available. Raises stay pot-sized ([1.0]), the raise
+    // cap stays 2, and all-in stays included for bets and raises.
+    let flop = TreeConfig::flop_default();
+    assert_eq!(flop.bet_sizes, vec![0.33, 0.75]);
+    let turn = TreeConfig::turn_default();
+    assert_eq!(turn.bet_sizes, vec![0.5, 1.0]);
+    let river = TreeConfig::river_default();
+    assert_eq!(river.bet_sizes, vec![0.5, 1.0]);
+    for cfg in [&flop, &turn, &river] {
+        assert_eq!(cfg.raise_sizes, vec![1.0]);
+        assert_eq!(cfg.max_raises, 2);
+        assert!(cfg.include_all_in_bet);
+        assert!(cfg.include_all_in_raise);
+    }
+    // The street-agnostic default keeps the historical shared menu; the
+    // analytic acceptance games built on it are unchanged.
+    assert_eq!(TreeConfig::default().bet_sizes, vec![0.33, 0.75, 1.0]);
+
+    // A river spot JSON with no size fields parses onto the river menu.
+    let bare_json = r#"{
+        "board": "As Ks Qs 7d 2c",
+        "oop_range": ["Ts 9s 3c 4c:1.0"],
+        "ip_range": ["8s 6s 3h 4h:1.0"],
+        "pot": 100.0,
+        "stacks": 100.0
+    }"#;
+    let (spot, _) = parse_spot_json(bare_json).unwrap();
+    assert_eq!(spot.tree_config.bet_sizes, vec![0.5, 1.0]);
+    assert_eq!(spot.tree_config.raise_sizes, vec![1.0]);
+    assert_eq!(spot.tree_config.max_raises, 2);
+    assert!(spot.tree_config.include_all_in_bet);
+}

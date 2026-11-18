@@ -595,3 +595,37 @@ fn test_turn_json_roundtrip_and_strategy_frequencies_sum_to_one() {
     }
     assert!(saw_river_node_with_card);
 }
+
+#[test]
+fn test_turn_json_per_street_default_menus() {
+    // No size fields at all: each street falls back to its own default
+    // menu (2026-11-17: turn [0.5, 1.0], river [0.5, 1.0]).
+    let bare_json = r#"{
+        "board": "As Ks Qs 7d",
+        "oop_range": ["Ts 9s 3c 4c:1.0"],
+        "ip_range": ["8s 6s 3h 4h:1.0"],
+        "pot": 100.0,
+        "stacks": 100.0
+    }"#;
+    let (spot, _) = parse_turn_spot_json(bare_json).unwrap();
+    assert_eq!(spot.turn_config.bet_sizes, vec![0.5, 1.0]);
+    assert_eq!(spot.river_config.bet_sizes, vec![0.5, 1.0]);
+    assert_eq!(spot.turn_config.raise_sizes, vec![1.0]);
+    assert_eq!(spot.turn_config.max_raises, 2);
+    assert!(spot.turn_config.include_all_in_bet);
+    assert!(spot.river_config.include_all_in_bet);
+
+    // The shared `bet_sizes` fallback still overrides both streets when
+    // no per-street field is present.
+    let shared_json = r#"{
+        "board": "As Ks Qs 7d",
+        "oop_range": ["Ts 9s 3c 4c:1.0"],
+        "ip_range": ["8s 6s 3h 4h:1.0"],
+        "pot": 100.0,
+        "stacks": 100.0,
+        "bet_sizes": [0.75]
+    }"#;
+    let (spot, _) = parse_turn_spot_json(shared_json).unwrap();
+    assert_eq!(spot.turn_config.bet_sizes, vec![0.75]);
+    assert_eq!(spot.river_config.bet_sizes, vec![0.75]);
+}
