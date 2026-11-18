@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { fetchAuthMe, fetchSampleSolve } from '../lib/api';
+import type { TrainerFocus } from '../lib/drills';
 import { DRAW_COLORS, DRAW_WIDTHS, type DrawStroke, type DrawTool } from '../lib/drawing';
 import {
   parseSolve,
@@ -68,6 +69,20 @@ interface AppState {
   // Jobs submitted from the wizard this session.
   sessionJobs: JobRecord[];
   upsertJob: (job: JobRecord) => void;
+
+  // Trainer hand-offs (issue #22). One-shot navigation state, in the
+  // same spirit as setPath: a page sets the focus, navigates, and the
+  // Quiz consumes (and clears) it on load. Nothing is persisted — a
+  // focus that survives a reload would be a stale promise.
+  trainerFocus: TrainerFocus | null;
+  setTrainerFocus: (focus: TrainerFocus | null) => void;
+  /**
+   * Range-set id the Starting Hands drill should open preselected
+   * (set by the Quiz's preflop drill entries); consumed and cleared
+   * by the Starting Hands page once its option list resolves it.
+   */
+  preflopDrillSetId: string | null;
+  setPreflopDrillSetId: (id: string | null) => void;
 
   // Drawing annotations over the Explorer's table (issue #20).
   // Session-local: strokes belong to the loaded solve, survive
@@ -239,6 +254,12 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   sessionJobs: [],
+
+  trainerFocus: null,
+  setTrainerFocus: (focus) => set({ trainerFocus: focus }),
+  preflopDrillSetId: null,
+  setPreflopDrillSetId: (id) => set({ preflopDrillSetId: id }),
+
   upsertJob: (job) =>
     set((s) => {
       const idx = s.sessionJobs.findIndex((j) => j.id === job.id);

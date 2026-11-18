@@ -240,7 +240,7 @@ export interface SpotQuestion {
   itemKey: string;
   solveId: string;
   solveName: string;
-  solveSource: 'library' | 'sample';
+  solveSource: 'library' | 'sample' | 'job';
   board: string[];
   boardText: string;
   street: string;
@@ -281,7 +281,7 @@ function actionEvsFor(node: SolveNode, combo: string): number[] | null {
 export interface SpotSource {
   id: string;
   name: string;
-  source: 'library' | 'sample';
+  source: 'library' | 'sample' | 'job';
   data: SolveData;
 }
 
