@@ -173,3 +173,42 @@ No `engine/` changes; `ui/src/lib/preflop.ts` and
   first-in and vs-open defense, per the brief.
 - First compile happens at the host gate (`tsc --noEmit && vite
   build`) — this lane ran no builds per the VM rules.
+
+## Gate fix pass (2026-11-17) — API adaptation, composed tree
+
+The first compile at the coordinator's gate failed with 11 TypeScript
+errors, all in `ui/src/pages/StartingHands.tsx`. The page had been
+written against imagined shapes of APIs that had settled (or already
+existed) in a different form on main. Each error's cause and the
+adaptation made — behaviour, layout and copy unchanged throughout:
+
+1. **`classTableByHand` not exported by `lib/preflop`** — the lib
+   exposes the `PreflopClassTable` type and per-key helpers but no
+   whole-table index. Added `classTableByHand(table)` to
+   `lib/preflopStudy.ts` (the same `new Map(table.classes.map(...))`
+   construction the Preflop page builds) and imported it from there.
+2. **`../components/ApproximationBadge` module missing** — the badge
+   already exists, implemented with the rest of the badge family in
+   `AccuracyBadge.tsx` (the page's `label="CONSTRUCTED"` prop matches
+   its signature). Created `components/ApproximationBadge.tsx` as a
+   re-export of that one implementation, so the GTO/APPROXIMATION
+   families cannot drift apart visually.
+3. **`fetchPreflopSet(entry)`** — the API takes the set `id: string`,
+   not the index entry. Now `fetchPreflopSet(entry.id)`.
+4. **`dueItemKeys(progress)` missing an argument** — the real
+   signature is `(progress, now: Date)`. Now passes `new Date()`,
+   exactly as the Quiz page calls it.
+5. **Imagined topic-stats shape** (`total_score` / `mean_score`) —
+   the real `QuizTopicStats` is `{ attempts, score_sum, last_at }`.
+   The session-local updater now mirrors the Quiz page's
+   `recordLocal` (increments `attempts`/`score_sum`, stamps
+   `last_at`), and the per-position rows derive the displayed mean
+   as `score_sum / attempts` (the ratio `weakTopics` computes).
+6. **`recordQuizAnswer` result destructured as `{ progress }`** — it
+   returns `Promise<QuizProgress | null>` directly. Now
+   `.then((p) => { if (p) setProgress(p); })`, mirroring the Quiz
+   page's `if (updated) setProgress(updated)`.
+7. **`canonicalClass(a.card.heroCards)`** — drill cards carry
+   `heroCards: Card[]`; `canonicalClass` takes a combo string. Both
+   history render sites now convert with the established
+   `formatCards(cards)` first: `canonicalClass(formatCards(...))`.
