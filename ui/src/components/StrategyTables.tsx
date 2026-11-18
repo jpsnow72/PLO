@@ -1,6 +1,14 @@
 import { useMemo, useState } from 'react';
 import { parseCombo } from '../lib/cards';
-import { comboWeight, liveCombos, type SolveData, type SolveNode } from '../lib/solveTree';
+import {
+  actionEvDiff,
+  comboActionEvs,
+  comboWeight,
+  liveCombos,
+  nodeHasActionEvs,
+  type SolveData,
+  type SolveNode,
+} from '../lib/solveTree';
 import { actionColor, prettyAction } from './actionStyle';
 import { CardRow } from './CardChip';
 import { pctText } from './FrequencyBar';
@@ -21,6 +29,11 @@ interface Row {
   freq: number;
   /** Solve-level EV of the combo (whole tree), null when the payload has none. */
   ev: number | null;
+  /** EV of this table's action for the combo at this node (issue #8),
+   *  null when the payload carries no per-action EVs. */
+  actionEv: number | null;
+  /** actionEv minus the combo's best action EV at this node (<= 0). */
+  diff: number | null;
   weight: number;
 }
 
@@ -45,6 +58,7 @@ function ActionTable({
 }) {
   const [expanded, setExpanded] = useState(false);
   const label = node.actions[actionIdx] ?? '';
+  const hasActionEvs = useMemo(() => nodeHasActionEvs(node), [node]);
 
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
@@ -55,6 +69,8 @@ function ActionTable({
         combo,
         freq,
         ev: data.evs[node.player].get(combo) ?? null,
+        actionEv: comboActionEvs(node, combo)?.[actionIdx] ?? null,
+        diff: actionEvDiff(node, combo, actionIdx),
         weight: comboWeight(data, node.player, combo),
       });
     }
@@ -96,7 +112,11 @@ function ActionTable({
             <th
               scope="col"
               className="num px-2 py-1.5 text-right font-semibold"
-              title="Per-action EVs are not in the engine payload — see the note below the tables."
+              title={
+                hasActionEvs
+                  ? "This action's EV for the combo minus the combo's best action EV at this node, in chips."
+                  : 'Per-action EVs are not in the engine payload — see the note below the tables.'
+              }
             >
               EV Diff
             </th>
@@ -127,7 +147,20 @@ function ActionTable({
                 <td className="num px-2 py-1.5 text-right font-mono text-ink-dim">
                   {row.ev === null ? '—' : row.ev.toFixed(2)}
                 </td>
-                <td className="num px-2 py-1.5 text-right font-mono text-ink-faint">—</td>
+                {row.diff === null ? (
+                  <td className="num px-2 py-1.5 text-right font-mono text-ink-faint">—</td>
+                ) : (
+                  <td
+                    className="num px-2 py-1.5 text-right font-mono text-ink-dim"
+                    title={
+                      row.actionEv !== null
+                        ? `${prettyAction(label)} is worth ${row.actionEv.toFixed(2)} chips for this combo at this node; Diff is that minus its best action's EV.`
+                        : undefined
+                    }
+                  >
+                    {row.diff.toFixed(2)}
+                  </td>
+                )}
                 <td className="num px-3 py-1.5 text-right font-mono text-ink-dim">
                   {row.weight.toFixed(2)}
                 </td>
@@ -152,12 +185,15 @@ function ActionTable({
 /**
  * Strategy view: one table per action at the current node, GTO-Wizard
  * style. Frequencies and weights are the node's own strategy rows; EV is
- * the combo's whole-solve EV from the payload's *_evs lists. The engine
- * payload carries no per-action EVs, so EV Diff (vs the best action) is
- * shown as an em dash rather than estimated — see SHIP1-NOTES.md.
+ * the combo's whole-solve EV from the payload's *_evs lists. When the
+ * payload carries per-action EVs (issue #8), EV Diff prices this table's
+ * action for each combo against the combo's best action at this node;
+ * payloads without the field show the em dash rather than an estimate —
+ * see SHIP1-NOTES.md and EV-DIFF-NOTES.md.
  */
 export function StrategyTables({ data, node, aggregates, selectedCombo, onSelectCombo }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('freq');
+  const hasActionEvs = useMemo(() => nodeHasActionEvs(node), [node]);
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2 text-xs text-ink-dim">
@@ -201,8 +237,20 @@ export function StrategyTables({ data, node, aggregates, selectedCombo, onSelect
       ))}
 
       <p className="text-xs text-ink-faint">
-        EV is each combo's whole-solve EV (the engine reports per-combo EV for the whole tree, not
-        per action or per node), so the EV Diff column shows — instead of an estimate.
+        {hasActionEvs ? (
+          <>
+            EV (solve) is each combo's whole-solve EV. EV Diff uses the solve's per-action
+            EVs: in each action's table it is that action's EV for the combo minus the
+            combo's best action EV at this node — 0.00 when the action is a best action for
+            the combo.
+          </>
+        ) : (
+          <>
+            EV is each combo's whole-solve EV (the engine reports per-combo EV for the whole
+            tree, not per action or per node), so the EV Diff column shows — instead of an
+            estimate.
+          </>
+        )}
       </p>
     </div>
   );
