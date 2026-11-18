@@ -9,6 +9,7 @@ import { HandDetail } from '../components/HandDetail';
 import { LinkToHeuristic } from '../components/LinkToHeuristic';
 import { MultiwayLens } from '../components/MultiwayLens';
 import { NodeStrip } from '../components/NodeStrip';
+import { CategoriesRail, EvBucketsRail } from '../components/RailInsights';
 import { RangeGrid } from '../components/RangeGrid';
 import { RangesView } from '../components/RangesView';
 import { StrategyTables } from '../components/StrategyTables';
@@ -335,6 +336,10 @@ export function ExplorerPage() {
               reports EV per combo for the whole solve, not per action.
             </p>
           </section>
+
+          <CategoriesRail data={solve} node={node} path={path} boardCards={currentBoardCards} />
+
+          <EvBucketsRail data={solve} node={node} path={path} />
 
           <section
             aria-label="Solve accuracy"
