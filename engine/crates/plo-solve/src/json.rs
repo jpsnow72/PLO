@@ -4,6 +4,7 @@ use plo_cards::{format_cards, Card};
 use plo_eval::{PloRange, WeightedCombo};
 
 use crate::br::ExploitabilityReport;
+use crate::action_ev::NodeActionEvs;
 use crate::cfr::{ComboEv, DcfrConfig, NodeStrategy, SolveResult};
 use crate::flop::{expand_bucket_strategies, BucketConfig, FlopGame, FlopSolveResult, FlopSpot};
 use crate::game::{Player, RiverGame, RiverSpot, SolveError, TreeConfig};
@@ -741,7 +742,8 @@ pub fn format_solve_result_json(game: &RiverGame, result: &SolveResult) -> Strin
             }
             out.push_str(&format!("]{}\n", c_comma));
         }
-        out.push_str("      }\n");
+        out.push_str("      },\n");
+        push_combo_action_evs_json(&mut out, &result.action_evs[ns.decision_id], combos);
 
         let n_comma = if d_idx + 1 < result.strategies.len() {
             ","
@@ -1097,7 +1099,8 @@ pub fn format_turn_solve_result_json(game: &TurnGame, result: &TurnSolveResult) 
             }
             out.push_str(&format!("]{}\n", c_comma));
         }
-        out.push_str("      }\n");
+        out.push_str("      },\n");
+        push_combo_action_evs_json(&mut out, &result.action_evs[ns.decision_id], combos);
 
         let n_comma = if d_idx + 1 < result.strategies.len() {
             ","
@@ -1356,6 +1359,36 @@ fn push_exploitability_json(out: &mut String, ex: &ExploitabilityReport) {
     out.push_str("  },\n");
 }
 
+/// Formats one action EV for the payload: chips rounded to 3 decimals
+/// (issue #8 precision discipline — see EV-OUTPUT-NOTES.md). Values that
+/// round to zero are canonicalised to `0.000` so the payload never
+/// carries a `-0.000`.
+fn fmt_action_ev(v: f64) -> String {
+    let v = if v.abs() < 0.0005 { 0.0 } else { v };
+    format!("{v:.3}")
+}
+
+/// Writes one node's `"combo_action_evs"` block (the caller has just closed the
+/// `"strategy"` block with a comma): combo label -> per-action conditional
+/// EVs in chips, rows in the same combo order as `"strategy"` and values
+/// aligned with the node's `"actions"` array.
+fn push_combo_action_evs_json(out: &mut String, evs: &NodeActionEvs, combos: &[WeightedCombo]) {
+    out.push_str("      \"combo_action_evs\": {\n");
+    for (c_idx, combo) in combos.iter().enumerate() {
+        let c_comma = if c_idx + 1 < combos.len() { "," } else { "" };
+        let row = evs.combo_action_evs(c_idx);
+        out.push_str(&format!("        \"{}\": [", format_cards(&combo.cards)));
+        for (a_idx, &v) in row.iter().enumerate() {
+            if a_idx > 0 {
+                out.push_str(", ");
+            }
+            out.push_str(&fmt_action_ev(v));
+        }
+        out.push_str(&format!("]{}\n", c_comma));
+    }
+    out.push_str("      }\n");
+}
+
 fn push_combo_evs_json(out: &mut String, key: &str, evs: &[ComboEv]) {
     out.push_str(&format!("  \"{key}\": [\n"));
     for (i, ce) in evs.iter().enumerate() {
@@ -1386,6 +1419,7 @@ fn push_strategy_node_json(
     to_call: f64,
     ns: &NodeStrategy,
     combos: &[WeightedCombo],
+    action_evs: &NodeActionEvs,
 ) {
     out.push_str("    {\n");
     out.push_str(&format!("      \"decision_id\": {},\n", decision_id));
@@ -1432,7 +1466,8 @@ fn push_strategy_node_json(
         }
         out.push_str(&format!("]{}\n", c_comma));
     }
-    out.push_str("      }\n");
+    out.push_str("      },\n");
+    push_combo_action_evs_json(out, action_evs, combos);
     out.push_str(&format!("    }}{}\n", if is_last { "" } else { "," }));
 }
 
@@ -1493,12 +1528,17 @@ pub fn format_flop_solve_result_json(game: &FlopGame, result: &FlopSolveResult) 
             d.to_call,
             ns,
             game.player_combos(ns.player),
+            &result.action_evs.flop[ns.decision_id],
         );
     }
 
     let mut decision_offset = game.num_decision_nodes();
     let mut node_offset = game.nodes.len();
-    for (sub, strategies) in game.subtrees.iter().zip(result.subtree_strategies.iter()) {
+    for (sub_idx, (sub, strategies)) in game.subtrees
+        .iter()
+        .zip(result.subtree_strategies.iter())
+        .enumerate()
+    {
         let sub_game = match &sub.game {
             Some(g) => g,
             None => continue,
@@ -1521,6 +1561,7 @@ pub fn format_flop_solve_result_json(game: &FlopGame, result: &FlopSolveResult) 
                 d.to_call,
                 ns,
                 sub_game.player_combos(ns.player),
+                &result.action_evs.subtrees[sub_idx][ns.decision_id],
             );
         }
         decision_offset += sub_game.num_decision_nodes();
