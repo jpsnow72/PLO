@@ -144,8 +144,12 @@ binary, so `locks` flows end to end. Added, minimally:
 6. `equilibrium_lock_reproduces_root_evs_river` — criterion 3 on the
    textbook polar-vs-bluff-catcher game: IP's single-combo node facing
    the all-in bet is locked to the unlocked solve's own average strategy
-   there; 20,000 iterations both sides; asserts root EVs within 0.5 chips
-   and locked Nash distance < 0.25%.
+   there; 20,000 iterations both sides; asserts root EVs within 0.5
+   chips, the free opponent's best-response gain < 0.25 chips, and the
+   locked player's best-response gain fully attributable to the locked
+   node (single-node swap decomposition). The brief's original
+   whole-profile Nash bound (< 0.25%) was removed as mathematically
+   unattainable for a single-node lock — see the gate finding below.
 7. `bad_lock_raises_measured_exploitability_river` — criterion 4:
    always-check at the root with the polar range; asserts Nash distance
    rises by > 5 points over the unlocked solve, OOP EV drops > 10 chips,
@@ -153,6 +157,38 @@ binary, so `locks` flows end to end. Added, minimally:
 8. `locks_json_parse_and_shape_errors` — `"locks"` parses on all three
    spot types (incl. the `"node"` alias), four malformed specs are
    `JsonError`s, and a JSON-driven locked solve round-trips the badge.
+
+## Gate finding (2026-11-17): criterion 3's Nash bound was a test-premise defect
+
+The first host gate failed exactly one test: this one, at the Nash
+assertion (measured 8.2263%). Diagnosis on the VPS (single-test
+reproduction, bit-identical number) priced the source profile, the
+locked profile, and surgical hybrids with the checker itself:
+
+- The lock source is sound: the unlocked 20k profile prices at 0.0268%
+  Nash (EVs 74.989 / 25.011), and the lock vector taken from it is IP's
+  equilibrium mix at BAI(100): fold 0.5001 / call 0.4999.
+- The locked profile's EVs reproduce (75.002 / 24.998, drift 0.013
+  chips) and OOP's best-response gain against it is 0.0033 chips — the
+  lock hands the free opponent nothing, and the seam prices exactly
+  the profile it solved (locked IP nodes + unlocked OOP averages
+  re-price at 0.0268%, the unlocked figure).
+- IP's entire best-response gain (8.2229 chips) is attributable to the
+  locked node alone: swapping only that node's vector to always-call
+  raises IP's EV from 24.9978 to 33.2211 (+8.2233, matching the full
+  gain to ~0.001 chips).
+- Mechanism: with IP's call frequency pinned at 50%, nothing punishes
+  OOP for bluffing the all-in more, so OOP's re-solved average drifts
+  (air all-in frequency 49.9% unlocked -> 66.4% at 20k -> 99.9% at
+  200k). Against the drifted range the pinned mix is genuinely
+  exploitable, and more iterations make the measured Nash distance
+  WORSE (24.9628% at 200k): the constrained solve converges to the
+  constrained game's equilibrium, which is not an equilibrium of the
+  full game. A single-node equilibrium lock therefore cannot promise
+  a whole-profile Nash bound; it promises value preservation, no free
+  gain for the opponent, and a price attributable to the pinned node.
+  The test now asserts exactly those three properties. No engine or
+  checker code changed: the failure was the criterion, not the seam.
 
 ## Deferred / gaps
 
@@ -174,13 +210,13 @@ binary, so `locks` flows end to end. Added, minimally:
   site (all struct-update literals or `&` borrows; the only full literal
   is the updated `Default` impl), but a missed by-value reuse would
   surface as a move error; (c) brace balance in the flop traverse edits.
-- **Criterion-3 tolerances are first-pass calibrations** (0.5 chips EV,
-  0.25% Nash at 20k iterations on the textbook game). The assertions are
-  structurally sound (the frozen strategy is the measured average of the
-  same-iteration unlocked run), but if DCFR's finite-iteration average at
-  that node is noisier than estimated, the gate will show the actual
-  numbers and the tolerances may need widening — the test prints both
-  EVs on failure.
+- **Criterion-3 tolerances** (0.5 chips EV, 0.25 chips opponent gain,
+  0.05 chips decomposition equality at 20k iterations on the textbook
+  game) were calibrated at the 2026-11-17 gate: measured values were
+  0.013 / 0.0033 / 0.0004 chips respectively, so each bound carries
+  roughly an order of magnitude of headroom. The original 0.25% Nash
+  assertion was removed as a proven test-premise defect (see the gate
+  finding above), not widened.
 - **Flop test runtime**: the flop test solves a 2×2-combo Exact spot
   three times at 5 iterations — far below the existing flop suite's
   8–14-combo, 60–150-iteration spots, but flop iterations traverse all

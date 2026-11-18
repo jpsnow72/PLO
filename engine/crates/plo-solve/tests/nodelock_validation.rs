@@ -8,7 +8,13 @@
 //!    (criterion 2).
 //! 3. Equilibrium-lock regression: locking a single-combo node to the
 //!    unlocked solve's own average strategy there reproduces the unlocked
-//!    root EVs at equal iterations (criterion 3).
+//!    root EVs at equal iterations, hands the free opponent no
+//!    best-response gain, and leaves the locked player a best-response
+//!    gain attributable entirely to the locked node. A whole-profile
+//!    Nash bound does NOT hold for a single-node lock (the opponent's
+//!    average drifts once the lock removes the punishment for
+//!    drifting) — proof in the criterion-3 test and NODELOCK-NOTES.md
+//!    (criterion 3, corrected at the 2026-11-17 host gate).
 //! 4. A deliberately bad lock (always check with a polar range) shows
 //!    clearly higher measured exploitability than the unlocked solve, and
 //!    the checker prices it exactly as for unlocked solves (criterion 4).
@@ -19,7 +25,8 @@
 use plo_cards::Card;
 use plo_eval::PloRange;
 use plo_solve::{
-    format_flop_solve_result_json, format_solve_result_json, parse_flop_spot_json, parse_spot_json,
+    compute_exploitability, format_flop_solve_result_json, format_solve_result_json,
+    parse_flop_spot_json, parse_spot_json,
     parse_turn_spot_json, solve_flop, solve_river, solve_turn, validate_locks_flop,
     validate_locks_river, validate_locks_turn, BucketConfig, DcfrConfig, FlopGame, FlopSpot,
     JsonValue, NodeLock, Player, RiverGame, RiverSpot, SolveError, TreeConfig, TurnGame, TurnSpot,
@@ -419,7 +426,32 @@ fn locked_node_output_equals_lock_vector_flop() {
 
 // ---------------------------------------------------------------------------
 // Criterion 3: locking a node to the unlocked solve's own average strategy
-// there reproduces the unlocked root EVs at equal iterations.
+// there reproduces the unlocked root EVs at equal iterations, hands the
+// free opponent no best-response gain, and prices the locked player a
+// best-response gain that comes entirely from the locked node.
+//
+// The brief's original third assertion (locked Nash distance < 0.25%) is
+// mathematically unattainable for a single-node lock in this game, and
+// the gate run proved it with numbers (2026-11-17; full record in
+// NODELOCK-NOTES.md). The lock pins IP's equilibrium mix at BAI(100)
+// (fold 0.5001 / call 0.4999; the unlocked profile prices at 0.0268%).
+// In the unlocked game OOP's air bluffs the all-in at 49.9% because IP
+// would call more against a bluff-heavier range; with IP's call
+// frequency pinned, nothing punishes OOP for bluffing more, so OOP's
+// re-solved average drifts (air all-in 49.9% -> 66.4% at 20k iterations,
+// -> 99.9% at 200k; the measured Nash distance GROWS to 24.96% at 200k —
+// the constrained solve converges to the constrained game's equilibrium,
+// which is not an equilibrium of the full game). Against the drifted
+// range the pinned 50/50 mix is no longer IP's best response: always
+// calling is worth 33.2211 vs 24.9978 for the mix, and that 8.2233-chip
+// difference equals IP's whole measured best-response gain (8.2229) to
+// within 0.001 chips — the exploitability sits exactly at the locked
+// node and nowhere else, while OOP's best-response gain against the
+// locked profile is 0.0033 chips (the lock hands the free side nothing)
+// and the root EVs reproduce to 0.013 chips. Those are the properties
+// this test asserts; they pin the seam (any misapplied lock, wrong
+// node, or traversal that ignored the pin would break them) without
+// asserting a bound the mathematics forbids.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -449,7 +481,7 @@ fn equilibrium_lock_reproduces_root_evs_river() {
         ip_facing.combo_strategy(0).to_vec(),
     );
 
-    let locked = solve_river(&game, &fixed_iters(iters, vec![eq_lock]));
+    let locked = solve_river(&game, &fixed_iters(iters, vec![eq_lock.clone()]));
     assert!(
         (locked.oop_game_ev - unlocked.oop_game_ev).abs() < 0.5,
         "OOP root EV drifted: unlocked {}, locked {}",
@@ -462,13 +494,72 @@ fn equilibrium_lock_reproduces_root_evs_river() {
         unlocked.ip_game_ev,
         locked.ip_game_ev
     );
-    // And the locked profile is still measured near-equilibrium: the lock
-    // was (approximately) an equilibrium strategy, so the checker must not
-    // suddenly price it as exploitable.
+    // The free opponent gains nothing against the locked profile: OOP's
+    // best response to it is worth no more than against the unlocked
+    // equilibrium (measured 0.0033 chips; bound is the brief's 0.25% of
+    // the 100-chip pot, in chips).
     assert!(
-        locked.exploitability.nash_distance_pct < 0.25,
-        "equilibrium-locked solve should stay near equilibrium, got {}%",
-        locked.exploitability.nash_distance_pct
+        locked.exploitability.oop_exploitability_chips < 0.25,
+        "lock must not hand OOP a best-response gain, got {} chips",
+        locked.exploitability.oop_exploitability_chips
+    );
+
+    // Mechanism witness: OOP's air combo bluffs the all-in strictly more
+    // often in the locked solve than in the unlocked one (measured
+    // 0.499 -> 0.664). This drift is what prices the pin (see the
+    // section comment); if the solver's dynamics ever change so the
+    // drift disappears, the decomposition assertion below still stands
+    // on its own.
+    let root_unlocked = &unlocked.strategies[0];
+    let root_locked = &locked.strategies[0];
+    assert_eq!(root_unlocked.history, "root");
+    let all_in_idx = root_unlocked.actions.len() - 1; // menu: Check, 33, 75, all-in
+    let air_bluff_unlocked = root_unlocked.combo_strategy(1)[all_in_idx];
+    let air_bluff_locked = root_locked.combo_strategy(1)[all_in_idx];
+    assert!(
+        air_bluff_locked > air_bluff_unlocked + 0.05,
+        "expected OOP air to drift toward the all-in once IP is pinned: \
+         unlocked {air_bluff_unlocked}, locked {air_bluff_locked}"
+    );
+
+    // The locked player DOES pay for the pin (the checker prices locks;
+    // it does not ignore them), and the whole price is attributable to
+    // the locked node: swapping only that node's vector for each pure
+    // action, the best swap's IP-EV gain over the locked profile equals
+    // IP's full best-response gain. Any seam defect (lock applied at the
+    // wrong node, frequencies misaligned with the action menu, traversal
+    // reach computed against something other than the pin) breaks this
+    // equality or the OOP-gain bound above.
+    let ip_gain = locked.exploitability.ip_exploitability_chips;
+    assert!(
+        ip_gain > 1.0,
+        "the pin must carry a measurable price, got {ip_gain} chips"
+    );
+    let locked_node = locked
+        .strategies
+        .iter()
+        .find(|ns| ns.history == eq_lock.history)
+        .expect("locked node present in locked result");
+    let num_actions = locked_node.actions.len();
+    let mut best_swap_gain = f64::NEG_INFINITY;
+    for a in 0..num_actions {
+        let mut swapped = locked.strategies.clone();
+        for ns in swapped.iter_mut() {
+            if ns.history == eq_lock.history {
+                for i in 0..ns.num_combos {
+                    let base = i * num_actions;
+                    ns.frequencies[base..base + num_actions].fill(0.0);
+                    ns.frequencies[base + a] = 1.0;
+                }
+            }
+        }
+        let report = compute_exploitability(&game, &swapped);
+        best_swap_gain = best_swap_gain.max(report.ip_strategy_ev - locked.ip_game_ev);
+    }
+    assert!(
+        (best_swap_gain - ip_gain).abs() < 0.05,
+        "IP's best-response gain must be attributable to the locked node: \
+         full gain {ip_gain}, best single-node swap gain {best_swap_gain}"
     );
 }
 
