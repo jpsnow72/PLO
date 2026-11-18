@@ -615,13 +615,16 @@ fn bad_lock_raises_measured_exploitability_river() {
 
 #[test]
 fn locks_json_parse_and_shape_errors() {
-    // River spot with a lock (root has 4 actions under the default menu).
+    // River spot with a lock. The bet menu is pinned explicitly so the
+    // root has 4 actions (check + 3 bets) regardless of the street's
+    // default menu — the fixture tests lock parsing, not defaults.
     let river_json = r#"{
         "board": "As Ks Qs 7d 2c",
         "oop_range": "Ts 9s 3c 4c:1, 3d 4d 5c 6c:1",
         "ip_range": "Jd Td 8h 9h:1",
         "pot": 100,
         "stacks": 100,
+        "bet_sizes": [0.33, 0.75, 1.0],
         "locks": [{"history": "root", "player": "OOP", "frequencies": [0.1, 0.2, 0.3, 0.4]}]
     }"#;
     let (spot, cfg) = parse_spot_json(river_json).unwrap();
@@ -648,6 +651,7 @@ fn locks_json_parse_and_shape_errors() {
         "ip_range": "Jd Td 8h 9h:1",
         "pot": 100,
         "stacks": 100,
+        "bet_sizes": [0.33, 0.75, 1.0],
         "locks": [{"node": "root", "player": "oop", "frequencies": [0.25, 0.25, 0.25, 0.25]}]
     }"#;
     let (_, cfg) = parse_spot_json(alias_json).unwrap();
