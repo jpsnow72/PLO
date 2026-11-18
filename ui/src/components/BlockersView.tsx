@@ -5,7 +5,7 @@ import type { SolveData, SolveNode } from '../lib/solveTree';
 import type { PathStep } from '../store/useStore';
 import { actionColor, prettyAction } from './actionStyle';
 import { CardPicker } from './CardPicker';
-import { CardChip, CardRow, SUIT_COLOR } from './CardChip';
+import { CardChip, CardRow, SUIT_GLYPH_COLOR } from './CardChip';
 import { FrequencyBar, pctText, SplitBar, type SplitSegment } from './FrequencyBar';
 
 interface Props {
@@ -353,7 +353,7 @@ export function BlockersView({ data, node, path, boardCards }: Props) {
             <div key={suit} className="flex items-center gap-1.5">
               <span
                 className="w-5 shrink-0 text-center text-sm"
-                style={{ color: SUIT_COLOR[suit] }}
+                style={{ color: SUIT_GLYPH_COLOR[suit] }}
                 aria-hidden="true"
               >
                 {SUIT_SYMBOL[suit]}

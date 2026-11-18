@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { cardName, RANKS_DESC, SUIT_SYMBOL, type Card, type Suit } from '../lib/cards';
-import { CardChip, SUIT_COLOR } from './CardChip';
+import { CardChip, SUIT_GLYPH_COLOR } from './CardChip';
 
 const SUIT_ROWS: { suit: Suit; name: string }[] = [
   { suit: 's', name: 'Spades' },
@@ -98,7 +98,7 @@ export function CardPicker({
             <div key={suit} className="flex items-center gap-1.5">
               <span
                 className="w-5 shrink-0 text-center text-sm"
-                style={{ color: SUIT_COLOR[suit] }}
+                style={{ color: SUIT_GLYPH_COLOR[suit] }}
                 aria-label={name}
                 title={name}
               >
