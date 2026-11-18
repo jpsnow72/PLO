@@ -16,6 +16,12 @@
 //! the no-rake 6-max family's GTO Wizard cEV anchor targets, its set ids
 //! and `rake` recording, and raked-family id stability under the new
 //! config.
+//!
+//! The v1.3 tests load data/preflop/ranges-config-v1.3.json: the 8-max
+//! families for both rake variants — the players-behind seat mapping
+//! against the 6-max/9-max targets, all-derived labelling with empty
+//! provenance sources, `rake` + `table_size` recording on built sets,
+//! and v1.2-family stability under the new config.
 
 use plo_solve::ranges::{
     action_freqs, build_continuation_set, build_continuation_set_styled, build_response_set,
@@ -44,6 +50,15 @@ fn load_config_v12() -> RangesConfig {
     RangesConfig::from_json_text(&text).expect("parse ranges-config-v1.2.json")
 }
 
+fn load_config_v13() -> RangesConfig {
+    let path = format!(
+        "{}/../../../data/preflop/ranges-config-v1.3.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let text = std::fs::read_to_string(&path).expect("read ranges-config-v1.3.json");
+    RangesConfig::from_json_text(&text).expect("parse ranges-config-v1.3.json")
+}
+
 fn small_samples(
     cfg: &RangesConfig,
     vs_random: usize,
@@ -60,6 +75,14 @@ fn small_samples(
     }
     if let Some(nr) = &mut c.norake {
         if let Some(cont) = &mut nr.continuations {
+            cont.samples_vs_three_bettor = vs_three_bettor;
+        }
+    }
+    if let Some(em) = &mut c.eightmax {
+        if let Some(cont) = &mut em.raked.continuations {
+            cont.samples_vs_three_bettor = vs_three_bettor;
+        }
+        if let Some(cont) = &mut em.norake.continuations {
             cont.samples_vs_three_bettor = vs_three_bettor;
         }
     }
@@ -681,6 +704,7 @@ fn norake_sets_hit_targets_and_validate() {
         matchup,
         cont,
         &family,
+        "6max",
     )
     .expect("no-rake continuation set");
     assert_eq!(cdoc.id, "constructed-v1.2-6max-norake-btn-vs-bb-3bet");
@@ -767,4 +791,382 @@ fn v12_raked_family_cites_gtw_raked_anchors_informational_only() {
         .expect("top-level source name")
         .contains("PLO.com"));
     assert_eq!(validate_rangeset(&parsed), Vec::<String>::new());
+}
+
+// ---------------------------------------------------------------------
+// v1.3: the 8-max families (both rake variants), derived by mapping.
+// ---------------------------------------------------------------------
+
+#[test]
+fn v13_config_carries_eightmax_families_derived_by_mapping() {
+    let cfg = load_config_v13();
+    assert_eq!(cfg.version, "ranges-config-v1.3");
+    // The v1.2 config has no 8-max section and no 8-max families.
+    let v12 = load_config_v12();
+    assert!(v12.eightmax.is_none(), "v1.2 config predates the 8-max families");
+    assert!(v12.eightmax_raked_family().is_none());
+    assert!(v12.eightmax_norake_family().is_none());
+
+    let em = cfg.eightmax.as_ref().expect("v1.3 config must carry the eightmax section");
+    assert_eq!(em.btn_vs, vec!["HJ".to_string(), "CO".to_string()]);
+    assert!(!cfg.derivation_note_8max.is_empty(), "8-max derivation note recorded");
+    for (name, variant) in [("raked", &em.raked), ("norake", &em.norake)] {
+        assert_eq!(variant.rfi_targets.len(), 7, "{name} 8max RFI targets (all non-BB seats)");
+        let resp_count: usize = variant.response_targets.values().map(|m| m.len()).sum();
+        assert_eq!(resp_count, 15, "{name} 8max responses: BB 7 + SB 6 + BTN 2");
+        assert_eq!(variant.response_targets["BB"].len(), 7);
+        assert_eq!(variant.response_targets["SB"].len(), 6);
+        assert_eq!(variant.response_targets["BTN"].len(), 2);
+        // Every 8-max target is a labelled derivation — no anchors exist.
+        for t in variant.rfi_targets.values() {
+            assert_eq!(t.kind, "derived", "{name} 8max RFI kinds are all derived");
+            assert!(t.band[0] < t.target && t.target < t.band[1], "target inside its band");
+        }
+        for m in variant.response_targets.values() {
+            for t in m.values() {
+                assert_eq!(t.kind, "derived", "{name} 8max response kinds are all derived");
+            }
+        }
+        // Continuations reuse the v1.1 internal parameters and matchups.
+        let cont = variant.continuations.as_ref().expect("8max continuations present");
+        assert!((cont.continue_fraction_of_open - 0.5).abs() < 1e-12);
+        assert!((cont.call_fraction_of_continue - 0.82).abs() < 1e-12);
+        assert!((cont.four_bet_fraction_of_continue - 0.18).abs() < 1e-12);
+        assert_eq!(cont.matchups.len(), 3, "{name} 8max continuation matchups");
+    }
+    // Continuation set ids carry the v1.3 prefixes.
+    let raked_cont = em.raked.continuations.as_ref().unwrap();
+    let raked_ids: Vec<String> =
+        raked_cont.matchups.iter().map(|m| raked_cont.set_id(m)).collect();
+    assert_eq!(
+        raked_ids,
+        vec![
+            "constructed-v1.3-8max-btn-vs-bb-3bet".to_string(),
+            "constructed-v1.3-8max-btn-vs-sb-3bet".to_string(),
+            "constructed-v1.3-8max-co-vs-btn-3bet".to_string(),
+        ]
+    );
+    let norake_cont = em.norake.continuations.as_ref().unwrap();
+    let norake_ids: Vec<String> =
+        norake_cont.matchups.iter().map(|m| norake_cont.set_id(m)).collect();
+    assert_eq!(
+        norake_ids,
+        vec![
+            "constructed-v1.3-8max-norake-btn-vs-bb-3bet".to_string(),
+            "constructed-v1.3-8max-norake-btn-vs-sb-3bet".to_string(),
+            "constructed-v1.3-8max-norake-co-vs-btn-3bet".to_string(),
+        ]
+    );
+
+    // The seat mapping, raked variant: MP (5 behind) takes the 6-max UTG
+    // values, HJ (4 behind) the 6-max MP values, CO/BTN/SB carry.
+    let r6 = &cfg.rfi_targets["6max"];
+    assert_eq!(em.raked.rfi_targets["MP"].target, r6["UTG"].target);
+    assert_eq!(em.raked.rfi_targets["MP"].band, r6["UTG"].band);
+    assert_eq!(em.raked.rfi_targets["HJ"].target, r6["MP"].target);
+    assert_eq!(em.raked.rfi_targets["CO"].target, r6["CO"].target);
+    assert_eq!(em.raked.rfi_targets["BTN"].target, r6["BTN"].target);
+    assert_eq!(em.raked.rfi_targets["SB"].target, r6["SB"].target);
+    // The two new seats take the 9-max derivation's same-behind-count
+    // values: UTG+1 (6 behind) = 9-max UTG+2, UTG (7 behind) = 9-max UTG+1.
+    let r9 = &cfg.rfi_targets["9max"];
+    assert_eq!(em.raked.rfi_targets["UTG+1"].target, r9["UTG+2"].target);
+    assert_eq!(em.raked.rfi_targets["UTG"].target, r9["UTG+1"].target);
+    // Raked responses: carried seats keep their values; the new seats
+    // follow the 9-max derivation's response slots.
+    let resp6 = &cfg.response_targets["6max"];
+    assert_eq!(em.raked.response_targets["BB"]["BTN"].call, resp6["BB"]["BTN"].call);
+    assert_eq!(em.raked.response_targets["BB"]["MP"].three_bet, resp6["BB"]["MP"].three_bet);
+    assert_eq!(em.raked.response_targets["BB"]["UTG+1"].call, resp6["BB"]["UTG"].call);
+    assert_eq!(
+        em.raked.response_targets["BB"]["UTG"].call,
+        cfg.response_targets["9max"]["BB"]["UTG+1"].call
+    );
+
+    // The seat mapping, no-rake variant: derived from the no-rake anchors.
+    let nr = cfg.norake.as_ref().expect("norake section");
+    assert_eq!(em.norake.rfi_targets["MP"].target, nr.rfi_targets["UTG"].target);
+    assert_eq!(em.norake.rfi_targets["HJ"].target, nr.rfi_targets["MP"].target);
+    assert_eq!(em.norake.rfi_targets["BTN"].target, nr.rfi_targets["BTN"].target);
+    assert_eq!(em.norake.rfi_targets["SB"].target, nr.rfi_targets["SB"].target);
+    // The new seats step down from the no-rake UTG anchor (-2pp per seat).
+    assert_eq!(em.norake.rfi_targets["UTG+1"].target, 0.165);
+    assert_eq!(em.norake.rfi_targets["UTG"].target, 0.145);
+    assert_eq!(em.norake.response_targets["BB"]["MP"].call, nr.response_targets["BB"]["UTG"].call);
+    assert_eq!(em.norake.response_targets["BB"]["SB"].call, nr.response_targets["BB"]["SB"].call);
+    assert_eq!(em.norake.response_targets["BB"]["SB"].call, 0.748);
+
+    // Family styling: like 9-max, the 8-max families cite no sources and
+    // record the derivation; both record their rake variant.
+    let fam_r = cfg.eightmax_raked_family().expect("raked 8max family");
+    assert_eq!(fam_r.id_prefix, "constructed-v1.3-8max");
+    assert_eq!(fam_r.rake, RAKE_RAKED);
+    assert!(fam_r.sources.is_empty(), "derived sets cite no sources");
+    assert_eq!(fam_r.derivation.as_deref(), Some(cfg.derivation_note_8max.as_str()));
+    let fam_n = cfg.eightmax_norake_family().expect("no-rake 8max family");
+    assert_eq!(fam_n.id_prefix, "constructed-v1.3-8max-norake");
+    assert_eq!(fam_n.rake, RAKE_NO_RAKE);
+    assert!(fam_n.sources.is_empty(), "derived sets cite no sources");
+    assert_eq!(fam_n.derivation.as_deref(), Some(cfg.derivation_note_8max.as_str()));
+
+    // The v1.2 families are untouched by the v1.3 config.
+    assert_eq!(cfg.rfi_targets["6max"]["BTN"].target, v12.rfi_targets["6max"]["BTN"].target);
+    let nr12 = v12.norake.as_ref().unwrap();
+    assert_eq!(nr.rfi_targets["BTN"].target, nr12.rfi_targets["BTN"].target);
+    assert_eq!(
+        nr.response_targets["BB"]["BTN"].call,
+        nr12.response_targets["BB"]["BTN"].call
+    );
+}
+
+#[test]
+fn eightmax_rfi_sets_hit_targets_and_validate() {
+    let cfg = load_config_v13();
+    let test_cfg = small_samples(&cfg, 800, 400, 0, 0);
+    let classes = score_all_classes(&test_cfg);
+    let em = test_cfg.eightmax.as_ref().expect("eightmax section");
+    // Raked UTG+1 (the slug edge case) at its derived target.
+    let fam_r = test_cfg.eightmax_raked_family().unwrap();
+    let doc = build_rfi_set_styled(
+        &test_cfg,
+        &classes,
+        "8max",
+        "UTG+1",
+        &em.raked.rfi_targets["UTG+1"],
+        &fam_r,
+    )
+    .expect("raked 8max UTG+1 RFI");
+    assert_eq!(doc.id, "constructed-v1.3-8max-utgplus1-rfi");
+    assert_eq!(doc.table_size, "8max");
+    assert_eq!(doc.rake, RAKE_RAKED);
+    assert!(
+        (doc.achieved["raise"] - 0.16).abs() <= 0.005,
+        "raked 8max UTG+1 raise {} vs derived target 0.16",
+        doc.achieved["raise"]
+    );
+    let parsed = JsonValue::parse(&doc.to_json(&test_cfg)).expect("emitted JSON parses");
+    assert_eq!(parsed.get("rake").and_then(|v| v.as_str()), Some("raked"));
+    assert_eq!(parsed.get("table_size").and_then(|v| v.as_str()), Some("8max"));
+    let prov = parsed.get("provenance").expect("provenance block present");
+    let sources = prov.get("sources").and_then(|v| v.as_array()).expect("sources array");
+    assert!(sources.is_empty(), "derived 8-max sets cite no sources");
+    assert_eq!(
+        prov.get("derivation").and_then(|v| v.as_str()),
+        Some(test_cfg.derivation_note_8max.as_str()),
+        "8-max sets record the seat-mapping derivation"
+    );
+    // Derived sets carry no top-level transcribed-chart source block.
+    assert!(parsed.get("source").is_none(), "derived sets have no top-level source");
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", doc.id, errors);
+    // Raked SB plays the sb_play context under its own id suffix.
+    let sb_doc = build_rfi_set_styled(
+        &test_cfg,
+        &classes,
+        "8max",
+        "SB",
+        &em.raked.rfi_targets["SB"],
+        &fam_r,
+    )
+    .expect("raked 8max SB play");
+    assert_eq!(sb_doc.id, "constructed-v1.3-8max-sb-sbplay");
+    assert_eq!(sb_doc.context, "sb_play");
+    let parsed = JsonValue::parse(&sb_doc.to_json(&test_cfg)).expect("emitted JSON parses");
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", sb_doc.id, errors);
+    // No-rake MP RFI takes the no-rake UTG anchor value (0.185).
+    let fam_n = test_cfg.eightmax_norake_family().unwrap();
+    let ndoc = build_rfi_set_styled(
+        &test_cfg,
+        &classes,
+        "8max",
+        "MP",
+        &em.norake.rfi_targets["MP"],
+        &fam_n,
+    )
+    .expect("no-rake 8max MP RFI");
+    assert_eq!(ndoc.id, "constructed-v1.3-8max-norake-mp-rfi");
+    assert_eq!(ndoc.table_size, "8max");
+    assert_eq!(ndoc.rake, RAKE_NO_RAKE);
+    assert!(
+        (ndoc.achieved["raise"] - 0.185).abs() <= 0.005,
+        "no-rake 8max MP raise {} vs derived target 0.185",
+        ndoc.achieved["raise"]
+    );
+    let parsed = JsonValue::parse(&ndoc.to_json(&test_cfg)).expect("emitted JSON parses");
+    assert_eq!(parsed.get("rake").and_then(|v| v.as_str()), Some("no-rake"));
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", ndoc.id, errors);
+}
+
+#[test]
+fn eightmax_response_and_continuation_validate() {
+    let cfg = load_config_v13();
+    let test_cfg = small_samples(&cfg, 800, 400, 2000, 2000);
+    let classes = score_all_classes(&test_cfg);
+    let em = test_cfg.eightmax.as_ref().expect("eightmax section");
+    let fam_r = test_cfg.eightmax_raked_family().unwrap();
+    // Raked BTN RFI -> BB vs BTN response -> BTN vs BB continuation.
+    let btn_doc = build_rfi_set_styled(
+        &test_cfg,
+        &classes,
+        "8max",
+        "BTN",
+        &em.raked.rfi_targets["BTN"],
+        &fam_r,
+    )
+    .expect("raked 8max BTN RFI");
+    let ofreq = action_freqs(&btn_doc, &classes, "raise");
+    let pool = opener_pool(&classes, &ofreq);
+    let eq: Vec<f64> = classes
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            equity_vs_pool(
+                &c.class.representative,
+                &pool,
+                test_cfg.samples_vs_opener,
+                test_cfg.seed ^ (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15),
+            )
+        })
+        .collect();
+    let bb_doc = build_response_set_styled(
+        &test_cfg,
+        &classes,
+        &eq,
+        "8max",
+        "BB",
+        "BTN",
+        &em.raked.response_targets["BB"]["BTN"],
+        &fam_r,
+    )
+    .expect("raked 8max BB vs BTN");
+    assert_eq!(bb_doc.id, "constructed-v1.3-8max-bb-vs-btn");
+    assert_eq!(bb_doc.table_size, "8max");
+    assert!(
+        (bb_doc.achieved["three_bet"] - 0.09).abs() <= 0.005,
+        "raked 8max BB 3bet {} vs derived target 0.09",
+        bb_doc.achieved["three_bet"]
+    );
+    assert!(
+        (bb_doc.achieved["call"] - 0.30).abs() <= 0.005,
+        "raked 8max BB call {} vs derived target 0.30",
+        bb_doc.achieved["call"]
+    );
+    let parsed = JsonValue::parse(&bb_doc.to_json(&test_cfg)).expect("emitted JSON parses");
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", bb_doc.id, errors);
+    // The continuation document records table_size 8max and validates
+    // against the schema's 8-max position list.
+    let cont = em.raked.continuations.as_ref().expect("raked 8max continuations");
+    let matchup = &cont.matchups[0];
+    assert_eq!(matchup.opener_rfi_set, btn_doc.id);
+    assert_eq!(matchup.three_bettor_set, bb_doc.id);
+    let tb_freq = action_freqs(&bb_doc, &classes, "three_bet");
+    let tb_pool = opener_pool(&classes, &tb_freq);
+    let eq_tb: Vec<f64> = classes
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            equity_vs_pool(
+                &c.class.representative,
+                &tb_pool,
+                cont.samples_vs_three_bettor,
+                test_cfg.seed ^ (i as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F),
+            )
+        })
+        .collect();
+    let cdoc = build_continuation_set_styled(
+        &test_cfg,
+        &classes,
+        &eq_tb,
+        &ofreq,
+        matchup,
+        cont,
+        &fam_r,
+        "8max",
+    )
+    .expect("raked 8max continuation set");
+    assert_eq!(cdoc.id, "constructed-v1.3-8max-btn-vs-bb-3bet");
+    assert_eq!(cdoc.table_size, "8max");
+    assert_eq!(cdoc.rake, RAKE_RAKED);
+    assert_eq!(cdoc.target_kind, "internal");
+    let want_call = cont.continue_fraction_of_open * cont.call_fraction_of_continue;
+    let want_fb = cont.continue_fraction_of_open * cont.four_bet_fraction_of_continue;
+    assert!(
+        (cdoc.achieved["call"] - want_call).abs() <= 0.005,
+        "{} call {} vs internal target {}",
+        cdoc.id,
+        cdoc.achieved["call"],
+        want_call
+    );
+    assert!(
+        (cdoc.achieved["four_bet"] - want_fb).abs() <= 0.005,
+        "{} four_bet {} vs internal target {}",
+        cdoc.id,
+        cdoc.achieved["four_bet"],
+        want_fb
+    );
+    let parsed = JsonValue::parse(&cdoc.to_json(&test_cfg)).expect("emitted JSON parses");
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", cdoc.id, errors);
+    // The config-level matchup lookup finds the 8-max continuation.
+    let (found_cont, found_m) = test_cfg
+        .continuation_matchup("constructed-v1.3-8max-btn-vs-bb-3bet")
+        .expect("continuation_matchup must find 8-max matchups");
+    assert_eq!(found_m.three_bettor_set, bb_doc.id);
+    assert_eq!(found_cont.id_prefix, "constructed-v1.3-8max");
+    // No-rake BB vs SB: the widest derived defense (call 74.8%, carried
+    // from the no-rake 6-max anchor).
+    let fam_n = test_cfg.eightmax_norake_family().unwrap();
+    let sb_doc = build_rfi_set_styled(
+        &test_cfg,
+        &classes,
+        "8max",
+        "SB",
+        &em.norake.rfi_targets["SB"],
+        &fam_n,
+    )
+    .expect("no-rake 8max SB play");
+    assert_eq!(sb_doc.id, "constructed-v1.3-8max-norake-sb-sbplay");
+    let sfreq = action_freqs(&sb_doc, &classes, "raise");
+    let spool = opener_pool(&classes, &sfreq);
+    let seq: Vec<f64> = classes
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            equity_vs_pool(
+                &c.class.representative,
+                &spool,
+                test_cfg.samples_vs_opener,
+                test_cfg.seed ^ (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15),
+            )
+        })
+        .collect();
+    let nbb = build_response_set_styled(
+        &test_cfg,
+        &classes,
+        &seq,
+        "8max",
+        "BB",
+        "SB",
+        &em.norake.response_targets["BB"]["SB"],
+        &fam_n,
+    )
+    .expect("no-rake 8max BB vs SB");
+    assert_eq!(nbb.id, "constructed-v1.3-8max-norake-bb-vs-sb");
+    assert_eq!(nbb.rake, RAKE_NO_RAKE);
+    assert!(
+        (nbb.achieved["three_bet"] - 0.098).abs() <= 0.005,
+        "no-rake 8max BB 3bet {} vs derived target 0.098",
+        nbb.achieved["three_bet"]
+    );
+    assert!(
+        (nbb.achieved["call"] - 0.748).abs() <= 0.005,
+        "no-rake 8max BB call {} vs derived target 0.748",
+        nbb.achieved["call"]
+    );
+    let parsed = JsonValue::parse(&nbb.to_json(&test_cfg)).expect("emitted JSON parses");
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", nbb.id, errors);
 }
