@@ -23,6 +23,7 @@ use std::rc::Rc;
 use plo_cards::{Card, HandMask};
 use plo_eval::{eval_omaha_pairs_triples, extract_board_triples, HandRank, PloRange, WeightedCombo};
 
+use crate::action_ev::{compute_action_evs_turn, NodeActionEvs};
 use crate::br::{compute_exploitability_turn, ExploitabilityReport};
 use crate::cfr::{ComboEv, DcfrConfig, NodeStrategy};
 use crate::locks::{resolve_locks_turn, NodeLock};
@@ -629,6 +630,10 @@ pub struct TurnSolveResult {
     /// The nodelocks this solve ran under (empty = unlocked). A locked
     /// profile is not an equilibrium; consumers must badge it LOCKED.
     pub locks: Vec<NodeLock>,
+    /// Per-action conditional EVs at every decision node under the final
+    /// average profile (issue #8; see [`crate::action_ev`]). For a locked
+    /// solve these price the locked profile as-is.
+    pub action_evs: Vec<NodeActionEvs>,
 }
 
 /// CSR lookup table of unblocked opponent combo indices partitioned into
@@ -1317,6 +1322,8 @@ fn solve_turn_impl(
         .map(|(combo, ev)| ComboEv { combo, ev })
         .collect();
 
+    let action_evs = compute_action_evs_turn(game, &strategies);
+
     TurnSolveResult {
         strategies,
         oop_evs,
@@ -1326,6 +1333,7 @@ fn solve_turn_impl(
         iterations: iterations_done,
         exploitability,
         locks: config.locks.clone(),
+        action_evs,
     }
 }
 
