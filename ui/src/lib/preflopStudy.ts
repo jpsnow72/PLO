@@ -23,10 +23,12 @@
 import { parseCombo, type Card } from './cards';
 import {
   actionTotals,
+  DEFAULT_STACK_BB,
   multiplicityOf,
   openerOf,
   pairRankSummary,
   POSITION_ORDER,
+  stackOf,
   type PreflopClass,
   type PreflopClassTable,
   type PreflopIndex,
@@ -153,9 +155,26 @@ export interface StudySetOption {
   entry: PreflopSetIndexEntry;
   variant: RakeVariant;
   spot: SpotKind;
+  /**
+   * Stack depth of the set (v1.4 partition): stackOf the index entry,
+   * so a set whose entry carries no stack is a 100bb set. A drill
+   * session loads exactly one set, so it can never mix stacks within
+   * a session; the picker partitions on this facet so the 200bb
+   * deep200 sets and the 100bb sets of the same spot never shadow
+   * each other in selection either.
+   */
+  stack: number;
   /** Opener label for defense sets (id-derived until the doc loads). */
   opener: string | null;
 }
+
+/**
+ * The stack a fresh study selection starts on: the library's original
+ * depth (100bb) unless a hand-off names a specific set — the Quiz
+ * drill hand-off pins the handed-off set's own stack, so a deep set
+ * handed off by id still drills at its own depth.
+ */
+export const DEFAULT_STUDY_STACK = DEFAULT_STACK_BB;
 
 /** Every index entry usable by the drill, with its selection facets. */
 export function studySetOptions(index: PreflopIndex): StudySetOption[] {
@@ -167,6 +186,7 @@ export function studySetOptions(index: PreflopIndex): StudySetOption[] {
       entry,
       variant: variantOfSet(entry),
       spot,
+      stack: stackOf(entry),
       opener: spot === 'defense' ? openerFromSetId(entry.id) : null,
     });
   }

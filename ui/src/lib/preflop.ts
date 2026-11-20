@@ -47,6 +47,46 @@ export function rakeOf(entry: { rake?: RakeVariant }): RakeVariant {
   return entry.rake === 'no-rake' ? 'no-rake' : 'raked';
 }
 
+/** The library's original (and default) stack depth, in big blinds. */
+export const DEFAULT_STACK_BB = 100;
+
+/**
+ * Stack depth (v1.4): the deep200 family plays 200bb; every earlier
+ * family plays 100bb. The generator has written `stack_bb` since v1,
+ * but the field only became a *selection* dimension with v1.4, so
+ * readers treat a missing or non-finite value as the 100bb default
+ * rather than gating on it — gating on a new field's value is the
+ * past-bug class that once silently dropped the whole index (see the
+ * guard note below). The guards therefore keep `stack_bb` optional:
+ * when present it must be a number; when absent the entry is 100bb.
+ */
+export function stackOf(entry: { stack_bb?: number }): number {
+  return typeof entry.stack_bb === 'number' && Number.isFinite(entry.stack_bb)
+    ? entry.stack_bb
+    : DEFAULT_STACK_BB;
+}
+
+/** Stack depths present among `entries`, ascending (100bb first). */
+export function stacksIn(entries: readonly { stack_bb?: number }[]): number[] {
+  return [...new Set(entries.map((e) => stackOf(e)))].sort((a, b) => a - b);
+}
+
+/**
+ * The stack selection that survives a control change: keep `current`
+ * when sets exist at it, else fall back to the shallowest available
+ * stack (100bb whenever it exists) — the availability rule the
+ * page's keep-valid effects apply to every selector. Null when no
+ * sets exist at all.
+ */
+export function resolveStack(
+  entries: readonly { stack_bb?: number }[],
+  current: number,
+): number | null {
+  const available = stacksIn(entries);
+  if (available.length === 0) return null;
+  return available.includes(current) ? current : (available[0] ?? null);
+}
+
 export interface PreflopSource {
   name: string;
   url?: string;
@@ -70,7 +110,8 @@ export interface PreflopSetIndexEntry {
   table_size: TableSize;
   position: string;
   context: SetContext;
-  stack_bb: number;
+  /** Stack depth (v1.4 selection dimension); absent = 100bb — see stackOf. */
+  stack_bb?: number;
   /** Rake variant (v1.2); absent on pre-v1.2 indexes = 'raked'. */
   rake?: RakeVariant;
   source?: PreflopSource;
@@ -95,7 +136,8 @@ export interface PreflopSetDoc {
   position: string;
   context: SetContext;
   context_detail?: string;
-  stack_bb: number;
+  /** Stack depth (v1.4 selection dimension); absent = 100bb — see stackOf. */
+  stack_bb?: number;
   /** Rake variant (v1.2); absent on pre-v1.2 documents = 'raked'. */
   rake?: RakeVariant;
   rake_note: string;
@@ -165,7 +207,9 @@ const CONTEXTS: readonly string[] = ['rfi', 'vs_rfi', 'three_bet', 'sb_play', 'v
 // check the fields they consume and ignore extras, so a new optional
 // field can never reject the whole index (the failure mode the
 // vs_three_bet note above records). rakeOf() above interprets the value,
-// defaulting pre-v1.2 data to 'raked'.
+// defaulting pre-v1.2 data to 'raked'. The v1.4 'stack_bb' field gets
+// the same treatment: it must be a number WHEN PRESENT, but an entry
+// without it is a 100bb set (stackOf), never a rejected index.
 
 export function isPreflopIndex(v: unknown): v is PreflopIndex {
   if (!isRecord(v) || !Array.isArray(v.rangesets)) return false;
@@ -177,7 +221,7 @@ export function isPreflopIndex(v: unknown): v is PreflopIndex {
       TABLE_SIZES.includes(String(e.table_size)) &&
       typeof e.position === 'string' &&
       CONTEXTS.includes(String(e.context)) &&
-      isNumber(e.stack_bb),
+      (e.stack_bb === undefined || isNumber(e.stack_bb)),
   );
 }
 
@@ -188,7 +232,7 @@ export function isPreflopSetDoc(v: unknown): v is PreflopSetDoc {
     !TABLE_SIZES.includes(String(v.table_size)) ||
     typeof v.position !== 'string' ||
     !CONTEXTS.includes(String(v.context)) ||
-    !isNumber(v.stack_bb) ||
+    (v.stack_bb !== undefined && !isNumber(v.stack_bb)) ||
     typeof v.rake_note !== 'string' ||
     !isRecord(v.hands)
   ) {
@@ -383,7 +427,10 @@ export function threeBettorOf(entry: Pick<PreflopSetIndexEntry, 'id'>): string |
 
 /** Human label for a set, used in pickers and headers. */
 export function setLabel(
-  entry: Pick<PreflopSetIndexEntry, 'table_size' | 'position' | 'context' | 'rake'> & {
+  entry: Pick<
+    PreflopSetIndexEntry,
+    'table_size' | 'position' | 'context' | 'rake' | 'stack_bb'
+  > & {
     context_detail?: string;
   },
 ): string {
@@ -408,10 +455,50 @@ export function setLabel(
     default:
       base = `${entry.table_size} · ${entry.position}`;
   }
+  const parts = [base];
+  // Stack is named only where it disambiguates: 100bb is the library's
+  // default depth and stays unmarked (the pre-v1.4 labels read exactly
+  // as before); a deeper set carries its "200bb" tag so the two depths
+  // of the same spot can never be confused in a picker or header.
+  if (stackOf(entry) !== DEFAULT_STACK_BB) parts.push(`${stackOf(entry)}bb`);
   // The rake variant is part of the set's identity once the data carries
   // it (v1.2 indexes/documents); legacy data without the field keeps the
   // historical label unchanged.
-  return entry.rake ? `${base} · ${RAKE_LABEL[rakeOf(entry)]}` : base;
+  if (entry.rake) parts.push(RAKE_LABEL[rakeOf(entry)]);
+  return parts.join(' · ');
+}
+
+export interface GroupSelection {
+  tableSize: TableSize;
+  rake: RakeVariant;
+  stack: number;
+  contexts: readonly SetContext[];
+}
+
+/**
+ * The Preflop page's scenario pool: the index entries for one
+ * (table, rake, stack, context-group) selection.
+ *
+ * LOAD-BEARING ORDER: table, rake and stack all filter BEFORE any
+ * position/opener selection runs over the result. Each dimension
+ * exists because two variants of the same spot otherwise shadow each
+ * other — both BB-vs-BTN ids end in "-vs-btn" and downstream
+ * selection picks the first match. Rake was the v1.2 instance; stack
+ * is the v1.4 instance (the deep200 no-rake sets share every other
+ * facet with the v1.2 100bb no-rake sets). Never select a position
+ * or opener from a pool that has not been partitioned this way.
+ */
+export function selectGroupSets(
+  index: PreflopIndex,
+  sel: GroupSelection,
+): PreflopSetIndexEntry[] {
+  return index.rangesets.filter(
+    (e) =>
+      e.table_size === sel.tableSize &&
+      rakeOf(e) === sel.rake &&
+      stackOf(e) === sel.stack &&
+      sel.contexts.includes(e.context),
+  );
 }
 
 /** Position display order per table size. */

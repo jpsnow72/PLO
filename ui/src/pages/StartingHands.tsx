@@ -17,6 +17,7 @@ import {
   setLabel,
   setTotalCombos,
   sortPositions,
+  stackOf,
   type PreflopClass,
   type PreflopIndex,
   type PreflopSetDoc,
@@ -25,6 +26,7 @@ import {
 import {
   buildDrillPool,
   classTableByHand,
+  DEFAULT_STUDY_STACK,
   drawWeighted,
   gradePreflopAnswer,
   personalForSpot,
@@ -174,6 +176,7 @@ export function StartingHandsPage() {
   // ---- setup selections ----
   const [size, setSize] = useState<TableSize | ''>('');
   const [variant, setVariant] = useState<RakeVariant | ''>('');
+  const [stack, setStack] = useState<number | ''>('');
   const [spot, setSpot] = useState<SpotKind | ''>('');
   const [position, setPosition] = useState('');
   const [openerSel, setOpenerSel] = useState('');
@@ -191,6 +194,7 @@ export function StartingHandsPage() {
     if (!opt) return; // index still loading — retry when options change
     setSize(opt.entry.table_size);
     setVariant(opt.variant);
+    setStack(opt.stack);
     setSpot(opt.spot);
     setPosition(opt.entry.position);
     if (opt.opener) setOpenerSel(opt.opener);
@@ -209,12 +213,29 @@ export function StartingHandsPage() {
       ),
     [options, size],
   );
-  const spotsFor = useMemo(
+  // Stacks on offer at this size+variant (200bb exists only at 6-max
+  // no-rake today). The stack facet partitions selection exactly like
+  // size and variant do: without it, the first match for a spot would
+  // silently be whichever depth the index happens to list first.
+  const stacksFor = useMemo(
     () =>
       [
         ...new Set(
           options
             .filter((o) => o.entry.table_size === size && o.variant === variant)
+            .map((o) => o.stack),
+        ),
+      ].sort((a, b) => a - b),
+    [options, size, variant],
+  );
+  const spotsFor = useMemo(
+    () =>
+      [
+        ...new Set(
+          options
+            .filter(
+              (o) => o.entry.table_size === size && o.variant === variant && o.stack === stack,
+            )
             .map((o) => o.spot),
         ),
       ].sort(
@@ -222,7 +243,7 @@ export function StartingHandsPage() {
           (['first-in', 'defense'] as SpotKind[]).indexOf(a) -
           (['first-in', 'defense'] as SpotKind[]).indexOf(b),
       ),
-    [options, size, variant],
+    [options, size, variant, stack],
   );
   const positionsFor = useMemo(
     () =>
@@ -231,14 +252,18 @@ export function StartingHandsPage() {
           ...new Set(
             options
               .filter(
-                (o) => o.entry.table_size === size && o.variant === variant && o.spot === spot,
+                (o) =>
+                  o.entry.table_size === size &&
+                  o.variant === variant &&
+                  o.stack === stack &&
+                  o.spot === spot,
               )
               .map((o) => o.entry.position),
           ),
         ],
         (size || '6max') as TableSize,
       ),
-    [options, size, variant, spot],
+    [options, size, variant, stack, spot],
   );
   const openersFor = useMemo(
     () =>
@@ -250,6 +275,7 @@ export function StartingHandsPage() {
                   (o) =>
                     o.entry.table_size === size &&
                     o.variant === variant &&
+                    o.stack === stack &&
                     o.spot === spot &&
                     o.entry.position === position,
                 )
@@ -257,7 +283,7 @@ export function StartingHandsPage() {
             ),
           ].sort()
         : [],
-    [options, size, variant, spot, position],
+    [options, size, variant, stack, spot, position],
   );
   const chosenOption = useMemo(
     () =>
@@ -265,11 +291,12 @@ export function StartingHandsPage() {
         (o) =>
           o.entry.table_size === size &&
           o.variant === variant &&
+          o.stack === stack &&
           o.spot === spot &&
           o.entry.position === position &&
           (spot !== 'defense' || (o.opener ?? '') === openerSel),
       ) ?? null,
-    [options, size, variant, spot, position, openerSel],
+    [options, size, variant, stack, spot, position, openerSel],
   );
 
   // Keep every selection valid as the option lists change.
@@ -281,6 +308,13 @@ export function StartingHandsPage() {
       setVariant(variantsForSize[0] ?? '');
     }
   }, [variantsForSize, variant]);
+  useEffect(() => {
+    if (stacksFor.length > 0 && !stacksFor.includes(stack as number)) {
+      // Default to the library's original depth when it exists at
+      // this size+variant; otherwise the shallowest stack on offer.
+      setStack(stacksFor.includes(DEFAULT_STUDY_STACK) ? DEFAULT_STUDY_STACK : (stacksFor[0] ?? ''));
+    }
+  }, [stacksFor, stack]);
   useEffect(() => {
     if (spotsFor.length > 0 && !spotsFor.includes(spot as SpotKind)) {
       setSpot(spotsFor[0] ?? '');
@@ -711,6 +745,20 @@ export function StartingHandsPage() {
                   </Pill>
                 ))}
               </PickerRow>
+              <PickerRow
+                label="Stack"
+                note={
+                  stacksFor.length > 1
+                    ? 'Deep-stack (200bb) sets exist at this size and variant. A session drills one set at one stack — stacks never mix inside a session.'
+                    : undefined
+                }
+              >
+                {stacksFor.map((s) => (
+                  <Pill key={s} active={stack === s} onClick={() => setStack(s)}>
+                    {`${s}bb`}
+                  </Pill>
+                ))}
+              </PickerRow>
               <PickerRow label="Spot">
                 {spotsFor.map((s) => (
                   <Pill key={s} active={spot === s} onClick={() => setSpot(s)}>
@@ -774,7 +822,7 @@ export function StartingHandsPage() {
                         ))}
                     </div>
                     <p className="mt-3 text-xs text-slate-500">
-                      Combo-weighted totals across the whole range · {doc.stack_bb}bb stacks
+                      Combo-weighted totals across the whole range · {stackOf(doc)}bb stacks
                       {docVariant
                         ? ` · Rake: ${VARIANT_LABEL[docVariant].toLowerCase()}${
                             docVariant !== chosenOption.variant
@@ -916,7 +964,7 @@ export function StartingHandsPage() {
               <span className="rounded bg-black/25 px-1.5 py-0.5">
                 {VARIANT_LABEL[variantOfSet(session.option.entry, sessionDoc)]}
               </span>
-              <span className="rounded bg-black/25 px-1.5 py-0.5">{sessionDoc.stack_bb}bb</span>
+              <span className="rounded bg-black/25 px-1.5 py-0.5">{stackOf(sessionDoc)}bb</span>
               <span className="rounded bg-black/25 px-1.5 py-0.5">constructed range</span>
             </div>
             <div className="mt-4">

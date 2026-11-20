@@ -8,6 +8,7 @@ import {
   actionTotals,
   classCombos,
   combosInAction,
+  DEFAULT_STACK_BB,
   featureTags,
   frequencyBreakdown,
   isSolveCompatible,
@@ -21,10 +22,14 @@ import {
   RAKE_VARIANTS,
   rakeOf,
   rankLabel,
+  resolveStack,
+  selectGroupSets,
   setLabel,
   setTotalCombos,
   solveActionForContext,
   sortPositions,
+  stackOf,
+  stacksIn,
   suitednessSummary,
   SUITEDNESS_FILTERS,
   threeBettorOf,
@@ -287,6 +292,7 @@ export function PreflopPage() {
 
   const [tableSize, setTableSize] = useState<TableSize>('6max');
   const [rake, setRake] = useState<RakeVariant>('raked');
+  const [stack, setStack] = useState<number>(DEFAULT_STACK_BB);
   const [group, setGroup] = useState<ContextGroup>('first-in');
   const [position, setPosition] = useState<string | null>(null);
   const [opener, setOpener] = useState<string | null>(null);
@@ -347,20 +353,39 @@ export function PreflopPage() {
     };
   }, [setApiOnline]);
 
-  const groupSets = useMemo<PreflopSetIndexEntry[]>(() => {
-    if (!index) return [];
-    // The rake filter is load-bearing, not cosmetic: with both variants
-    // catalogued, a position/context pair exists twice, and the selection
-    // below picks the first match — filtering by variant first is what
-    // keeps the raked and no-rake sets from shadowing each other.
-    // (Entries from a pre-v1.2 index carry no rake field = 'raked'.)
-    return index.rangesets.filter(
-      (e) =>
-        e.table_size === tableSize &&
-        rakeOf(e) === rake &&
-        GROUP_CONTEXTS[group].includes(e.context),
-    );
-  }, [index, tableSize, rake, group]);
+  // Stack options exist per (table, rake): 200bb sets exist only for
+  // 6-max no-rake today, so the pill row offers exactly the depths the
+  // current table+rake selection actually has sets at.
+  const stackBaseSets = useMemo(
+    () =>
+      index
+        ? index.rangesets.filter((e) => e.table_size === tableSize && rakeOf(e) === rake)
+        : [],
+    [index, tableSize, rake],
+  );
+  const stackOptions = useMemo(() => stacksIn(stackBaseSets), [stackBaseSets]);
+
+  // Keep the stack selection valid for the current table+rake: when
+  // the chosen stack has no sets there, fall back to an available
+  // stack rather than showing an empty page — the keep-valid rule
+  // every other selector on this page follows.
+  useEffect(() => {
+    const resolved = resolveStack(stackBaseSets, stack);
+    if (resolved !== null && resolved !== stack) setStack(resolved);
+  }, [stackBaseSets, stack]);
+
+  const groupSets = useMemo<PreflopSetIndexEntry[]>(
+    () =>
+      index
+        ? selectGroupSets(index, {
+            tableSize,
+            rake,
+            stack,
+            contexts: GROUP_CONTEXTS[group],
+          })
+        : [],
+    [index, tableSize, rake, stack, group],
+  );
 
   const positions = useMemo(
     () => sortPositions([...new Set(groupSets.map((e) => e.position))], tableSize),
@@ -764,14 +789,15 @@ export function PreflopPage() {
               <span className="w-24 text-xs font-semibold uppercase tracking-wide text-ink-faint">
                 Stack
               </span>
-              <span
-                aria-disabled="true"
-                className="rounded-full bg-navy-850 px-2.5 py-1 text-xs font-semibold text-ink ring-1 ring-table"
-              >
-                {selectedEntry ? `${selectedEntry.stack_bb}bb` : '100bb'}
-              </span>
+              {stackOptions.map((s) => (
+                <Pill key={s} active={stack === s} onClick={() => setStack(s)}>
+                  {`${s}bb`}
+                </Pill>
+              ))}
               <span className="text-xs text-ink-faint">
-                Every set in the library is 100bb — no other stack exists to select.
+                {stackOptions.length > 1
+                  ? 'Deep-stack (200bb) sets exist at this table and rake variant; switching stack switches the whole scenario.'
+                  : 'Every set at this table and rake variant is 100bb — no other stack exists to select.'}
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -928,7 +954,7 @@ export function PreflopPage() {
                   </h2>
                   <ApproximationBadge label="CONSTRUCTED" />
                   <span className="text-xs text-ink-faint">
-                    {setDoc.stack_bb}bb · {setDoc.id}
+                    {stackOf(setDoc)}bb · {setDoc.id}
                   </span>
                   {solveCompat ? (
                     <span className="ml-auto text-xs text-ink-dim">
