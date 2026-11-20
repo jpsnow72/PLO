@@ -39,6 +39,7 @@ use std::rc::Rc;
 use plo_cards::{Card, HandMask};
 use plo_eval::{PloRange, WeightedCombo};
 
+use crate::action_ev::{compute_action_evs_flop, FlopActionEvs};
 use crate::br::{compute_exploitability_flop, ExploitabilityReport};
 use crate::buckets::{assign_buckets, BucketAssignment};
 use crate::cfr::{ComboEv, DcfrConfig, NodeStrategy};
@@ -740,6 +741,11 @@ pub struct FlopSolveResult {
     /// their output history keys. A locked profile is not an equilibrium;
     /// consumers must badge it LOCKED.
     pub locks: Vec<NodeLock>,
+    /// Per-action conditional EVs at every decision node (flop street plus
+    /// every subtree) under the final average profile (issue #8; see
+    /// [`crate::action_ev`]). For a locked solve these price the locked
+    /// profile as-is.
+    pub action_evs: FlopActionEvs,
 }
 
 /// CSR table of unblocked opponent combo indices for flop fold evaluation.
@@ -1061,6 +1067,8 @@ pub fn solve_flop_with_threads(
         .map(|(combo, ev)| ComboEv { combo, ev })
         .collect();
 
+    let action_evs = compute_action_evs_flop(game, &flop_strategies, &subtree_strategies);
+
     FlopSolveResult {
         flop_strategies,
         subtree_strategies,
@@ -1071,6 +1079,7 @@ pub fn solve_flop_with_threads(
         iterations: config.max_iterations,
         exploitability,
         locks: config.locks.clone(),
+        action_evs,
     }
 }
 

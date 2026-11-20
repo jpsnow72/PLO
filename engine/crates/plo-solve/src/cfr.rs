@@ -8,6 +8,7 @@ use std::cmp::Ordering;
 
 use plo_eval::WeightedCombo;
 
+use crate::action_ev::{compute_action_evs_river, NodeActionEvs};
 use crate::br::{compute_exploitability, ExploitabilityReport};
 use crate::game::{Action, Node, NodeId, Player, RiverGame, TerminalNode};
 use crate::locks::{resolve_locks_river, NodeLock};
@@ -119,6 +120,10 @@ pub struct SolveResult {
     /// The nodelocks this solve ran under (empty = unlocked). A locked
     /// profile is not an equilibrium; consumers must badge it LOCKED.
     pub locks: Vec<NodeLock>,
+    /// Per-action conditional EVs at every decision node under the final
+    /// average profile (issue #8; see [`crate::action_ev`]). For a locked
+    /// solve these price the locked profile as-is.
+    pub action_evs: Vec<NodeActionEvs>,
 }
 
 /// Precomputed CSR lookup table of unblocked opponent combo indices partitioned into
@@ -499,6 +504,8 @@ pub fn solve_river(game: &RiverGame, config: &DcfrConfig) -> SolveResult {
         .map(|(combo, ev)| ComboEv { combo, ev })
         .collect();
 
+    let action_evs = compute_action_evs_river(game, &strategies);
+
     SolveResult {
         strategies,
         oop_evs,
@@ -508,6 +515,7 @@ pub fn solve_river(game: &RiverGame, config: &DcfrConfig) -> SolveResult {
         iterations: iterations_done,
         exploitability,
         locks: config.locks.clone(),
+        action_evs,
     }
 }
 

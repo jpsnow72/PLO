@@ -7,6 +7,7 @@
 //! at chance nodes across worker threads (E5a, [`parallel`]) with
 //! bit-identical results at any thread count.
 
+pub mod action_ev;
 pub mod br;
 pub mod buckets;
 pub mod ranges;
@@ -18,6 +19,10 @@ pub mod locks;
 pub mod parallel;
 pub mod turn;
 
+pub use action_ev::{
+    compute_action_evs_flop, compute_action_evs_river, compute_action_evs_turn, FlopActionEvs,
+    NodeActionEvs,
+};
 pub use br::{
     compute_exploitability, compute_exploitability_flop, compute_exploitability_turn,
     ExploitabilityReport,
