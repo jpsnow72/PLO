@@ -13,10 +13,12 @@ import { NodeStrip } from '../components/NodeStrip';
 import { CategoriesRail, EvBucketsRail } from '../components/RailInsights';
 import { RangeGrid } from '../components/RangeGrid';
 import { RangesView } from '../components/RangesView';
+import { ShortcutsHelp } from '../components/ShortcutsHelp';
 import { StrategyTables } from '../components/StrategyTables';
 import { TableView } from '../components/TableView';
 import { parseCard } from '../lib/cards';
 import { aggregateFrequencies, rangeEv } from '../lib/solveTree';
+import { useExplorerHotkeys } from '../lib/useExplorerHotkeys';
 import { currentNodeOf, useStore } from '../store/useStore';
 
 function terminalMessage(actionLabel: string): string {
@@ -50,6 +52,11 @@ export function ExplorerPage() {
   const [selectedCombo, setSelectedCombo] = useState<string | null>(null);
   const [view, setView] = useState<ExplorerView>('strategy');
   const [pickerDismissed, setPickerDismissed] = useState(false);
+
+  // Keyboard navigation: ←/→ walk the line, 1–5 take an action
+  // (issue #25). The hook guards itself (typing, open picker,
+  // modifiers) and owns the forward-history stack.
+  useExplorerHotkeys();
 
   useEffect(() => {
     if (loadStatus === 'idle') void loadSample();
@@ -164,6 +171,7 @@ export function ExplorerPage() {
               <span className="font-normal text-ink-dim">— pick an action to follow the line</span>
             </h2>
             <span className="ml-auto flex items-center gap-1">
+              <ShortcutsHelp />
               <button
                 type="button"
                 onClick={resetPath}

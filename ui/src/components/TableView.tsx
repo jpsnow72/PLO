@@ -112,12 +112,14 @@ export function TableView({ solve, node, path, boardCards, terminalAction, pendi
           presence={presence.OOP}
           toAct={!handOver && node.player === 'OOP'}
         />
-        {/* The felt: oval table in our palette — card-table green felt in
-            a deep-navy rim. Board and pot live in the middle. */}
+        {/* The felt: oval table in a deep-navy rim. The felt colour is
+            the --felt-* tokens (Settings appearance choice, issue
+            #25) — card-table green by default. Board and pot live in
+            the middle. */}
         <div
           className="-my-5 w-full max-w-2xl rounded-[50%] border-[10px] border-navy-800"
           style={{
-            background: 'radial-gradient(ellipse at center, #2E9E6B 0%, #248457 72%)',
+            background: 'radial-gradient(ellipse at center, var(--felt-hi) 0%, var(--felt-lo) 72%)',
             boxShadow: 'inset 0 0 0 2px rgba(10,22,40,0.55), inset 0 0 44px rgba(10,22,40,0.45)',
           }}
         >

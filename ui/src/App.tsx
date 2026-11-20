@@ -12,7 +12,7 @@ import { RunnerPage } from './pages/Runner';
 import { SolverPage } from './pages/Solver';
 import { SpotPickerPage } from './pages/SpotPicker';
 import { StartingHandsPage } from './pages/StartingHands';
-import { SettingsPage } from './pages/Stubs';
+import { SettingsPage } from './pages/Settings';
 import { useStore } from './store/useStore';
 
 const NAV: { to: string; label: string; end?: boolean }[] = [

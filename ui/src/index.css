@@ -33,10 +33,79 @@
   --suit-diamonds: #4e9be0;
   --suit-clubs: #43b581;
 
+  /* Ink printed on each suit tile (Appearance, issue #25). Navy on
+     every tile in the four-colour deck; the classic scheme below
+     prints light ink on its dark spades/clubs tiles instead. */
+  --ink-on-spades: #0a1628;
+  --ink-on-hearts: #0a1628;
+  --ink-on-diamonds: #0a1628;
+  --ink-on-clubs: #0a1628;
+
+  /* Suit colour as TEXT on the dark panels (card-picker and blocker
+     heatmap row labels). Identical to the tile colours in the
+     four-colour deck; the classic scheme lightens its dark suits so
+     the labels stay readable on navy. */
+  --suit-glyph-spades: #c7d0dc;
+  --suit-glyph-hearts: #e05b4b;
+  --suit-glyph-diamonds: #4e9be0;
+  --suit-glyph-clubs: #43b581;
+
+  /* Card-back palette — CardBack reads these (variants below). */
+  --cardback-bg: #12233c;
+  --cardback-line: rgba(46, 158, 107, 0.28);
+  --cardback-ring: rgba(46, 158, 107, 0.45);
+  --cardback-edge: #0a1628;
+
+  /* Table felt — the Table view's radial gradient reads these
+     (variants below). */
+  --felt-hi: #2e9e6b;
+  --felt-lo: #248457;
+
   /* Action colours (strategy bars / grid / tables):
      check = green, bet/raise = red family, call = blue, fold = slate */
   --action-check: #2e9e6b;
   --action-raise: #de6b4f;
+}
+
+/* Appearance variants (issue #25): lib/appearance sets these
+   attributes on <html> from the saved local preference. No
+   attribute = the shipped defaults above. */
+
+/* Classic two-colour deck: hearts/diamonds share the red,
+   spades/clubs share a near-black tile printed with light ink. */
+html[data-deck='classic'] {
+  --suit-spades: #252c35;
+  --suit-clubs: #252c35;
+  --suit-diamonds: #e05b4b;
+  --ink-on-spades: #e9eff7;
+  --ink-on-clubs: #e9eff7;
+  --suit-glyph-spades: #93a5bc;
+  --suit-glyph-clubs: #93a5bc;
+  --suit-glyph-diamonds: #e05b4b;
+}
+
+/* Card backs: the navy lattice above, recoloured. */
+html[data-cardback='green-lattice'] {
+  --cardback-bg: #17573a;
+  --cardback-line: rgba(10, 22, 40, 0.32);
+  --cardback-ring: rgba(10, 22, 40, 0.5);
+  --cardback-edge: #0d3d27;
+}
+html[data-cardback='amber-lattice'] {
+  --cardback-bg: #43300a;
+  --cardback-line: rgba(245, 166, 35, 0.3);
+  --cardback-ring: rgba(245, 166, 35, 0.5);
+  --cardback-edge: #241a04;
+}
+
+/* Table felt: navy and charcoal alternatives to the green. */
+html[data-felt='navy'] {
+  --felt-hi: #24405f;
+  --felt-lo: #12233c;
+}
+html[data-felt='charcoal'] {
+  --felt-hi: #4b5563;
+  --felt-lo: #292f38;
 }
 
 html,
