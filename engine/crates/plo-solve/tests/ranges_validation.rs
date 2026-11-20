@@ -22,13 +22,20 @@
 //! against the 6-max/9-max targets, all-derived labelling with empty
 //! provenance sources, `rake` + `table_size` recording on built sets,
 //! and v1.2-family stability under the new config.
+//!
+//! The v1.4 tests load data/preflop/ranges-config-v1.4.json: the
+//! deep-stack (200bb) no-rake 6-max family — the GTO Wizard 200bb cEV
+//! anchor targets, the interpolated depth-delta labelling, per-family
+//! `stack_bb` recording (200 on the deep sets, 100 everywhere else, in
+//! documents and index entries), and v1.3-family stability under the
+//! new config.
 
 use plo_solve::ranges::{
     action_freqs, build_continuation_set, build_continuation_set_styled, build_response_set,
     build_response_set_styled, build_rfi_set, build_rfi_set_styled, compute_features,
-    enumerate_classes, equity_vs_pool, is_canonical_key, opening_weighted_totals, opener_pool,
-    score_all_classes, score_from_components, validate_rangeset, RangesConfig, CLASS_COUNT,
-    RAKE_NO_RAKE, RAKE_RAKED, TOTAL_COMBOS,
+    enumerate_classes, equity_vs_pool, index_entry_json, is_canonical_key,
+    opening_weighted_totals, opener_pool, score_all_classes, score_from_components,
+    validate_rangeset, RangesConfig, CLASS_COUNT, RAKE_NO_RAKE, RAKE_RAKED, TOTAL_COMBOS,
 };
 use plo_solve::JsonValue;
 
@@ -59,6 +66,15 @@ fn load_config_v13() -> RangesConfig {
     RangesConfig::from_json_text(&text).expect("parse ranges-config-v1.3.json")
 }
 
+fn load_config_v14() -> RangesConfig {
+    let path = format!(
+        "{}/../../../data/preflop/ranges-config-v1.4.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let text = std::fs::read_to_string(&path).expect("read ranges-config-v1.4.json");
+    RangesConfig::from_json_text(&text).expect("parse ranges-config-v1.4.json")
+}
+
 fn small_samples(
     cfg: &RangesConfig,
     vs_random: usize,
@@ -83,6 +99,11 @@ fn small_samples(
             cont.samples_vs_three_bettor = vs_three_bettor;
         }
         if let Some(cont) = &mut em.norake.continuations {
+            cont.samples_vs_three_bettor = vs_three_bettor;
+        }
+    }
+    if let Some(d) = &mut c.deep200 {
+        if let Some(cont) = &mut d.continuations {
             cont.samples_vs_three_bettor = vs_three_bettor;
         }
     }
@@ -1169,4 +1190,309 @@ fn eightmax_response_and_continuation_validate() {
     let parsed = JsonValue::parse(&nbb.to_json(&test_cfg)).expect("emitted JSON parses");
     let errors = validate_rangeset(&parsed);
     assert!(errors.is_empty(), "{} schema errors: {:?}", nbb.id, errors);
+}
+
+// ---------------------------------------------------------------------
+// v1.4: the deep-stack (200bb) no-rake 6-max family.
+// ---------------------------------------------------------------------
+
+#[test]
+fn v14_config_carries_deep200_family_with_gtw_200bb_anchors() {
+    let cfg = load_config_v14();
+    assert_eq!(cfg.version, "ranges-config-v1.4");
+    // The v1.3 config has no deep section and no deep family.
+    let v13 = load_config_v13();
+    assert!(v13.deep200.is_none(), "v1.3 config predates the deep family");
+    assert!(v13.deep200_family().is_none());
+
+    let d = cfg.deep200.as_ref().expect("v1.4 config must carry deep200_6max");
+    assert_eq!(d.stack_bb, 200.0, "the deep family's stack lives in its section");
+    assert_eq!(cfg.stack_bb, 100.0, "the top-level stack still describes the existing families");
+    // Cross-check source: the GTO Wizard cEV 200bb totals.
+    assert!(
+        d.cross_check_source.name.contains("GTO Wizard")
+            && d.cross_check_source.name.contains("200bb"),
+        "deep cross-check source must be the GTO Wizard 200bb totals: {}",
+        d.cross_check_source.name
+    );
+    assert_eq!(d.cross_check_source.retrieved, "2026-11-17");
+    // RFI anchors (GTO Wizard cEV 200bb totals, collected 2026-11-17;
+    // their "HJ" seat is this schema's MP). Bands are the anchors ±1pp.
+    assert_eq!(d.rfi_targets.len(), 5, "deep RFI targets for all non-BB 6max positions");
+    assert_eq!(d.rfi_targets["UTG"].target, 0.169);
+    assert_eq!(d.rfi_targets["MP"].target, 0.217);
+    assert_eq!(d.rfi_targets["CO"].target, 0.299);
+    assert_eq!(d.rfi_targets["BTN"].target, 0.486);
+    for pos in ["UTG", "MP", "CO", "BTN"] {
+        let t = &d.rfi_targets[pos];
+        assert_eq!(t.kind, "anchor", "{pos} RFI is an anchored target");
+        assert!(
+            (t.band[0] - (t.target - 0.01)).abs() < 1e-9
+                && (t.band[1] - (t.target + 0.01)).abs() < 1e-9,
+            "{pos} band is the anchor ±1pp: {:?}",
+            t.band
+        );
+    }
+    // SB is raise-or-fold: raise 19.1 + 0.5 x limp 37.9 = 38.05 (the v1
+    // reconciliation rule applied to the 200bb limp-inclusive totals).
+    assert_eq!(d.rfi_targets["SB"].target, 0.3805);
+    assert_eq!(d.rfi_targets["SB"].kind, "anchor");
+    assert_eq!(d.rfi_targets["SB"].band, [0.3505, 0.4105]);
+    // Responses mirror the no-rake family's coverage: BB 5 + SB 4 + BTN 2.
+    let resp_count: usize = d.response_targets.values().map(|m| m.len()).sum();
+    assert_eq!(resp_count, 11, "deep response targets mirror the no-rake 6max coverage");
+    // The one anchored response pair: BB vs BTN at 200bb.
+    let bb_btn = &d.response_targets["BB"]["BTN"];
+    assert_eq!(bb_btn.three_bet, 0.102);
+    assert_eq!(bb_btn.call, 0.438);
+    assert_eq!(bb_btn.kind, "anchor");
+    // Every other response is labelled interpolated and is exactly the
+    // v1.2 no-rake target shifted by the anchored depth deltas
+    // (call -1.8pp, three_bet +0.6pp). Spot-check two of them.
+    let nr = cfg.norake.as_ref().expect("norake section");
+    let bb_co = &d.response_targets["BB"]["CO"];
+    assert_eq!(bb_co.kind, "interpolated");
+    assert!((bb_co.call - (nr.response_targets["BB"]["CO"].call - 0.018)).abs() < 1e-9);
+    assert!((bb_co.three_bet - (nr.response_targets["BB"]["CO"].three_bet + 0.006)).abs() < 1e-9);
+    let sb_btn = &d.response_targets["SB"]["BTN"];
+    assert_eq!(sb_btn.kind, "interpolated");
+    assert!((sb_btn.call - (nr.response_targets["SB"]["BTN"].call - 0.018)).abs() < 1e-9);
+    assert!((sb_btn.three_bet - (nr.response_targets["SB"]["BTN"].three_bet + 0.006)).abs() < 1e-9);
+    for m in d.response_targets.values() {
+        for (opener, t) in m {
+            if t.kind != "anchor" {
+                assert_eq!(t.kind, "interpolated", "deep response vs {opener} stays labelled");
+            }
+        }
+    }
+    // Continuations: the v1.1 internal parameters against the deep sets.
+    let cont = d.continuations.as_ref().expect("deep continuations present");
+    assert!((cont.continue_fraction_of_open - 0.5).abs() < 1e-12);
+    assert!((cont.call_fraction_of_continue - 0.82).abs() < 1e-12);
+    assert!((cont.four_bet_fraction_of_continue - 0.18).abs() < 1e-12);
+    let ids: Vec<String> = cont.matchups.iter().map(|m| cont.set_id(m)).collect();
+    assert_eq!(
+        ids,
+        vec![
+            "constructed-v1.4-6max-deep200-btn-vs-bb-3bet".to_string(),
+            "constructed-v1.4-6max-deep200-btn-vs-sb-3bet".to_string(),
+            "constructed-v1.4-6max-deep200-co-vs-btn-3bet".to_string(),
+        ]
+    );
+    // Family styling: no-rake, the GTO Wizard 200bb source cited (and as
+    // the top-level source, like the no-rake 6-max family), stack 200.
+    let fam = cfg.deep200_family().expect("deep family");
+    assert_eq!(fam.id_prefix, "constructed-v1.4-6max-deep200");
+    assert_eq!(fam.rake, RAKE_NO_RAKE);
+    assert_eq!(fam.stack_bb, 200.0);
+    assert_eq!(fam.sources.len(), 1, "deep sets cite exactly the GTO Wizard 200bb source");
+    assert!(fam.top_source);
+    assert!(fam.derivation.is_none());
+    // Per-family stack: every pre-existing family keeps the top-level 100.
+    assert_eq!(cfg.raked_family("6max").stack_bb, 100.0);
+    assert_eq!(cfg.raked_family("9max").stack_bb, 100.0);
+    assert_eq!(cfg.norake_family().expect("norake family").stack_bb, 100.0);
+    assert_eq!(cfg.eightmax_raked_family().expect("8max raked family").stack_bb, 100.0);
+    assert_eq!(cfg.eightmax_norake_family().expect("8max norake family").stack_bb, 100.0);
+    // The earlier families are untouched by the v1.4 config.
+    assert_eq!(nr.rfi_targets["BTN"].target, v13.norake.as_ref().unwrap().rfi_targets["BTN"].target);
+    assert_eq!(
+        cfg.eightmax.as_ref().unwrap().raked.rfi_targets["MP"].target,
+        v13.eightmax.as_ref().unwrap().raked.rfi_targets["MP"].target
+    );
+    assert_eq!(cfg.rfi_targets["6max"]["BTN"].target, v13.rfi_targets["6max"]["BTN"].target);
+}
+
+#[test]
+fn deep200_sets_hit_targets_and_validate() {
+    let cfg = load_config_v14();
+    let test_cfg = small_samples(&cfg, 800, 400, 2000, 2000);
+    let classes = score_all_classes(&test_cfg);
+    let d = test_cfg.deep200.as_ref().expect("deep200 section");
+    let family = test_cfg.deep200_family().expect("deep family");
+    // Deep BTN RFI: id, rake field, stack 200 (document AND index entry),
+    // GTW 200bb anchor target, provenance source.
+    let btn_doc = build_rfi_set_styled(
+        &test_cfg,
+        &classes,
+        "6max",
+        "BTN",
+        &d.rfi_targets["BTN"],
+        &family,
+    )
+    .expect("deep BTN RFI");
+    assert_eq!(btn_doc.id, "constructed-v1.4-6max-deep200-btn-rfi");
+    assert_eq!(btn_doc.rake, RAKE_NO_RAKE);
+    assert_eq!(btn_doc.stack_bb, 200.0);
+    assert!(
+        (btn_doc.achieved["raise"] - 0.486).abs() <= 0.005,
+        "deep BTN raise {} vs GTW 200bb anchor 0.486",
+        btn_doc.achieved["raise"]
+    );
+    let parsed = JsonValue::parse(&btn_doc.to_json(&test_cfg)).expect("emitted JSON parses");
+    assert_eq!(parsed.get("rake").and_then(|v| v.as_str()), Some("no-rake"));
+    assert_eq!(parsed.get("stack_bb").and_then(|v| v.as_f64()), Some(200.0));
+    let prov = parsed.get("provenance").expect("provenance block present");
+    let sources = prov.get("sources").and_then(|v| v.as_array()).expect("sources array");
+    assert_eq!(sources.len(), 1, "deep sets cite exactly the GTO Wizard 200bb source");
+    assert!(
+        sources[0].get("name").and_then(|v| v.as_str()).unwrap_or("").contains("200bb"),
+        "deep provenance must name the GTO Wizard 200bb totals"
+    );
+    assert!(
+        parsed.get("source").and_then(|s| s.get("name")).and_then(|v| v.as_str()).unwrap_or("").contains("GTO Wizard"),
+        "deep sets carry the GTO Wizard top-level source block"
+    );
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", btn_doc.id, errors);
+    let entry = index_entry_json(&btn_doc, &test_cfg);
+    assert!(
+        entry.contains("\"stack_bb\": 200.0"),
+        "deep index entry must record stack_bb 200: {entry}"
+    );
+    // Deep UTG RFI lands on its anchor too.
+    let utg_doc = build_rfi_set_styled(
+        &test_cfg,
+        &classes,
+        "6max",
+        "UTG",
+        &d.rfi_targets["UTG"],
+        &family,
+    )
+    .expect("deep UTG RFI");
+    assert_eq!(utg_doc.id, "constructed-v1.4-6max-deep200-utg-rfi");
+    assert!(
+        (utg_doc.achieved["raise"] - 0.169).abs() <= 0.005,
+        "deep UTG raise {} vs GTW 200bb anchor 0.169",
+        utg_doc.achieved["raise"]
+    );
+    // A pre-existing family under the same config still emits stack 100,
+    // in its document and in its index entry (the byte-identity guard
+    // for the per-family stack change).
+    let nr = test_cfg.norake.as_ref().expect("norake section");
+    let nr_family = test_cfg.norake_family().expect("norake family");
+    let nr_doc = build_rfi_set_styled(
+        &test_cfg,
+        &classes,
+        "6max",
+        "BTN",
+        &nr.rfi_targets["BTN"],
+        &nr_family,
+    )
+    .expect("no-rake BTN RFI under v1.4 config");
+    assert_eq!(nr_doc.stack_bb, 100.0);
+    let nr_parsed = JsonValue::parse(&nr_doc.to_json(&test_cfg)).expect("emitted JSON parses");
+    assert_eq!(nr_parsed.get("stack_bb").and_then(|v| v.as_f64()), Some(100.0));
+    let nr_entry = index_entry_json(&nr_doc, &test_cfg);
+    assert!(
+        nr_entry.contains("\"stack_bb\": 100.0"),
+        "no-rake index entry must keep stack_bb 100: {nr_entry}"
+    );
+    // Deep BB vs BTN: the anchored 200bb defense (3-bet 10.2% / call 43.8%).
+    let ofreq = action_freqs(&btn_doc, &classes, "raise");
+    let pool = opener_pool(&classes, &ofreq);
+    let eq: Vec<f64> = classes
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            equity_vs_pool(
+                &c.class.representative,
+                &pool,
+                test_cfg.samples_vs_opener,
+                test_cfg.seed ^ (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15),
+            )
+        })
+        .collect();
+    let doc = build_response_set_styled(
+        &test_cfg,
+        &classes,
+        &eq,
+        "6max",
+        "BB",
+        "BTN",
+        &d.response_targets["BB"]["BTN"],
+        &family,
+    )
+    .expect("deep BB vs BTN");
+    assert_eq!(doc.id, "constructed-v1.4-6max-deep200-bb-vs-btn");
+    assert_eq!(doc.rake, RAKE_NO_RAKE);
+    assert_eq!(doc.stack_bb, 200.0);
+    assert_eq!(doc.target_kind, "anchor");
+    assert!(
+        (doc.achieved["three_bet"] - 0.102).abs() <= 0.005,
+        "deep BB 3bet {} vs GTW 200bb anchor 0.102",
+        doc.achieved["three_bet"]
+    );
+    assert!(
+        (doc.achieved["call"] - 0.438).abs() <= 0.005,
+        "deep BB call {} vs GTW 200bb anchor 0.438",
+        doc.achieved["call"]
+    );
+    let parsed = JsonValue::parse(&doc.to_json(&test_cfg)).expect("emitted JSON parses");
+    assert_eq!(parsed.get("stack_bb").and_then(|v| v.as_f64()), Some(200.0));
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", doc.id, errors);
+    // Trash still folds; premium still 3-bets.
+    let trash = &doc.hands["9s 7h 3d 2c"];
+    assert_eq!(trash.get("fold").copied().unwrap_or(0.0), 1.0, "trash must fold vs BTN open");
+    // One deep continuation (BTN vs BB) against the internal targets.
+    let cont = d.continuations.as_ref().expect("deep continuations");
+    let matchup = &cont.matchups[0];
+    assert_eq!(matchup.opener_rfi_set, btn_doc.id);
+    assert_eq!(matchup.three_bettor_set, doc.id);
+    let tb_freq = action_freqs(&doc, &classes, "three_bet");
+    let tb_pool = opener_pool(&classes, &tb_freq);
+    let eq_tb: Vec<f64> = classes
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            equity_vs_pool(
+                &c.class.representative,
+                &tb_pool,
+                cont.samples_vs_three_bettor,
+                test_cfg.seed ^ (i as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F),
+            )
+        })
+        .collect();
+    let cdoc = build_continuation_set_styled(
+        &test_cfg,
+        &classes,
+        &eq_tb,
+        &ofreq,
+        matchup,
+        cont,
+        &family,
+        "6max",
+    )
+    .expect("deep continuation set");
+    assert_eq!(cdoc.id, "constructed-v1.4-6max-deep200-btn-vs-bb-3bet");
+    assert_eq!(cdoc.rake, RAKE_NO_RAKE);
+    assert_eq!(cdoc.stack_bb, 200.0);
+    assert_eq!(cdoc.target_kind, "internal");
+    let want_call = cont.continue_fraction_of_open * cont.call_fraction_of_continue;
+    let want_fb = cont.continue_fraction_of_open * cont.four_bet_fraction_of_continue;
+    assert!(
+        (cdoc.achieved["call"] - want_call).abs() <= 0.005,
+        "{} call {} vs internal target {}",
+        cdoc.id,
+        cdoc.achieved["call"],
+        want_call
+    );
+    assert!(
+        (cdoc.achieved["four_bet"] - want_fb).abs() <= 0.005,
+        "{} four_bet {} vs internal target {}",
+        cdoc.id,
+        cdoc.achieved["four_bet"],
+        want_fb
+    );
+    let parsed = JsonValue::parse(&cdoc.to_json(&test_cfg)).expect("emitted JSON parses");
+    assert_eq!(parsed.get("stack_bb").and_then(|v| v.as_f64()), Some(200.0));
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", cdoc.id, errors);
+    // The config-level matchup lookup finds the deep continuation.
+    let (found_cont, found_m) = test_cfg
+        .continuation_matchup("constructed-v1.4-6max-deep200-btn-vs-bb-3bet")
+        .expect("continuation_matchup must find deep matchups");
+    assert_eq!(found_m.three_bettor_set, doc.id);
+    assert_eq!(found_cont.id_prefix, "constructed-v1.4-6max-deep200");
 }

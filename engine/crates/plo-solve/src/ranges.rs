@@ -57,6 +57,19 @@
 //! the no-rake anchors). Like the 9-max family, the 8-max sets cite no
 //! source and carry the derivation in their provenance.
 //!
+//! v1.4 extension (config `ranges-config-v1.4`): the DEEP-STACK dimension.
+//! The new `deep200_6max` section carries a 200bb NO-RAKE (cEV) 6-max
+//! family mirroring the v1.2 `norake_6max` family (5 RFI + 11 responses
+//! + 3 continuations = 19 sets), anchored on GTO Wizard 200bb cEV totals
+//! (see the config's `_comment_deep200_6max`); its non-anchored response
+//! targets are the v1.2 targets shifted by the anchored depth deltas and
+//! labelled `interpolated` there. Stack depth is a PER-FAMILY property:
+//! [`FamilySpec`] carries `stack_bb`, every [`RangeSetDoc`] records its
+//! family's value, and both the set documents and the index entries emit
+//! the document's own `stack_bb` — the pre-existing families keep
+//! emitting the config's top-level 100, the deep family emits its
+//! section's 200.
+//!
 //! Equity note: exact preflop hand-vs-range equity would need
 //! C(48,4) opponent combos x C(44,5) boards per class, which is not feasible to
 //! enumerate, so equities are Monte Carlo estimates with a fixed seed (fully
@@ -564,6 +577,31 @@ pub struct NoRakeConfig {
     pub continuations: Option<ContinuationsConfig>,
 }
 
+/// The config's `deep200_6max` section (v1.4): the 200bb no-rake variant
+/// of the 6-max family. Same construction machinery as the v1.2 no-rake
+/// family — only the targets, the cross-check source, the rake note and
+/// the stack depth differ. Anchors are GTO Wizard cEV 200bb totals (see
+/// the config's `_comment_deep200_6max`); entries without an anchor are
+/// labelled `interpolated` there (the v1.2 targets shifted by the
+/// anchored depth deltas), exactly as in v1/v1.2.
+#[derive(Clone, Debug)]
+pub struct Deep200Config {
+    /// Effective stack for this family, in big blinds (200 in v1.4).
+    /// Recorded on every set the family emits (documents and index);
+    /// every other family emits the config's top-level `stack_bb`.
+    pub stack_bb: f64,
+    pub rake_note: String,
+    pub cross_check_source: SourceBlock,
+    /// RFI targets by position (6-max seats; GTO Wizard's "HJ" is "MP").
+    pub rfi_targets: BTreeMap<String, RfiTarget>,
+    /// Response targets by responder, then opener (6-max).
+    pub response_targets: BTreeMap<String, BTreeMap<String, PairTarget>>,
+    /// Continuation matchups against the deep family's own input sets;
+    /// same internal construction parameters as the other families'
+    /// continuation sections.
+    pub continuations: Option<ContinuationsConfig>,
+}
+
 /// One rake variant of the config's `eightmax` section (v1.3). Every
 /// target is a labelled derivation from the same variant's 6-max targets
 /// by the players-behind seat mapping (see the config's
@@ -605,6 +643,12 @@ pub struct EightMaxConfig {
 pub struct FamilySpec {
     pub rake: String,
     pub rake_note: String,
+    /// Effective stack recorded on every set of this family, in big
+    /// blinds. The pre-existing families take the config's top-level
+    /// `stack_bb` (100); the v1.4 deep family takes its section's 200.
+    /// This is the single source of the emitted `stack_bb` (set
+    /// documents and index entries both read it off the document).
+    pub stack_bb: f64,
     /// Set-id stem before `-<position>-...`: `constructed-v1-6max`,
     /// `constructed-v1-9max`, or `constructed-v1.2-6max-norake`.
     pub id_prefix: String,
@@ -734,6 +778,9 @@ pub struct RangesConfig {
     /// Optional v1.3 section (`eightmax`): the 8-max families for both
     /// rake variants. Absent (v1/v1.2 configs) = no 8-max sets.
     pub eightmax: Option<EightMaxConfig>,
+    /// Optional v1.4 section (`deep200_6max`): the 200bb no-rake 6-max
+    /// family. Absent (v1/v1.2/v1.3 configs) = no deep sets.
+    pub deep200: Option<Deep200Config>,
     /// FNV-1a 64-bit hash of the raw config file bytes (identification only).
     pub config_hash: String,
 }
@@ -1202,6 +1249,109 @@ impl RangesConfig {
             }
             None => None,
         };
+        // Optional v1.4 section: the deep-stack (200bb) no-rake 6-max
+        // family. Parsing it must not disturb any v1/v1.2/v1.3 field:
+        // every value above is read exactly as before, and the existing
+        // generation stages never consult this section. The section's
+        // shape mirrors `norake_6max` plus its own `stack_bb`.
+        let deep200 = match root.get("deep200_6max") {
+            Some(sec) => {
+                let stack_bb = sec
+                    .get("stack_bb")
+                    .and_then(|v| v.as_f64())
+                    .ok_or("deep200_6max 'stack_bb' must be a number")?;
+                if !(stack_bb > 0.0 && stack_bb <= 1000.0) {
+                    return Err("deep200_6max 'stack_bb' must be in (0, 1000]".to_string());
+                }
+                let dsrc = sec
+                    .get("cross_check_source")
+                    .ok_or("deep200_6max missing 'cross_check_source'")?;
+                let cross_check_source = SourceBlock {
+                    name: obj_str(dsrc, "name")?,
+                    url: Some(obj_str(dsrc, "url")?),
+                    licence: obj_str(dsrc, "licence")?,
+                    retrieved: obj_str(dsrc, "retrieved")?,
+                };
+                let mut d_rfi: BTreeMap<String, RfiTarget> = BTreeMap::new();
+                if let JsonValue::Object(pos_entries) =
+                    sec.get("rfi_targets").ok_or("deep200_6max missing 'rfi_targets'")?
+                {
+                    for (pos, t) in pos_entries {
+                        if !POSITIONS_6MAX.contains(&pos.as_str()) || pos == "BB" {
+                            return Err(format!(
+                                "deep200_6max RFI target for '{pos}': not a 6max non-BB position"
+                            ));
+                        }
+                        let band = t
+                            .get("band")
+                            .and_then(|b| b.as_array())
+                            .ok_or("deep200 rfi target missing 'band'")?;
+                        if band.len() != 2 {
+                            return Err("deep200 rfi target 'band' must have 2 entries".to_string());
+                        }
+                        d_rfi.insert(
+                            pos.clone(),
+                            RfiTarget {
+                                target: obj_num(t, "target")?,
+                                band: [
+                                    band[0].as_f64().ok_or("band[0] must be a number")?,
+                                    band[1].as_f64().ok_or("band[1] must be a number")?,
+                                ],
+                                kind: obj_str(t, "kind")?,
+                            },
+                        );
+                    }
+                } else {
+                    return Err("deep200_6max 'rfi_targets' must be an object".to_string());
+                }
+                let mut d_resp: BTreeMap<String, BTreeMap<String, PairTarget>> = BTreeMap::new();
+                if let JsonValue::Object(resp_entries) = sec
+                    .get("response_targets")
+                    .ok_or("deep200_6max missing 'response_targets'")?
+                {
+                    for (resp, openers) in resp_entries {
+                        let mut omap = BTreeMap::new();
+                        if let JsonValue::Object(op_entries) = openers {
+                            for (op, t) in op_entries {
+                                omap.insert(
+                                    op.clone(),
+                                    PairTarget {
+                                        three_bet: obj_num(t, "three_bet")?,
+                                        call: obj_num(t, "call")?,
+                                        kind: obj_str(t, "kind")?,
+                                    },
+                                );
+                            }
+                        }
+                        d_resp.insert(resp.clone(), omap);
+                    }
+                } else {
+                    return Err("deep200_6max 'response_targets' must be an object".to_string());
+                }
+                let d_continuations = match sec.get("continuations") {
+                    Some(csec) => Some(parse_continuations_section(
+                        csec,
+                        "constructed-v1.4-6max-deep200",
+                        &POSITIONS_6MAX,
+                        "6max",
+                    )?),
+                    None => None,
+                };
+                Some(Deep200Config {
+                    stack_bb,
+                    rake_note: sec
+                        .get("rake_note")
+                        .and_then(|v| v.as_str())
+                        .ok_or("deep200_6max 'rake_note' must be a string")?
+                        .to_string(),
+                    cross_check_source,
+                    rfi_targets: d_rfi,
+                    response_targets: d_resp,
+                    continuations: d_continuations,
+                })
+            }
+            None => None,
+        };
         Ok(RangesConfig {
             version,
             seed,
@@ -1249,6 +1399,7 @@ impl RangesConfig {
             continuations,
             norake,
             eightmax,
+            deep200,
             config_hash: fnv1a64_hex(text.as_bytes()),
         })
     }
@@ -1264,6 +1415,7 @@ impl RangesConfig {
             FamilySpec {
                 rake: RAKE_RAKED.to_string(),
                 rake_note: self.rake_note.clone(),
+                stack_bb: self.stack_bb,
                 id_prefix: format!("constructed-v1-{table_size}"),
                 sources: Vec::new(),
                 top_source: false,
@@ -1280,6 +1432,7 @@ impl RangesConfig {
             FamilySpec {
                 rake: RAKE_RAKED.to_string(),
                 rake_note: self.rake_note.clone(),
+                stack_bb: self.stack_bb,
                 id_prefix: format!("constructed-v1-{table_size}"),
                 sources,
                 top_source: true,
@@ -1294,6 +1447,7 @@ impl RangesConfig {
         self.norake.as_ref().map(|nr| FamilySpec {
             rake: RAKE_NO_RAKE.to_string(),
             rake_note: nr.rake_note.clone(),
+            stack_bb: self.stack_bb,
             id_prefix: "constructed-v1.2-6max-norake".to_string(),
             sources: vec![nr.cross_check_source.clone()],
             top_source: true,
@@ -1308,6 +1462,7 @@ impl RangesConfig {
         self.eightmax.as_ref().map(|_| FamilySpec {
             rake: RAKE_RAKED.to_string(),
             rake_note: self.rake_note.clone(),
+            stack_bb: self.stack_bb,
             id_prefix: "constructed-v1.3-8max".to_string(),
             sources: Vec::new(),
             top_source: false,
@@ -1327,10 +1482,29 @@ impl RangesConfig {
                 .rake_note
                 .clone()
                 .unwrap_or_else(|| self.rake_note.clone()),
+            stack_bb: self.stack_bb,
             id_prefix: "constructed-v1.3-8max-norake".to_string(),
             sources: Vec::new(),
             top_source: false,
             derivation: Some(self.derivation_note_8max.clone()),
+        })
+    }
+
+    /// The [`FamilySpec`] for the deep-stack (200bb) no-rake 6-max
+    /// family (v1.4), or `None` when the config has no `deep200_6max`
+    /// section. Like the no-rake 6-max family it cites its GTO Wizard
+    /// source (the 200bb cEV totals) as the top-level `source` too; it
+    /// is the one family whose `stack_bb` comes from its section
+    /// rather than the config's top-level value.
+    pub fn deep200_family(&self) -> Option<FamilySpec> {
+        self.deep200.as_ref().map(|d| FamilySpec {
+            rake: RAKE_NO_RAKE.to_string(),
+            rake_note: d.rake_note.clone(),
+            stack_bb: d.stack_bb,
+            id_prefix: "constructed-v1.4-6max-deep200".to_string(),
+            sources: vec![d.cross_check_source.clone()],
+            top_source: true,
+            derivation: None,
         })
     }
 
@@ -1346,6 +1520,11 @@ impl RangesConfig {
             }
         }
         if let Some(c) = self.norake.as_ref().and_then(|nr| nr.continuations.as_ref()) {
+            if let Some(m) = c.matchup_for_set_id(id) {
+                return Some((c, m));
+            }
+        }
+        if let Some(c) = self.deep200.as_ref().and_then(|d| d.continuations.as_ref()) {
             if let Some(m) = c.matchup_for_set_id(id) {
                 return Some((c, m));
             }
@@ -1579,6 +1758,11 @@ pub struct RangeSetDoc {
     /// v1/v1.1 families, `RAKE_NO_RAKE` for the v1.2 6-max family), emitted
     /// as the document's `rake` field.
     pub rake: String,
+    /// Effective stack for this set's family, in big blinds, copied from
+    /// the family's [`FamilySpec`] at build time and emitted as the
+    /// document's (and its index entry's) `stack_bb` field: 100 for
+    /// every pre-v1.4 family, 200 for the deep family.
+    pub stack_bb: f64,
     /// This family's rake note, emitted as the document's `rake_note`
     /// (the raked families use the config's `rake_note`; the no-rake
     /// family uses its section's own note).
@@ -1661,7 +1845,7 @@ impl RangeSetDoc {
         if let Some(detail) = &self.context_detail {
             let _ = writeln!(s, "  \"context_detail\": \"{}\",", json_escape(detail));
         }
-        let _ = writeln!(s, "  \"stack_bb\": {},", fmt_num(cfg.stack_bb));
+        let _ = writeln!(s, "  \"stack_bb\": {},", fmt_num(self.stack_bb));
         let _ = writeln!(s, "  \"rake\": \"{}\",", json_escape(&self.rake));
         let _ = writeln!(s, "  \"rake_note\": \"{}\",", json_escape(&self.rake_note));
         let achieved_txt = self
@@ -1784,6 +1968,14 @@ const SEED_TAG_EIGHTMAX_CONTINUATION_BASE: u64 = 1_100_000;
 const SEED_TAG_EIGHTMAX_NORAKE_OPENER_BASE: u64 = 1_300_000;
 /// Base tag for the v1.3 8-max no-rake family's equity-vs-three-bettor streams.
 const SEED_TAG_EIGHTMAX_NORAKE_CONTINUATION_BASE: u64 = 1_500_000;
+/// Base tag for the v1.4 deep family's equity-vs-opener streams (the
+/// next clear slot by the established +200k spacing after the 8-max
+/// no-rake continuation base at 1.5M; its opener ranges differ from
+/// every other family's, so the passes — and their seeds — are
+/// separate).
+const SEED_TAG_DEEP200_OPENER_BASE: u64 = 1_700_000;
+/// Base tag for the v1.4 deep family's equity-vs-three-bettor streams.
+const SEED_TAG_DEEP200_CONTINUATION_BASE: u64 = 1_900_000;
 
 /// Deterministic parallel map over `0..n` producing one f64 per index.
 /// Per-index results depend only on the index (each equity stream has its
@@ -1975,6 +2167,7 @@ pub fn build_rfi_set_styled(
         method: METHOD.to_string(),
         derivation: family.derivation.clone(),
         rake: family.rake.clone(),
+        stack_bb: family.stack_bb,
         rake_note: family.rake_note.clone(),
         sources: family.sources.clone(),
         top_source: family.top_source,
@@ -2126,6 +2319,7 @@ pub fn build_response_set_styled(
         method: METHOD.to_string(),
         derivation: family.derivation.clone(),
         rake: family.rake.clone(),
+        stack_bb: family.stack_bb,
         rake_note: family.rake_note.clone(),
         sources: family.sources.clone(),
         top_source: family.top_source,
@@ -2316,6 +2510,7 @@ pub fn build_continuation_set_styled(
         method: METHOD_V11.to_string(),
         derivation: Some(derivation),
         rake: family.rake.clone(),
+        stack_bb: family.stack_bb,
         rake_note: family.rake_note.clone(),
         sources: Vec::new(),
         top_source: false,
@@ -2641,6 +2836,131 @@ pub fn generate(cfg: &RangesConfig) -> Result<Generation, String> {
                     ));
                 }
                 let tag = SEED_TAG_NORAKE_CONTINUATION_BASE + (mi as u64) * 10_000;
+                let eq = par_map(classes.len(), &|i| {
+                    equity_vs_pool(
+                        &classes[i].class.representative,
+                        &pool,
+                        cont.samples_vs_three_bettor,
+                        derive_seed(cfg.seed, tag, i),
+                    )
+                });
+                let doc = build_continuation_set_styled(
+                    cfg, &classes, &eq, &opener_freq, matchup, cont, &family, "6max",
+                )?;
+                sets.push(doc);
+            }
+        }
+    }
+    // v1.4 deep family (200bb no-rake, 6max only): the same three stages
+    // against the deep200_6max targets and family styling, with its own
+    // seeded equity passes (the deep opener ranges differ from the
+    // 100bb no-rake ones, so no equity pass or pool is shared across
+    // families). Every set it emits records stack_bb 200 via the family.
+    if let Some(deep) = &cfg.deep200 {
+        let family = cfg.deep200_family().expect("deep200 section present");
+        let table = "6max";
+        let positions = positions_for(table).unwrap();
+        let mut d_rfi_docs: BTreeMap<String, RangeSetDoc> = BTreeMap::new();
+        for &pos in positions {
+            if pos == "BB" {
+                continue;
+            }
+            let target = deep
+                .rfi_targets
+                .get(pos)
+                .ok_or_else(|| format!("no deep200 RFI target for 6max {pos}"))?;
+            let doc = build_rfi_set_styled(cfg, &classes, table, pos, target, &family)?;
+            d_rfi_docs.insert(pos.to_string(), doc);
+        }
+        for doc in d_rfi_docs.values() {
+            sets.push(doc.clone());
+        }
+        let mut d_response_docs: BTreeMap<(String, String), RangeSetDoc> = BTreeMap::new();
+        let mut d_opener_eq: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+        let responders: Vec<(&str, Vec<&str>)> = {
+            let mut v: Vec<(&str, Vec<&str>)> = Vec::new();
+            v.push(("BB", positions.iter().copied().filter(|&p| p != "BB").collect()));
+            v.push((
+                "SB",
+                positions.iter().copied().filter(|&p| p != "SB" && p != "BB").collect(),
+            ));
+            let btn_openers: Vec<&str> = cfg
+                .btn_vs
+                .get(table)
+                .map(|list| list.iter().map(|s| s.as_str()).collect())
+                .unwrap_or_default();
+            v.push(("BTN", btn_openers));
+            v
+        };
+        for (responder, openers) in responders {
+            for opener in openers {
+                if !d_opener_eq.contains_key(opener) {
+                    let rfi = d_rfi_docs
+                        .get(opener)
+                        .ok_or_else(|| format!("missing deep200 RFI doc for 6max {opener}"))?;
+                    let ofreq = action_freqs(rfi, &classes, "raise");
+                    let pool = opener_pool(&classes, &ofreq);
+                    let tag = SEED_TAG_DEEP200_OPENER_BASE + opener_seed_tag(table, opener);
+                    let eq = par_map(classes.len(), &|i| {
+                        equity_vs_pool(
+                            &classes[i].class.representative,
+                            &pool,
+                            cfg.samples_vs_opener,
+                            derive_seed(cfg.seed, tag, i),
+                        )
+                    });
+                    d_opener_eq.insert(opener.to_string(), eq);
+                }
+                let eq = &d_opener_eq[opener];
+                let target = deep
+                    .response_targets
+                    .get(responder)
+                    .and_then(|m| m.get(opener))
+                    .ok_or_else(|| {
+                        format!("no deep200 response target for 6max {responder} vs {opener}")
+                    })?;
+                let doc = build_response_set_styled(
+                    cfg, &classes, eq, table, responder, opener, target, &family,
+                )?;
+                d_response_docs.insert((responder.to_string(), opener.to_string()), doc.clone());
+                sets.push(doc);
+            }
+        }
+        if let Some(cont) = &deep.continuations {
+            for (mi, matchup) in cont.matchups.iter().enumerate() {
+                let rfi = d_rfi_docs.get(&matchup.continuer).ok_or_else(|| {
+                    format!("missing deep200 RFI doc for 6max {}", matchup.continuer)
+                })?;
+                if rfi.id != matchup.opener_rfi_set {
+                    return Err(format!(
+                        "deep200 continuations matchup {} vs {}: opener_rfi_set '{}' does not match the generated deep200 RFI set '{}'",
+                        matchup.continuer, matchup.three_bettor, matchup.opener_rfi_set, rfi.id
+                    ));
+                }
+                let tb_doc = d_response_docs
+                    .get(&(matchup.three_bettor.clone(), matchup.continuer.clone()))
+                    .ok_or_else(|| {
+                        format!(
+                            "missing deep200 response doc for 6max {} vs {}",
+                            matchup.three_bettor, matchup.continuer
+                        )
+                    })?;
+                if tb_doc.id != matchup.three_bettor_set {
+                    return Err(format!(
+                        "deep200 continuations matchup {} vs {}: three_bettor_set '{}' does not match the generated deep200 response set '{}'",
+                        matchup.continuer, matchup.three_bettor, matchup.three_bettor_set, tb_doc.id
+                    ));
+                }
+                let opener_freq = action_freqs(rfi, &classes, "raise");
+                let tb_freq = action_freqs(tb_doc, &classes, "three_bet");
+                let pool = opener_pool(&classes, &tb_freq);
+                if pool.is_empty() {
+                    return Err(format!(
+                        "deep200 continuation {} vs {}: three-bettor's three_bet slice is empty",
+                        matchup.continuer, matchup.three_bettor
+                    ));
+                }
+                let tag = SEED_TAG_DEEP200_CONTINUATION_BASE + (mi as u64) * 10_000;
                 let eq = par_map(classes.len(), &|i| {
                     equity_vs_pool(
                         &classes[i].class.representative,
@@ -3062,7 +3382,7 @@ pub fn index_entry_json(doc: &RangeSetDoc, cfg: &RangesConfig) -> String {
     let _ = writeln!(s, "      \"table_size\": \"{}\",", doc.table_size);
     let _ = writeln!(s, "      \"position\": \"{}\",", doc.position);
     let _ = writeln!(s, "      \"context\": \"{}\",", doc.context);
-    let _ = writeln!(s, "      \"stack_bb\": {},", fmt_num(cfg.stack_bb));
+    let _ = writeln!(s, "      \"stack_bb\": {},", fmt_num(doc.stack_bb));
     let _ = writeln!(s, "      \"rake\": \"{}\",", json_escape(&doc.rake));
     if doc.top_source {
         if let Some(first) = doc.sources.first() {
@@ -3119,6 +3439,13 @@ pub fn parse_opener(context_detail: &str) -> String {
 /// `rake` selects the target family: `"no-rake"` sets check against the
 /// `norake_6max` targets, everything else against the raked maps. 8-max
 /// sets (either variant) check against the config's `eightmax` section.
+/// Deep (200bb) sets — recognised by their
+/// `constructed-v1.4-6max-deep200` id prefix, since they share the
+/// `"no-rake"` rake value and the 6-max table with the v1.2 family —
+/// check against the config's `deep200_6max` section: anchored targets
+/// are hard checks (RFI inside band, defense within tolerance) and
+/// `interpolated` targets are reported as deltas only, exactly as the
+/// generic kind-driven logic below already treats them.
 pub fn check_doc_totals(
     cfg: &RangesConfig,
     id: &str,
@@ -3133,7 +3460,9 @@ pub fn check_doc_totals(
     let mut failures = 0usize;
     if context == "rfi" || context == "sb_play" {
         let achieved = totals.get("raise").copied().unwrap_or(0.0);
-        let target = if table_size == "8max" {
+        let target = if id.starts_with("constructed-v1.4-6max-deep200") {
+            cfg.deep200.as_ref().and_then(|d| d.rfi_targets.get(position))
+        } else if table_size == "8max" {
             cfg.eightmax.as_ref().and_then(|em| {
                 let v = if rake == RAKE_NO_RAKE { &em.norake } else { &em.raked };
                 v.rfi_targets.get(position)
@@ -3188,7 +3517,12 @@ pub fn check_doc_totals(
         }
     } else if context == "vs_rfi" {
         let opener = opener.unwrap_or("");
-        let target = if table_size == "8max" {
+        let target = if id.starts_with("constructed-v1.4-6max-deep200") {
+            cfg.deep200
+                .as_ref()
+                .and_then(|d| d.response_targets.get(position))
+                .and_then(|m| m.get(opener))
+        } else if table_size == "8max" {
             cfg.eightmax.as_ref().and_then(|em| {
                 let v = if rake == RAKE_NO_RAKE { &em.norake } else { &em.raked };
                 v.response_targets.get(position).and_then(|m| m.get(opener))
