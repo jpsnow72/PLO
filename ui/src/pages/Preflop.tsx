@@ -1,11 +1,15 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ApproximationBadge } from '../components/AccuracyBadge';
+import { CardRow } from '../components/CardChip';
 import { FrequencyBar, pctText } from '../components/FrequencyBar';
 import { ApiError, fetchPreflopClassTable, fetchPreflopIndex, fetchPreflopSet } from '../lib/api';
+import { parseCombo } from '../lib/cards';
 import {
   actionTotals,
+  classCombos,
   combosInAction,
   featureTags,
+  frequencyBreakdown,
   isSolveCompatible,
   MATRIX_RANKS,
   matrixCells,
@@ -21,7 +25,9 @@ import {
   setTotalCombos,
   solveActionForContext,
   sortPositions,
+  suitednessSummary,
   SUITEDNESS_FILTERS,
+  threeBettorOf,
   type MatrixCell,
   type PreflopClass,
   type PreflopIndex,
@@ -41,22 +47,26 @@ import { useStore } from '../store/useStore';
 // provenance block are always shown; the green certified-GTO badge is
 // never used here.
 
-type ContextGroup = 'first-in' | 'vs-rfi';
+type ContextGroup = 'first-in' | 'vs-rfi' | 'vs-3bet';
 
 const GROUP_CONTEXTS: Record<ContextGroup, SetContext[]> = {
   // SB first-in sets use the sb_play context; they are first-in decisions.
   'first-in': ['rfi', 'sb_play'],
   'vs-rfi': ['vs_rfi'],
+  // The v1.1 continuation sets: the opener faces a 3-bet and continues.
+  'vs-3bet': ['vs_three_bet'],
 };
 
 const GROUP_LABEL: Record<ContextGroup, string> = {
   'first-in': 'RFI / first-in',
   'vs-rfi': 'vs RFI',
+  'vs-3bet': 'vs 3-bet',
 };
 
 const ACTION_COLOR: Record<string, string> = {
   raise: '#f5a623',
   three_bet: '#d96c4f',
+  four_bet: '#9d5fd0',
   call: '#2aa198',
   fold: '#8a4b57',
 };
@@ -64,14 +74,18 @@ const ACTION_COLOR: Record<string, string> = {
 const ACTION_LABEL: Record<string, string> = {
   raise: 'Raise',
   three_bet: '3-bet',
+  four_bet: '4-bet',
   call: 'Call',
   fold: 'Fold',
 };
 
+/** Display order for a set's action menu. */
+const ACTION_ORDER = ['raise', 'three_bet', 'four_bet', 'call', 'fold'];
+
 const ROW_CAP = 200;
 const MATRIX_ROW_CAP = 100;
 
-type RangeView = 'set' | 'matrix';
+type RangeView = 'set' | 'matrix' | 'compare';
 
 function hexToRgba(hex: string, alpha: number): string {
   const n = Number.parseInt(hex.slice(1), 16);
@@ -113,6 +127,145 @@ function Pill({
   );
 }
 
+/**
+ * Per-class detail: the full picture for one hand class in the loaded
+ * set — graphical cards, the complete action split (not just the
+ * currently displayed action), its concrete combos, and everything the
+ * class table carries (equities, construction score and its components,
+ * feature tags). Without the class table only the split and combos can
+ * be shown, and the panel says so.
+ */
+function ClassDetail({
+  classKey,
+  actions,
+  cls,
+  multiplicity,
+  onClose,
+}: {
+  classKey: string;
+  actions: Record<string, number>;
+  cls: PreflopClass | null;
+  multiplicity: number;
+  onClose: () => void;
+}) {
+  const cards = parseCombo(classKey);
+  const combos = classCombos(classKey);
+  const split = ACTION_ORDER.filter((a) => a in actions).concat(
+    Object.keys(actions).filter((a) => !ACTION_ORDER.includes(a)),
+  );
+  const components = cls
+    ? [
+        { label: 'Pair', value: cls.features.pair_component },
+        { label: 'Suitedness', value: cls.features.suitedness_component },
+        { label: 'Connectedness', value: cls.features.connectedness_component },
+        { label: 'High card', value: cls.features.high_card_component },
+      ]
+    : [];
+  return (
+    <div className="rounded-lg border border-navy-700 bg-navy-850 p-3">
+      <div className="flex flex-wrap items-center gap-3">
+        {cards ? <CardRow cards={cards} size="sm" /> : null}
+        <span className="font-mono text-sm text-ink">{classKey}</span>
+        <span className="text-xs text-ink-dim">
+          {multiplicity} concrete combo{multiplicity === 1 ? '' : 's'}
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="ml-auto rounded-full bg-navy-900 px-2.5 py-1 text-xs text-ink-dim hover:text-ink"
+        >
+          Clear selection
+        </button>
+      </div>
+
+      <div className="mt-3 grid gap-4 md:grid-cols-2">
+        <div>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+            Action split in this set
+          </h4>
+          <div className="mt-1.5 flex flex-col gap-1.5">
+            {split.map((a) => (
+              <div key={a} className="flex items-center gap-2 text-xs">
+                <span className="w-12 text-ink-dim">{ACTION_LABEL[a] ?? a}</span>
+                <div className="flex-1">
+                  <FrequencyBar
+                    fraction={actions[a] ?? 0}
+                    color={ACTION_COLOR[a] ?? '#7a8aa0'}
+                    height="h-2"
+                  />
+                </div>
+                <span className="w-14 text-right font-mono text-ink-dim">
+                  {pctText(actions[a] ?? 0)}
+                </span>
+              </div>
+            ))}
+          </div>
+          <h4 className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+            Concrete combos
+          </h4>
+          <p className="mt-1.5 flex flex-wrap gap-1">
+            {combos.map((c) => (
+              <span
+                key={c}
+                className="rounded bg-navy-900 px-1.5 py-0.5 font-mono text-[11px] text-ink-dim"
+              >
+                {c}
+              </span>
+            ))}
+          </p>
+        </div>
+
+        <div>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+            Class features
+          </h4>
+          {cls ? (
+            <>
+              <p className="mt-1.5 text-xs text-ink-dim">{featureTags(cls).join(' · ')}</p>
+              <dl className="mt-2 grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <dt className="text-[11px] text-ink-faint">Equity vs random</dt>
+                  <dd className="font-mono text-sm text-ink">{pctText(cls.equity_vs_random)}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-ink-faint">Equity vs reference</dt>
+                  <dd className="font-mono text-sm text-ink">{pctText(cls.equity_vs_reference)}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-ink-faint">Construction score</dt>
+                  <dd className="font-mono text-sm text-ink">{cls.score.toFixed(3)}</dd>
+                </div>
+              </dl>
+              <div className="mt-2 flex flex-col gap-1.5">
+                {components.map((c) => (
+                  <div key={c.label} className="flex items-center gap-2 text-xs">
+                    <span className="w-28 text-ink-dim">{c.label}</span>
+                    <div className="flex-1">
+                      <FrequencyBar fraction={c.value} color="#7a8aa0" height="h-2" />
+                    </div>
+                    <span className="w-10 text-right font-mono text-ink-dim">
+                      {c.value.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
+                Equities and features are the class table's recorded values for this class; the
+                score and its components are the construction model's inputs, not solver output.
+              </p>
+            </>
+          ) : (
+            <p className="mt-1.5 text-xs text-ink-dim">
+              The class table is not loaded, so equities and features are unavailable for this
+              class. The action split and combos above come from the set document alone.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PreflopPage() {
   const setApiOnline = useStore((s) => s.setApiOnline);
 
@@ -126,6 +279,16 @@ export function PreflopPage() {
   const [group, setGroup] = useState<ContextGroup>('first-in');
   const [position, setPosition] = useState<string | null>(null);
   const [opener, setOpener] = useState<string | null>(null);
+  const [bettor, setBettor] = useState<string | null>(null);
+  const [selClass, setSelClass] = useState<string | null>(null);
+
+  // Compare view: per-position totals for the current scenario family,
+  // fetched lazily when the view opens (one set document per position).
+  const [compareData, setCompareData] = useState<Map<
+    string,
+    { totals: Record<string, number>; totalCombos: number }
+  > | null>(null);
+  const [compareLoading, setCompareLoading] = useState(false);
 
   const [setDoc, setSetDoc] = useState<PreflopSetDoc | null>(null);
   const [setLoading, setSetLoading] = useState(false);
@@ -227,13 +390,40 @@ export function PreflopPage() {
     }
   }, [group, openers, opener]);
 
+  const bettors = useMemo(() => {
+    if (group !== 'vs-3bet') return [];
+    const found = new Set<string>();
+    for (const e of positionSets) {
+      const b = threeBettorOf(e);
+      if (b) found.add(b);
+    }
+    return sortPositions([...found], tableSize);
+  }, [positionSets, group, tableSize]);
+
+  useEffect(() => {
+    if (group !== 'vs-3bet') {
+      if (bettor !== null) setBettor(null);
+    } else if (bettors.length === 0) {
+      if (bettor !== null) setBettor(null);
+    } else if (bettor === null || !bettors.includes(bettor)) {
+      setBettor(bettors[0]);
+    }
+  }, [group, bettors, bettor]);
+
   const selectedEntry = useMemo<PreflopSetIndexEntry | null>(() => {
     if (positionSets.length === 0) return null;
-    if (group !== 'vs-rfi') return positionSets[0] ?? null;
-    if (!opener) return null;
-    const slug = opener.toLowerCase().replace('utg+', 'utgplus');
-    return positionSets.find((e) => e.id.endsWith(`-vs-${slug}`)) ?? null;
-  }, [positionSets, group, opener]);
+    if (group === 'vs-rfi') {
+      if (!opener) return null;
+      const slug = opener.toLowerCase().replace('utg+', 'utgplus');
+      return positionSets.find((e) => e.id.endsWith(`-vs-${slug}`)) ?? null;
+    }
+    if (group === 'vs-3bet') {
+      if (!bettor) return null;
+      const slug = bettor.toLowerCase().replace('utg+', 'utgplus');
+      return positionSets.find((e) => e.id.endsWith(`-vs-${slug}-3bet`)) ?? null;
+    }
+    return positionSets[0] ?? null;
+  }, [positionSets, group, opener, bettor]);
 
   // Fetch the selected set document.
   useEffect(() => {
@@ -249,9 +439,14 @@ export function PreflopPage() {
         const doc = await fetchPreflopSet(selectedEntry.id);
         if (cancelled) return;
         setSetDoc(doc);
+        setSelClass(null);
         // Default the displayed action to the set's headline action.
         const headline =
-          doc.context === 'vs_rfi' ? 'call' : doc.context === 'three_bet' ? 'call' : 'raise';
+          doc.context === 'vs_rfi' || doc.context === 'vs_three_bet'
+            ? 'call'
+            : doc.context === 'three_bet'
+              ? 'call'
+              : 'raise';
         setAction(headline);
       } catch (err) {
         if (!cancelled) {
@@ -276,7 +471,7 @@ export function PreflopPage() {
     [setDoc, classByHand],
   );
   const headlineAction = setDoc
-    ? setDoc.context === 'vs_rfi'
+    ? setDoc.context === 'vs_rfi' || setDoc.context === 'vs_three_bet'
       ? 'call'
       : setDoc.context === 'three_bet'
         ? 'call'
@@ -291,6 +486,104 @@ export function PreflopPage() {
     if (!setDoc || !classByHand) return [];
     return pairRankSummary(setDoc, action, classByHand, totalCombos);
   }, [setDoc, action, classByHand, totalCombos]);
+
+  const breakdown = useMemo(
+    () => (setDoc ? frequencyBreakdown(setDoc, action, classByHand) : []),
+    [setDoc, action, classByHand],
+  );
+
+  const suitSummary = useMemo(() => {
+    if (!setDoc || !classByHand) return [];
+    return suitednessSummary(setDoc, action, classByHand, totalCombos);
+  }, [setDoc, action, classByHand, totalCombos]);
+
+  const selClassRow = useMemo<ClassRow | null>(() => {
+    if (!setDoc || !selClass) return null;
+    const actions = setDoc.hands[selClass];
+    if (!actions) return null;
+    return {
+      key: selClass,
+      actions,
+      cls: classByHand?.get(selClass) ?? null,
+      multiplicity: multiplicityOf(selClass, classByHand),
+    };
+  }, [setDoc, selClass, classByHand]);
+
+  // ----- Compare view -----
+  // The sets compared are the current scenario family: every position
+  // in the group (for vs-RFI, every defender against the chosen opener;
+  // for vs-3bet, every opener continuing against the chosen 3-bettor).
+  const compareEntries = useMemo<PreflopSetIndexEntry[]>(() => {
+    if (group === 'first-in') return groupSets;
+    if (group === 'vs-rfi') {
+      if (!opener) return [];
+      const slug = opener.toLowerCase().replace('utg+', 'utgplus');
+      return groupSets.filter((e) => e.id.endsWith(`-vs-${slug}`));
+    }
+    if (!bettor) return [];
+    const slug = bettor.toLowerCase().replace('utg+', 'utgplus');
+    return groupSets.filter((e) => e.id.endsWith(`-vs-${slug}-3bet`));
+  }, [groupSets, group, opener, bettor]);
+
+  useEffect(() => {
+    if (view !== 'compare' || compareEntries.length === 0) {
+      setCompareData(null);
+      setCompareLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setCompareLoading(true);
+    void (async () => {
+      const out = new Map<string, { totals: Record<string, number>; totalCombos: number }>();
+      await Promise.all(
+        compareEntries.map(async (e) => {
+          try {
+            const doc = await fetchPreflopSet(e.id);
+            out.set(e.id, {
+              totals: actionTotals(doc, classByHand),
+              totalCombos: setTotalCombos(doc, classByHand),
+            });
+          } catch {
+            // A position whose document fails to load simply has no
+            // column; the rest of the comparison stays honest.
+          }
+        }),
+      );
+      if (cancelled) return;
+      setCompareData(out);
+      setCompareLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [view, compareEntries, classByHand]);
+
+  const compareActions = useMemo(() => {
+    if (!compareData) return [];
+    const present = new Set<string>();
+    for (const v of compareData.values()) {
+      for (const a of Object.keys(v.totals)) present.add(a);
+    }
+    return ACTION_ORDER.filter((a) => present.has(a)).concat(
+      [...present].filter((a) => !ACTION_ORDER.includes(a)).sort(),
+    );
+  }, [compareData]);
+
+  const compareCombined = useMemo(() => {
+    if (!compareData || compareData.size === 0) return null;
+    let denom = 0;
+    const weighted: Record<string, number> = {};
+    for (const v of compareData.values()) {
+      denom += v.totalCombos;
+      for (const [a, frac] of Object.entries(v.totals)) {
+        weighted[a] = (weighted[a] ?? 0) + frac * v.totalCombos;
+      }
+    }
+    if (denom === 0) return null;
+    const totals: Record<string, number> = {};
+    for (const [a, w] of Object.entries(weighted)) totals[a] = w / denom;
+    return totals;
+  }, [compareData]);
 
   const rows = useMemo<ClassRow[]>(() => {
     if (!setDoc) return [];
@@ -364,7 +657,7 @@ export function PreflopPage() {
     for (const actions of Object.values(setDoc.hands)) {
       for (const a of Object.keys(actions)) present.add(a);
     }
-    return ['raise', 'three_bet', 'call', 'fold'].filter((a) => present.has(a));
+    return ACTION_ORDER.filter((a) => present.has(a));
   }, [setDoc]);
 
   const provenance = setDoc?.provenance;
@@ -375,7 +668,7 @@ export function PreflopPage() {
       <header>
         <h1 className="text-xl font-bold text-ink">Preflop Ranges</h1>
         <p className="text-sm text-ink-dim">
-          Starting ranges for 6-max and 9-max. These are <strong>constructed</strong> ranges —
+          Starting ranges for 6-max, 8-max and 9-max. These are <strong>constructed</strong> ranges —
           built from exact card features and seeded Monte Carlo equities, cross-checked against
           published solver totals. They are not solver output.
         </p>
@@ -453,6 +746,22 @@ export function PreflopPage() {
                     {o}
                   </Pill>
                 ))}
+              </div>
+            ) : null}
+            {group === 'vs-3bet' ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-24 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                  3-bettor
+                </span>
+                {bettors.map((b) => (
+                  <Pill key={b} active={bettor === b} onClick={() => setBettor(b)}>
+                    {b}
+                  </Pill>
+                ))}
+                <span className="text-xs text-ink-faint">
+                  Continuation sets exist at 6-max and 8-max only; the opener's own RFI set is the
+                  base range.
+                </span>
               </div>
             ) : null}
           </section>
@@ -625,10 +934,15 @@ export function PreflopPage() {
                 <Pill active={view === 'matrix'} onClick={() => setView('matrix')}>
                   Matrix view
                 </Pill>
+                <Pill active={view === 'compare'} onClick={() => setView('compare')}>
+                  Compare view
+                </Pill>
                 <span className="text-xs text-ink-faint">
                   {view === 'set'
-                    ? 'Pair-rank aggregates and the full class list for this set.'
-                    : 'Pick a rank pair to drill into the classes that contain both ranks.'}
+                    ? 'Pair-rank aggregates, the breakdown, and the full class list for this set.'
+                    : view === 'matrix'
+                      ? 'Pick a rank pair to drill into the classes that contain both ranks.'
+                      : 'Every position in this scenario side by side, plus the combined range.'}
                 </span>
               </div>
 
@@ -669,6 +983,69 @@ export function PreflopPage() {
                       : 'Loading class features…'}
                   </p>
                 )}
+              </section>
+
+              <section
+                aria-label="Breakdown"
+                className="rounded-lg border border-navy-700 bg-navy-900 p-4"
+              >
+                <h2 className="text-sm font-semibold text-ink">
+                  Breakdown — how the {ACTION_LABEL[action] ?? action} range is mixed
+                </h2>
+                <p className="mt-1 text-xs text-ink-faint">
+                  Each bar is the share of all combos in this set whose class takes{' '}
+                  {ACTION_LABEL[action] ?? action} at that frequency. Constructed sets carry no
+                  per-combo EV, so the breakdown is over frequencies — never an EV histogram.
+                </p>
+                <div className="mt-3 flex items-end gap-2" role="img" aria-label="Frequency mix histogram">
+                  {breakdown.map((b) => (
+                    <div key={b.key} className="flex flex-1 flex-col items-center gap-1">
+                      <span className="font-mono text-[11px] text-ink-dim">
+                        {pctText(b.fraction)}
+                      </span>
+                      <div className="flex h-24 w-full items-end rounded bg-navy-850">
+                        <div
+                          className="w-full rounded"
+                          style={{
+                            height: `${Math.max(1.5, b.fraction * 100)}%`,
+                            backgroundColor: ACTION_COLOR[action] ?? '#7a8aa0',
+                          }}
+                        />
+                      </div>
+                      <span className="text-center text-[11px] leading-tight text-ink-faint">
+                        {b.label}
+                      </span>
+                      <span className="font-mono text-[11px] text-ink-faint">
+                        {b.combos.toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {classByHand ? (
+                  <>
+                    <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                      {ACTION_LABEL[action] ?? action} frequency by suitedness
+                    </h3>
+                    <ul className="mt-2 grid gap-x-6 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                      {suitSummary.map((b) => (
+                        <li key={b.key} className="flex items-center gap-2 text-xs">
+                          <span className="w-32 shrink-0 text-ink-dim">{b.label}</span>
+                          <div className="flex-1">
+                            <FrequencyBar
+                              fraction={b.fraction}
+                              color={ACTION_COLOR[action] ?? '#7a8aa0'}
+                              height="h-2"
+                            />
+                          </div>
+                          <span className="w-14 text-right font-mono text-ink-dim">
+                            {pctText(b.fraction)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
               </section>
 
               <section
@@ -716,7 +1093,19 @@ export function PreflopPage() {
                   Showing the first {Math.min(ROW_CAP, rows.length).toLocaleString()} of{' '}
                   {rows.length.toLocaleString()} classes — filter to narrow the list. Frequencies
                   are per class; combos counts weight each class by its concrete combo count.
+                  Click a class for its full action split, combos and features.
                 </p>
+                {selClassRow ? (
+                  <div className="mt-3">
+                    <ClassDetail
+                      classKey={selClassRow.key}
+                      actions={selClassRow.actions}
+                      cls={selClassRow.cls}
+                      multiplicity={selClassRow.multiplicity}
+                      onClose={() => setSelClass(null)}
+                    />
+                  </div>
+                ) : null}
                 <div className="mt-2 overflow-x-auto">
                   <table className="w-full text-left text-sm">
                     <thead>
@@ -733,7 +1122,14 @@ export function PreflopPage() {
                     </thead>
                     <tbody>
                       {rows.slice(0, ROW_CAP).map((r) => (
-                        <tr key={r.key} className="border-b border-navy-800">
+                        <tr
+                          key={r.key}
+                          onClick={() => setSelClass(r.key)}
+                          aria-selected={selClass === r.key}
+                          className={`cursor-pointer border-b border-navy-800 hover:bg-navy-850 ${
+                            selClass === r.key ? 'bg-navy-850' : ''
+                          }`}
+                        >
                           <td className="py-1.5 pr-3 font-mono text-xs text-ink">{r.key}</td>
                           <td className="py-1.5 pr-3 font-mono text-xs text-ink-dim">
                             {r.multiplicity}
@@ -770,7 +1166,7 @@ export function PreflopPage() {
                 </div>
               </section>
                 </>
-              ) : (
+              ) : view === 'matrix' ? (
               <section
                 aria-label="Rank-pair matrix"
                 className="rounded-lg border border-navy-700 bg-navy-900 p-4"
@@ -918,7 +1314,14 @@ export function PreflopPage() {
                           </thead>
                           <tbody>
                             {drillRows.slice(0, MATRIX_ROW_CAP).map((r) => (
-                              <tr key={r.key} className="border-b border-navy-800">
+                              <tr
+                                key={r.key}
+                                onClick={() => setSelClass(r.key)}
+                                aria-selected={selClass === r.key}
+                                className={`cursor-pointer border-b border-navy-800 hover:bg-navy-850 ${
+                                  selClass === r.key ? 'bg-navy-850' : ''
+                                }`}
+                              >
                                 <td className="py-1.5 pr-3 font-mono text-xs text-ink">
                                   {r.key}
                                   {r.cls ? (
@@ -965,8 +1368,133 @@ export function PreflopPage() {
                         {suitFeature ? ` with suitedness: ${suitFilterLabel.toLowerCase()}` : ''}.
                       </p>
                     )}
+                    {selClassRow ? (
+                      <ClassDetail
+                        classKey={selClassRow.key}
+                        actions={selClassRow.actions}
+                        cls={selClassRow.cls}
+                        multiplicity={selClassRow.multiplicity}
+                        onClose={() => setSelClass(null)}
+                      />
+                    ) : (
+                      <p className="text-xs text-ink-faint">
+                        Click a class in the list for its full action split, combos and features.
+                      </p>
+                    )}
                   </aside>
                 </div>
+              </section>
+              ) : (
+              <section
+                aria-label="Compare positions"
+                className="rounded-lg border border-navy-700 bg-navy-900 p-4"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-sm font-semibold text-ink">
+                    Compare — {GROUP_LABEL[group]} · {RAKE_LABEL[rake]}
+                    {group === 'vs-rfi' && opener ? ` · vs ${opener} open` : ''}
+                    {group === 'vs-3bet' && bettor ? ` · vs ${bettor} 3-bet` : ''}
+                  </h2>
+                  <span className="ml-auto text-xs text-ink-faint">
+                    Click a position to open its set.
+                  </span>
+                </div>
+                {compareLoading ? (
+                  <p className="mt-3 text-sm text-ink-dim">Loading the sets in this scenario…</p>
+                ) : compareData && compareEntries.length > 0 ? (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {compareEntries.map((e) => {
+                      const data = compareData.get(e.id);
+                      return (
+                        <button
+                          key={e.id}
+                          type="button"
+                          disabled={!data}
+                          onClick={() => {
+                            setPosition(e.position);
+                            setView('set');
+                          }}
+                          className="rounded-lg border border-navy-700 bg-navy-850 p-3 text-left hover:ring-1 hover:ring-ink-faint disabled:opacity-50"
+                        >
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-sm font-semibold text-ink">{e.position}</span>
+                            <span className="font-mono text-lg text-ink">
+                              {data ? pctText(data.totals[headlineAction] ?? 0) : '—'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-ink-faint">
+                            {ACTION_LABEL[headlineAction] ?? headlineAction} · {e.table_size} ·{' '}
+                            {RAKE_LABEL[rakeOf(e)]}
+                          </p>
+                          {data ? (
+                            <div className="mt-2 flex flex-col gap-1.5">
+                              {compareActions.map((a) => (
+                                <div key={a} className="flex items-center gap-2 text-xs">
+                                  <span className="w-12 text-ink-dim">
+                                    {ACTION_LABEL[a] ?? a}
+                                  </span>
+                                  <div className="flex-1">
+                                    <FrequencyBar
+                                      fraction={data.totals[a] ?? 0}
+                                      color={ACTION_COLOR[a] ?? '#7a8aa0'}
+                                      height="h-2"
+                                    />
+                                  </div>
+                                  <span className="w-14 text-right font-mono text-ink-dim">
+                                    {pctText(data.totals[a] ?? 0)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-xs text-ink-faint">
+                              Set document unavailable.
+                            </p>
+                          )}
+                        </button>
+                      );
+                    })}
+                    {compareCombined ? (
+                      <div className="rounded-lg border border-dashed border-navy-700 bg-navy-900 p-3">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-sm font-semibold text-ink">Combined</span>
+                          <span className="font-mono text-lg text-ink">
+                            {pctText(compareCombined[headlineAction] ?? 0)}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-ink-faint">
+                          {ACTION_LABEL[headlineAction] ?? headlineAction} · all positions in this
+                          scenario, weighted by combo count
+                        </p>
+                        <div className="mt-2 flex flex-col gap-1.5">
+                          {compareActions.map((a) => (
+                            <div key={a} className="flex items-center gap-2 text-xs">
+                              <span className="w-12 text-ink-dim">{ACTION_LABEL[a] ?? a}</span>
+                              <div className="flex-1">
+                                <FrequencyBar
+                                  fraction={compareCombined[a] ?? 0}
+                                  color={ACTION_COLOR[a] ?? '#7a8aa0'}
+                                  height="h-2"
+                                />
+                              </div>
+                              <span className="w-14 text-right font-mono text-ink-dim">
+                                {pctText(compareCombined[a] ?? 0)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-ink-dim">
+                    No sets in this scenario to compare.
+                  </p>
+                )}
+                <p className="mt-3 text-xs leading-relaxed text-ink-faint">
+                  Totals are combo-weighted within each set. Every figure is a constructed-range
+                  frequency, not solver output.
+                </p>
               </section>
               )}
             </>

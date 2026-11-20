@@ -370,6 +370,17 @@ export function openerOf(doc: Pick<PreflopSetDoc, 'context_detail'>): string | n
   return m ? m[1] : null;
 }
 
+/**
+ * 3-bettor position of a vs_three_bet continuation set, parsed from its
+ * id slug ("...-btn-vs-bb-3bet" -> "BB"). Index entries carry no
+ * context_detail, so the slug is the only carrier — the same convention
+ * the Preflop page already uses for vs_rfi openers.
+ */
+export function threeBettorOf(entry: Pick<PreflopSetIndexEntry, 'id'>): string | null {
+  const m = /-vs-([a-z0-9+]+)-3bet$/.exec(entry.id);
+  return m ? m[1].toUpperCase().replace('UTGPLUS', 'UTG+') : null;
+}
+
 /** Human label for a set, used in pickers and headers. */
 export function setLabel(
   entry: Pick<PreflopSetIndexEntry, 'table_size' | 'position' | 'context' | 'rake'> & {
@@ -686,5 +697,104 @@ export function pairRankSummary(
     fraction: rundowns.weighted / totalCombos,
     combos: rundowns.combos,
   });
+  return buckets;
+}
+
+// --------------------------- breakdown summaries ---------------------------
+
+export interface FrequencyBucket {
+  key: string;
+  label: string;
+  /** Share of all combos in the set whose class sits in this band. */
+  fraction: number;
+  /** Concrete combos whose class sits in this band. */
+  combos: number;
+}
+
+/**
+ * The mixing profile of one action: every class in the set falls into a
+ * band by its frequency for `action`, and each band is weighted by the
+ * class's concrete combo count. The bands answer "how much of this
+ * range is pure vs mixed, and where does the mixing sit" — the preflop
+ * breakdown our constructed data genuinely carries (per-combo EVs do
+ * not exist for constructed sets, so no EV histogram is offered).
+ * Works from the set document alone (multiplicities fall back to the
+ * suit-permutation orbit when no class table is loaded).
+ */
+export function frequencyBreakdown(
+  doc: PreflopSetDoc,
+  action: string,
+  tableByHand: Map<string, PreflopClass> | null,
+): FrequencyBucket[] {
+  const bands: { key: string; label: string; test: (f: number) => boolean }[] = [
+    { key: 'never', label: 'Never (0%)', test: (f) => f <= 0 },
+    { key: 'mix-1', label: 'Mixed 1–24%', test: (f) => f > 0 && f < 0.25 },
+    { key: 'mix-2', label: 'Mixed 25–49%', test: (f) => f >= 0.25 && f < 0.5 },
+    { key: 'mix-3', label: 'Mixed 50–74%', test: (f) => f >= 0.5 && f < 0.75 },
+    { key: 'mix-4', label: 'Mixed 75–99%', test: (f) => f >= 0.75 && f < 0.999 },
+    { key: 'pure', label: 'Pure (100%)', test: (f) => f >= 0.999 },
+  ];
+  const acc = bands.map(() => 0);
+  let total = 0;
+  for (const [key, actions] of Object.entries(doc.hands)) {
+    const mult = multiplicityOf(key, tableByHand);
+    total += mult;
+    const f = actions[action] ?? 0;
+    const idx = bands.findIndex((b) => b.test(f));
+    if (idx >= 0) acc[idx] = (acc[idx] ?? 0) + mult;
+  }
+  if (total === 0) return [];
+  return bands.map((b, i) => ({
+    key: b.key,
+    label: b.label,
+    fraction: (acc[i] ?? 0) / total,
+    combos: acc[i] ?? 0,
+  }));
+}
+
+export interface SuitednessBucket {
+  key: string;
+  label: string;
+  /** Combo-weighted frequency of the action, as a fraction of all combos. */
+  fraction: number;
+  /** Concrete combos in this bucket (any frequency). */
+  combos: number;
+}
+
+const SUITEDNESS_ORDER = ['double', 'single', 'three', 'four', 'rainbow'];
+
+/**
+ * Aggregate an action's combo-weighted frequency by suitedness class —
+ * the Categories companion to pairRankSummary. Requires class-table
+ * features; returns [] without them.
+ */
+export function suitednessSummary(
+  doc: PreflopSetDoc,
+  action: string,
+  tableByHand: Map<string, PreflopClass>,
+  totalCombos: number,
+): SuitednessBucket[] {
+  if (totalCombos === 0) return [];
+  const byKind = new Map<string, { weighted: number; combos: number }>();
+  for (const [key, actions] of Object.entries(doc.hands)) {
+    const cls = tableByHand.get(key);
+    if (!cls) continue;
+    const mult = cls.multiplicity;
+    const bucket = byKind.get(cls.features.suitedness) ?? { weighted: 0, combos: 0 };
+    bucket.weighted += mult * (actions[action] ?? 0);
+    bucket.combos += mult;
+    byKind.set(cls.features.suitedness, bucket);
+  }
+  const buckets: SuitednessBucket[] = [];
+  for (const kind of SUITEDNESS_ORDER) {
+    const bucket = byKind.get(kind);
+    if (!bucket) continue;
+    buckets.push({
+      key: `suit-${kind}`,
+      label: SUITEDNESS_LABEL[kind] ?? kind,
+      fraction: bucket.weighted / totalCombos,
+      combos: bucket.combos,
+    });
+  }
   return buckets;
 }
