@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ApproximationBadge } from '../components/AccuracyBadge';
 import { CardRow } from '../components/CardChip';
-import { FrequencyBar, pctText } from '../components/FrequencyBar';
+import { FrequencyBar, pctText, SplitBar } from '../components/FrequencyBar';
 import { ApiError, fetchPreflopClassTable, fetchPreflopIndex, fetchPreflopSet } from '../lib/api';
 import { parseCombo } from '../lib/cards';
 import {
@@ -84,8 +84,19 @@ const ACTION_ORDER = ['raise', 'three_bet', 'four_bet', 'call', 'fold'];
 
 const ROW_CAP = 200;
 const MATRIX_ROW_CAP = 100;
+/** Classes listed per action on the Ranges tab (Strategy holds the full list). */
+const RANGE_CLASS_CAP = 50;
 
-type RangeView = 'set' | 'matrix' | 'compare';
+type RangeView = 'strategy' | 'matrix' | 'ranges' | 'breakdown' | 'compare';
+
+/** A totals map's actions in display order (menu order, then any extras A–Z). */
+function orderedActions(totalsMap: Record<string, number>): string[] {
+  return ACTION_ORDER.filter((a) => a in totalsMap).concat(
+    Object.keys(totalsMap)
+      .filter((a) => !ACTION_ORDER.includes(a))
+      .sort(),
+  );
+}
 
 function hexToRgba(hex: string, alpha: number): string {
   const n = Number.parseInt(hex.slice(1), 16);
@@ -282,13 +293,15 @@ export function PreflopPage() {
   const [bettor, setBettor] = useState<string | null>(null);
   const [selClass, setSelClass] = useState<string | null>(null);
 
-  // Compare view: per-position totals for the current scenario family,
-  // fetched lazily when the view opens (one set document per position).
-  const [compareData, setCompareData] = useState<Map<
+  // Scenario-family data: per-position totals for every set in the
+  // current scenario family (one document per position), fetched when
+  // the family changes. It feeds both the position strip (each card's
+  // headline split) and the Compare tab.
+  const [familyData, setFamilyData] = useState<Map<
     string,
     { totals: Record<string, number>; totalCombos: number }
   > | null>(null);
-  const [compareLoading, setCompareLoading] = useState(false);
+  const [familyLoading, setFamilyLoading] = useState(false);
 
   const [setDoc, setSetDoc] = useState<PreflopSetDoc | null>(null);
   const [setLoading, setSetLoading] = useState(false);
@@ -298,7 +311,7 @@ export function PreflopPage() {
   const [sortKey, setSortKey] = useState<SortKey>('frequency');
   const [filter, setFilter] = useState('');
 
-  const [view, setView] = useState<RangeView>('set');
+  const [view, setView] = useState<RangeView>('strategy');
   const [suitFilter, setSuitFilter] = useState<SuitednessFilter>('any');
   const [selCell, setSelCell] = useState<{ hi: number; lo: number }>({ hi: 14, lo: 14 });
 
@@ -509,10 +522,11 @@ export function PreflopPage() {
     };
   }, [setDoc, selClass, classByHand]);
 
-  // ----- Compare view -----
-  // The sets compared are the current scenario family: every position
+  // ----- Scenario family -----
+  // The family is every set in the current scenario: every position
   // in the group (for vs-RFI, every defender against the chosen opener;
   // for vs-3bet, every opener continuing against the chosen 3-bettor).
+  // The position strip and the Compare tab both read this family.
   const compareEntries = useMemo<PreflopSetIndexEntry[]>(() => {
     if (group === 'first-in') return groupSets;
     if (group === 'vs-rfi') {
@@ -526,13 +540,13 @@ export function PreflopPage() {
   }, [groupSets, group, opener, bettor]);
 
   useEffect(() => {
-    if (view !== 'compare' || compareEntries.length === 0) {
-      setCompareData(null);
-      setCompareLoading(false);
+    if (compareEntries.length === 0) {
+      setFamilyData(null);
+      setFamilyLoading(false);
       return;
     }
     let cancelled = false;
-    setCompareLoading(true);
+    setFamilyLoading(true);
     void (async () => {
       const out = new Map<string, { totals: Record<string, number>; totalCombos: number }>();
       await Promise.all(
@@ -550,30 +564,30 @@ export function PreflopPage() {
         }),
       );
       if (cancelled) return;
-      setCompareData(out);
-      setCompareLoading(false);
+      setFamilyData(out);
+      setFamilyLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [view, compareEntries, classByHand]);
+  }, [compareEntries, classByHand]);
 
   const compareActions = useMemo(() => {
-    if (!compareData) return [];
+    if (!familyData) return [];
     const present = new Set<string>();
-    for (const v of compareData.values()) {
+    for (const v of familyData.values()) {
       for (const a of Object.keys(v.totals)) present.add(a);
     }
     return ACTION_ORDER.filter((a) => present.has(a)).concat(
       [...present].filter((a) => !ACTION_ORDER.includes(a)).sort(),
     );
-  }, [compareData]);
+  }, [familyData]);
 
   const compareCombined = useMemo(() => {
-    if (!compareData || compareData.size === 0) return null;
+    if (!familyData || familyData.size === 0) return null;
     let denom = 0;
     const weighted: Record<string, number> = {};
-    for (const v of compareData.values()) {
+    for (const v of familyData.values()) {
       denom += v.totalCombos;
       for (const [a, frac] of Object.entries(v.totals)) {
         weighted[a] = (weighted[a] ?? 0) + frac * v.totalCombos;
@@ -583,7 +597,26 @@ export function PreflopPage() {
     const totals: Record<string, number> = {};
     for (const [a, w] of Object.entries(weighted)) totals[a] = w / denom;
     return totals;
-  }, [compareData]);
+  }, [familyData]);
+
+  // ----- Position strip -----
+  // One card per position in the family, in seat order. The entry kept
+  // per position is the one the selection logic below would open for
+  // that position (first-in keeps the first set listed for the seat;
+  // the vs-* families are already filtered to the chosen other actor).
+  const stripEntries = useMemo<PreflopSetIndexEntry[]>(() => {
+    const byPosition = new Map<string, PreflopSetIndexEntry>();
+    for (const e of compareEntries) {
+      if (!byPosition.has(e.position)) byPosition.set(e.position, e);
+    }
+    return sortPositions([...byPosition.keys()], tableSize).map(
+      (p) => byPosition.get(p) as PreflopSetIndexEntry,
+    );
+  }, [compareEntries, tableSize]);
+
+  // The family's headline action: first-in sets lead with Raise, the
+  // vs-* families with Call (the same rule the set header applies).
+  const familyHeadline = group === 'first-in' ? 'raise' : 'call';
 
   const rows = useMemo<ClassRow[]>(() => {
     if (!setDoc) return [];
@@ -660,6 +693,32 @@ export function PreflopPage() {
     return ACTION_ORDER.filter((a) => present.has(a));
   }, [setDoc]);
 
+  // ----- Ranges tab -----
+  // The set as ranges: for each action, the classes that take it,
+  // strongest frequency first, capped per action (the Strategy tab's
+  // class table holds the full list). Every figure is read from the
+  // set document — a constructed set carries no other range data.
+  const actionRanges = useMemo(() => {
+    if (!setDoc) return [];
+    return actionsInSet.map((a) => {
+      const inRange = Object.entries(setDoc.hands)
+        .map(([key, actions]) => ({
+          key,
+          freq: actions[a] ?? 0,
+          multiplicity: multiplicityOf(key, classByHand),
+        }))
+        .filter((r) => r.freq > 0)
+        .sort((x, y) => y.freq - x.freq || x.key.localeCompare(y.key));
+      return {
+        action: a,
+        total: totals[a] ?? 0,
+        combosWithFreq: combosInAction(setDoc, a, classByHand),
+        classCount: inRange.length,
+        rows: inRange.slice(0, RANGE_CLASS_CAP),
+      };
+    });
+  }, [setDoc, actionsInSet, classByHand, totals]);
+
   const provenance = setDoc?.provenance;
   const solveCompat = selectedEntry ? isSolveCompatible(selectedEntry) : false;
 
@@ -703,6 +762,20 @@ export function PreflopPage() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="w-24 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                Stack
+              </span>
+              <span
+                aria-disabled="true"
+                className="rounded-full bg-navy-850 px-2.5 py-1 text-xs font-semibold text-ink ring-1 ring-table"
+              >
+                {selectedEntry ? `${selectedEntry.stack_bb}bb` : '100bb'}
+              </span>
+              <span className="text-xs text-ink-faint">
+                Every set in the library is 100bb — no other stack exists to select.
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="w-24 text-xs font-semibold uppercase tracking-wide text-ink-faint">
                 Rake
               </span>
               {RAKE_VARIANTS.map((r) => (
@@ -723,16 +796,6 @@ export function PreflopPage() {
               {(Object.keys(GROUP_LABEL) as ContextGroup[]).map((g) => (
                 <Pill key={g} active={group === g} onClick={() => setGroup(g)}>
                   {GROUP_LABEL[g]}
-                </Pill>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="w-24 text-xs font-semibold uppercase tracking-wide text-ink-faint">
-                Position
-              </span>
-              {positions.map((p) => (
-                <Pill key={p} active={position === p} onClick={() => setPosition(p)}>
-                  {p}
                 </Pill>
               ))}
             </div>
@@ -764,6 +827,86 @@ export function PreflopPage() {
                 </span>
               </div>
             ) : null}
+          </section>
+
+          <section aria-label="Positions in this scenario" className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                Positions — {GROUP_LABEL[group]}
+                {group === 'vs-rfi' && opener ? ` vs ${opener} open` : ''}
+                {group === 'vs-3bet' && bettor ? ` vs ${bettor} 3-bet` : ''}
+              </h2>
+              <span className="text-xs text-ink-faint">
+                Each card is that position's set in this scenario, with its headline split. Pick a
+                position to open its set below.
+              </span>
+            </div>
+            {stripEntries.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {stripEntries.map((e) => {
+                  const data =
+                    setDoc && setDoc.id === e.id
+                      ? { totals, totalCombos }
+                      : familyData?.get(e.id);
+                  const active = position === e.position;
+                  return (
+                    <button
+                      key={e.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => {
+                        setPosition(e.position);
+                        if (view === 'compare') setView('strategy');
+                      }}
+                      className={`min-w-[9.5rem] flex-1 rounded-lg border p-2.5 text-left ${
+                        active
+                          ? 'border-navy-700 bg-navy-800 ring-1 ring-table'
+                          : 'border-navy-700 bg-navy-900 hover:ring-1 hover:ring-ink-faint'
+                      }`}
+                    >
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-sm font-semibold text-ink">{e.position}</span>
+                        <span className="font-mono text-sm text-ink">
+                          {data ? pctText(data.totals[familyHeadline] ?? 0) : '—'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-ink-faint">
+                        {ACTION_LABEL[familyHeadline] ?? familyHeadline}
+                        {data ? ` · ${data.totalCombos.toLocaleString()} combos` : ''}
+                      </p>
+                      {data ? (
+                        <>
+                          <div className="mt-2 h-2">
+                            <SplitBar
+                              segments={orderedActions(data.totals).map((a) => ({
+                                fraction: data.totals[a] ?? 0,
+                                color: ACTION_COLOR[a] ?? '#7a8aa0',
+                                label: ACTION_LABEL[a] ?? a,
+                              }))}
+                            />
+                          </div>
+                          <p className="mt-1.5 text-[11px] leading-relaxed text-ink-faint">
+                            {orderedActions(data.totals)
+                              .map(
+                                (a) => `${ACTION_LABEL[a] ?? a} ${pctText(data.totals[a] ?? 0)}`,
+                              )
+                              .join(' · ')}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="mt-2 text-[11px] text-ink-faint">
+                          {familyLoading ? 'Loading split…' : 'Set document unavailable.'}
+                        </p>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-ink-dim">
+                No positions in this scenario at this table size and rake variant.
+              </p>
+            )}
           </section>
 
           {setLoading ? <p className="text-sm text-ink-dim">Loading range set…</p> : null}
@@ -928,25 +1071,35 @@ export function PreflopPage() {
                 role="tablist"
                 aria-label="Range view"
               >
-                <Pill active={view === 'set'} onClick={() => setView('set')}>
-                  Set view
+                <Pill active={view === 'strategy'} onClick={() => setView('strategy')}>
+                  Strategy
                 </Pill>
                 <Pill active={view === 'matrix'} onClick={() => setView('matrix')}>
-                  Matrix view
+                  Matrix
+                </Pill>
+                <Pill active={view === 'ranges'} onClick={() => setView('ranges')}>
+                  Ranges
+                </Pill>
+                <Pill active={view === 'breakdown'} onClick={() => setView('breakdown')}>
+                  Breakdown
                 </Pill>
                 <Pill active={view === 'compare'} onClick={() => setView('compare')}>
-                  Compare view
+                  Compare
                 </Pill>
                 <span className="text-xs text-ink-faint">
-                  {view === 'set'
-                    ? 'Pair-rank aggregates, the breakdown, and the full class list for this set.'
+                  {view === 'strategy'
+                    ? 'Pair-rank aggregates and the full class list for this set.'
                     : view === 'matrix'
                       ? 'Pick a rank pair to drill into the classes that contain both ranks.'
-                      : 'Every position in this scenario side by side, plus the combined range.'}
+                      : view === 'ranges'
+                        ? 'This set as ranges: the classes behind each action, strongest first.'
+                        : view === 'breakdown'
+                          ? 'How the selected action is mixed across the set, and by suitedness.'
+                          : 'Every position in this scenario side by side, plus the combined range.'}
                 </span>
               </div>
 
-              {view === 'set' ? (
+              {view === 'strategy' ? (
                 <>
               <section
                 aria-label="Pair rank summary"
@@ -984,14 +1137,26 @@ export function PreflopPage() {
                   </p>
                 )}
               </section>
+                </>
+              ) : null}
 
+              {view === 'breakdown' ? (
               <section
                 aria-label="Breakdown"
                 className="rounded-lg border border-navy-700 bg-navy-900 p-4"
               >
-                <h2 className="text-sm font-semibold text-ink">
-                  Breakdown — how the {ACTION_LABEL[action] ?? action} range is mixed
-                </h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-sm font-semibold text-ink">
+                    Breakdown — how the {ACTION_LABEL[action] ?? action} range is mixed
+                  </h2>
+                  <div className="ml-auto flex flex-wrap gap-1.5">
+                    {actionsInSet.map((a) => (
+                      <Pill key={a} active={action === a} onClick={() => setAction(a)}>
+                        {ACTION_LABEL[a] ?? a}
+                      </Pill>
+                    ))}
+                  </div>
+                </div>
                 <p className="mt-1 text-xs text-ink-faint">
                   Each bar is the share of all combos in this set whose class takes{' '}
                   {ACTION_LABEL[action] ?? action} at that frequency. Constructed sets carry no
@@ -1047,7 +1212,10 @@ export function PreflopPage() {
                   </>
                 ) : null}
               </section>
+              ) : null}
 
+              {view === 'strategy' ? (
+                <>
               <section
                 aria-label="Hand classes"
                 className="rounded-lg border border-navy-700 bg-navy-900 p-4"
@@ -1384,6 +1552,128 @@ export function PreflopPage() {
                   </aside>
                 </div>
               </section>
+              ) : view === 'ranges' ? (
+              <section
+                aria-label="Ranges by action"
+                className="rounded-lg border border-navy-700 bg-navy-900 p-4"
+              >
+                <h2 className="text-sm font-semibold text-ink">Ranges — this set by action</h2>
+                <p className="mt-1 text-xs text-ink-faint">
+                  In the reference, the preflop Ranges tab is a postflop-only prompt — there is no
+                  postflop range behind a preflop set. Here the tab shows what a preflop set
+                  actually is: one range per action. Every figure comes from this set document;
+                  the frequencies are constructed-range frequencies, not solver output.
+                </p>
+
+                <div className="mt-3 h-3">
+                  <SplitBar
+                    segments={orderedActions(totals).map((a) => ({
+                      fraction: totals[a] ?? 0,
+                      color: ACTION_COLOR[a] ?? '#7a8aa0',
+                      label: ACTION_LABEL[a] ?? a,
+                    }))}
+                  />
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-dim">
+                  {orderedActions(totals).map((a) => (
+                    <span key={a}>
+                      <span
+                        className="mr-1 inline-block h-2 w-2 rounded-sm"
+                        style={{ backgroundColor: ACTION_COLOR[a] ?? '#7a8aa0' }}
+                      />
+                      {ACTION_LABEL[a] ?? a} {pctText(totals[a] ?? 0)}
+                    </span>
+                  ))}
+                </div>
+
+                {selClassRow ? (
+                  <div className="mt-3">
+                    <ClassDetail
+                      classKey={selClassRow.key}
+                      actions={selClassRow.actions}
+                      cls={selClassRow.cls}
+                      multiplicity={selClassRow.multiplicity}
+                      onClose={() => setSelClass(null)}
+                    />
+                  </div>
+                ) : null}
+
+                <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                  {actionRanges.map((r) => (
+                    <div
+                      key={r.action}
+                      className="rounded-lg border border-navy-700 bg-navy-850 p-3"
+                    >
+                      <div className="flex flex-wrap items-baseline gap-2">
+                        <h3 className="text-sm font-semibold text-ink">
+                          {ACTION_LABEL[r.action] ?? r.action} range
+                        </h3>
+                        <span className="font-mono text-sm text-ink">{pctText(r.total)}</span>
+                        <span className="text-[11px] text-ink-faint">
+                          {r.combosWithFreq.toLocaleString()} combos take it at some frequency ·{' '}
+                          {r.classCount.toLocaleString()} classes
+                        </span>
+                      </div>
+                      <div className="mt-2">
+                        <FrequencyBar
+                          fraction={r.total}
+                          color={ACTION_COLOR[r.action] ?? '#7a8aa0'}
+                        />
+                      </div>
+                      <div className="mt-2 overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                          <thead>
+                            <tr className="border-b border-navy-700 text-xs uppercase tracking-wide text-ink-faint">
+                              <th className="py-1.5 pr-3 font-medium">Class</th>
+                              <th className="py-1.5 pr-3 font-medium">Combos</th>
+                              <th className="py-1.5 font-medium">
+                                {ACTION_LABEL[r.action] ?? r.action}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {r.rows.map((row) => (
+                              <tr
+                                key={row.key}
+                                onClick={() => setSelClass(row.key)}
+                                aria-selected={selClass === row.key}
+                                className={`cursor-pointer border-b border-navy-800 hover:bg-navy-900 ${
+                                  selClass === row.key ? 'bg-navy-900' : ''
+                                }`}
+                              >
+                                <td className="py-1.5 pr-3 font-mono text-xs text-ink">{row.key}</td>
+                                <td className="py-1.5 pr-3 font-mono text-xs text-ink-dim">
+                                  {row.multiplicity}
+                                </td>
+                                <td className="w-36 py-1.5">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-16">
+                                      <FrequencyBar
+                                        fraction={row.freq}
+                                        color={ACTION_COLOR[r.action] ?? '#7a8aa0'}
+                                        height="h-2"
+                                      />
+                                    </div>
+                                    <span className="font-mono text-xs text-ink-dim">
+                                      {pctText(row.freq)}
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {r.classCount > r.rows.length ? (
+                        <p className="mt-1.5 text-xs text-ink-faint">
+                          Strongest {r.rows.length} classes shown — the full class list is in the
+                          Strategy tab.
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </section>
               ) : (
               <section
                 aria-label="Compare positions"
@@ -1399,12 +1689,12 @@ export function PreflopPage() {
                     Click a position to open its set.
                   </span>
                 </div>
-                {compareLoading ? (
+                {familyLoading ? (
                   <p className="mt-3 text-sm text-ink-dim">Loading the sets in this scenario…</p>
-                ) : compareData && compareEntries.length > 0 ? (
+                ) : familyData && compareEntries.length > 0 ? (
                   <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {compareEntries.map((e) => {
-                      const data = compareData.get(e.id);
+                      const data = familyData.get(e.id);
                       return (
                         <button
                           key={e.id}
@@ -1412,7 +1702,7 @@ export function PreflopPage() {
                           disabled={!data}
                           onClick={() => {
                             setPosition(e.position);
-                            setView('set');
+                            setView('strategy');
                           }}
                           className="rounded-lg border border-navy-700 bg-navy-850 p-3 text-left hover:ring-1 hover:ring-ink-faint disabled:opacity-50"
                         >
