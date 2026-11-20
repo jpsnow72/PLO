@@ -408,6 +408,14 @@ async function listLibrary() {
         iterations: result?.iterations ?? meta.iterations ?? null,
         finished_at: meta.finished_at ?? null,
         size_bytes: stat.size,
+        // Geometry + lock state, read from the stored solve itself (the
+        // list previously dropped both, so the picker could not show
+        // pot/stacks or badge nodelocked solves without fetching every
+        // payload). Null/false when the stored JSON lacks them.
+        starting_pot: typeof result?.starting_pot === 'number' ? result.starting_pot : null,
+        effective_stack:
+          typeof result?.effective_stack === 'number' ? result.effective_stack : null,
+        locked: result?.locked === true || meta.locked === true,
       });
     } catch {
       // Skip unreadable entries rather than failing the whole list.
