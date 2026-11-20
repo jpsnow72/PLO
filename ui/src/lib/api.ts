@@ -175,6 +175,8 @@ export async function fetchAuthMe(): Promise<AuthState> {
     return {
       admin: body.admin,
       authEnabled: typeof body.auth_enabled === 'boolean' ? body.auth_enabled : true,
+      email: typeof body.email === 'string' ? body.email : null,
+      provider: typeof body.provider === 'string' ? body.provider : null,
     };
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) {
@@ -198,6 +200,40 @@ export async function login(password: string): Promise<void> {
 /** Log out (clears the session cookie server-side). */
 export async function logout(): Promise<void> {
   await requestJson('/api/auth/logout', { method: 'POST', body: '{}' });
+}
+
+/**
+ * Public sign-in config (GET /api/auth/config): the Google OAuth client
+ * id when the server has Google sign-in switched on, else null. Fails
+ * soft — an unreachable or malformed answer simply means "no Google
+ * button", never a broken login page.
+ */
+export async function fetchAuthConfig(): Promise<{ googleClientId: string | null }> {
+  try {
+    const body = await requestJson('/api/auth/config');
+    if (isRecord(body) && typeof body.google_client_id === 'string' && body.google_client_id.length > 0) {
+      return { googleClientId: body.google_client_id };
+    }
+  } catch {
+    // Offline / feature off: the password form stands alone.
+  }
+  return { googleClientId: null };
+}
+
+/**
+ * Exchange a Google Identity Services ID token for the admin session
+ * (POST /api/auth/google). Throws ApiError with the server's message on
+ * failure — including the 403 for a Google account that is not on the
+ * server's admin allowlist.
+ */
+export async function loginWithGoogle(credential: string): Promise<void> {
+  const body = await requestJson('/api/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ credential }),
+  });
+  if (!isRecord(body) || body.admin !== true) {
+    throw new ApiError(0, 'Malformed login response');
+  }
 }
 
 // ---------- Local runner (catalog queue) ----------

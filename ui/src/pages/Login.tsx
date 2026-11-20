@@ -1,6 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ApiError, fetchAuthMe, login, logout } from '../lib/api';
+import { ApiError, fetchAuthConfig, fetchAuthMe, login, loginWithGoogle, logout } from '../lib/api';
+import { googleAccountsId, loadGoogleSignInScript } from '../lib/googleSignIn';
 import { useStore } from '../store/useStore';
 
 function fromPath(state: unknown): string {
@@ -13,8 +14,9 @@ function fromPath(state: unknown): string {
 
 /**
  * Two distinct things live on this page:
- *  - Admin login: the real server login (password -> session cookie).
- *    Adding solves requires it whenever the server has auth enabled.
+ *  - Admin login: the real server login (password -> session cookie, or
+ *    an allowlisted Google account -> the same session cookie). Adding
+ *    solves requires it whenever the server has auth enabled.
  *  - Local display name: a device-only placeholder used for greetings and
  *    personal state. It grants nothing and never leaves this device.
  */
@@ -23,6 +25,8 @@ export function LoginPage() {
   const location = useLocation();
   const isAdmin = useStore((s) => s.isAdmin);
   const authEnabled = useStore((s) => s.authEnabled);
+  const authEmail = useStore((s) => s.authEmail);
+  const authProvider = useStore((s) => s.authProvider);
   const setAdmin = useStore((s) => s.setAdmin);
   const user = useStore((s) => s.user);
   const signIn = useStore((s) => s.signIn);
@@ -32,6 +36,8 @@ export function LoginPage() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
   const [name, setName] = useState('');
+  const [googleAvailable, setGoogleAvailable] = useState(false);
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
 
   // Refresh the session state on arrival so a stale probe never shows a
   // login form to someone already holding a valid session.
@@ -40,7 +46,7 @@ export function LoginPage() {
     void (async () => {
       try {
         const state = await fetchAuthMe();
-        if (!cancelled) setAdmin(state.admin, state.authEnabled);
+        if (!cancelled) setAdmin(state.admin, state.authEnabled, state);
       } catch {
         // API unreachable: leave the store as-is; the form reports its own error.
       }
@@ -57,7 +63,7 @@ export function LoginPage() {
     try {
       await login(password);
       const state = await fetchAuthMe().catch(() => null);
-      setAdmin(true, state ? state.authEnabled : authEnabled);
+      setAdmin(true, state ? state.authEnabled : authEnabled, state);
       setPassword('');
       navigate(fromPath(location.state), { replace: true });
     } catch (err) {
@@ -70,6 +76,71 @@ export function LoginPage() {
       setLoggingIn(false);
     }
   };
+
+  const onGoogleCredential = async (credential: string) => {
+    setLoginError(null);
+    setLoggingIn(true);
+    try {
+      await loginWithGoogle(credential);
+      const state = await fetchAuthMe().catch(() => null);
+      setAdmin(true, state ? state.authEnabled : authEnabled, state);
+      navigate(fromPath(location.state), { replace: true });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        // Includes the server's 403 for a Google account that is not on
+        // the admin allowlist — that message is meant to be read.
+        setLoginError(err.message);
+      } else {
+        setLoginError('Google sign-in failed. The password login still works.');
+      }
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
+  // Google sign-in: only when the server publishes a client id (GET
+  // /api/auth/config). The GIS button posts its ID token to
+  // /api/auth/google; success refreshes auth state exactly like the
+  // password login. When no client id comes back, nothing renders and
+  // the password form stands alone, untouched.
+  useEffect(() => {
+    if (isAdmin) return;
+    let cancelled = false;
+    void (async () => {
+      const { googleClientId } = await fetchAuthConfig();
+      if (!googleClientId || cancelled) return;
+      try {
+        await loadGoogleSignInScript();
+      } catch {
+        return; // Script blocked/unreachable: password login still works.
+      }
+      if (cancelled) return;
+      const accounts = googleAccountsId();
+      const el = googleButtonRef.current;
+      if (!accounts || !el) return;
+      accounts.initialize({
+        client_id: googleClientId,
+        callback: (response) => {
+          if (response.credential) void onGoogleCredential(response.credential);
+        },
+      });
+      el.replaceChildren();
+      accounts.renderButton(el, {
+        theme: 'outline',
+        size: 'large',
+        text: 'signin_with',
+        shape: 'rectangular',
+        width: 320,
+      });
+      setGoogleAvailable(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // onGoogleCredential only uses stable store/router setters; the
+    // button is (re)rendered whenever the signed-out form is showing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin]);
 
   const onLogout = async () => {
     try {
@@ -97,7 +168,17 @@ export function LoginPage() {
         {isAdmin ? (
           <div className="mt-2 flex flex-col gap-3">
             <p className="text-sm text-ink-dim">
-              You're signed in as admin.
+              You're signed in as admin
+              {authEmail ? (
+                <>
+                  {' '}
+                  as <span className="text-ink">{authEmail}</span>
+                  {authProvider === 'google' ? ' (via Google)' : ''}
+                </>
+              ) : (
+                ''
+              )}
+              .
               {authEnabled === false
                 ? ' Note: the server currently has auth DISABLED (no ADMIN_PASSWORD_HASH), so write endpoints are open — this session is nominal.'
                 : ''}
@@ -143,9 +224,18 @@ export function LoginPage() {
             >
               {loggingIn ? 'Logging in…' : 'Log in'}
             </button>
+            {googleAvailable ? (
+              <div className="flex items-center gap-3" aria-hidden="true">
+                <span className="h-px flex-1 bg-navy-700" />
+                <span className="text-xs text-ink-faint">or</span>
+                <span className="h-px flex-1 bg-navy-700" />
+              </div>
+            ) : null}
+            <div ref={googleButtonRef} className="flex justify-center empty:hidden" />
             <p className="text-xs text-ink-faint">
               One admin account for now — the password is set on the server, never stored in this
-              browser. Sessions last 30 days.
+              browser. When the server enables it, an allowlisted Google account signs in to the
+              same admin session. Sessions last 30 days.
             </p>
           </form>
         )}

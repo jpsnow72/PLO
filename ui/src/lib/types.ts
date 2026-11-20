@@ -113,6 +113,13 @@ export interface AuthState {
    * open (local dev mode) — the UI surfaces that loudly in Admin.
    */
   authEnabled: boolean;
+  /**
+   * Signed-in identity when the session carries one (Google sign-in
+   * sessions record the account email + provider "google"). Password
+   * sessions carry neither — both stay null.
+   */
+  email?: string | null;
+  provider?: string | null;
 }
 
 // ---------- Multiway equity (POST /api/multiway/equity) ----------

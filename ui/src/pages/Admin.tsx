@@ -33,7 +33,7 @@ export function AdminPage() {
     void (async () => {
       try {
         const state = await fetchAuthMe();
-        if (!cancelled) setAdmin(state.admin, state.authEnabled);
+        if (!cancelled) setAdmin(state.admin, state.authEnabled, state);
       } catch {
         if (!cancelled) setAdmin(false, null);
       }

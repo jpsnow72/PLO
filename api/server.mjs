@@ -25,8 +25,12 @@
 //   POST /api/multiway/equity   exact or seeded MC multiway equity (hero hand
 //                               or range vs 1..4 opponent ranges on 3/4/5-card board)
 //   POST /api/auth/login        password -> admin session cookie
+//   POST /api/auth/google       Google ID token -> admin session cookie
+//                               (allowlisted emails only, see google-auth.mjs)
+//   GET  /api/auth/config       public sign-in config ({ google_client_id })
 //   POST /api/auth/logout       clear the admin session
-//   GET  /api/auth/me           { admin: true } or 401
+//   GET  /api/auth/me           { admin: true } (+ email/provider when the
+//                               session carries them) or 401
 //
 // Jobs run one at a time (solves are CPU-heavy). The service writes the
 // spot JSON to DATA_DIR/jobs/<id>/spot.json, invokes the engine binary
@@ -78,6 +82,7 @@ import {
   sessionCookieValue,
   verifyPassword,
 } from './auth.mjs';
+import { parseAdminEmails, verifyGoogleIdToken } from './google-auth.mjs';
 import { createQuizStore } from './quiz.mjs';
 import {
   RangeExpandError,
@@ -131,6 +136,15 @@ const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH ?? '';
 const AUTH_ENABLED = ADMIN_PASSWORD_HASH.length > 0;
 const AUTH_HASH_OK = AUTH_ENABLED && parsePasswordHash(ADMIN_PASSWORD_HASH) !== null;
 const sessionStore = new SessionStore(path.join(DATA_DIR, 'auth-sessions.json'));
+
+// Google sign-in (issue #27): enabled iff GOOGLE_CLIENT_ID is set. The
+// client id is public configuration (the UI reads it from
+// GET /api/auth/config); there is no client secret in this flow — the
+// browser's ID token is verified against Google's published keys
+// (google-auth.mjs). A verified Google account becomes admin only when
+// its email is on the ADMIN_EMAILS allowlist.
+const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID ?? '').trim();
+const ADMIN_EMAILS = parseAdminEmails(process.env.ADMIN_EMAILS ?? '');
 
 // Quiz progress / spaced repetition (S2): DATA_DIR/quiz-progress.json,
 // see quiz.mjs. Gated by the admin session like the other personal
@@ -1553,6 +1567,67 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Public sign-in config: which optional providers are switched on.
+    // The Google client id is not a secret; serving it here means the UI
+    // needs no rebuild when it changes.
+    if (req.method === 'GET' && url.pathname === '/api/auth/config') {
+      sendJson(req, res, 200, { google_client_id: GOOGLE_CLIENT_ID || null });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/auth/google') {
+      if (!GOOGLE_CLIENT_ID) {
+        // Feature off: a clean 503, never a crash, whatever the body is.
+        sendJson(req, res, 503, {
+          error: 'Google sign-in is not enabled on this server (GOOGLE_CLIENT_ID is not set).',
+        });
+        return;
+      }
+      if (!AUTH_ENABLED) {
+        sendJson(req, res, 400, {
+          error:
+            'Auth is not enabled on this server (ADMIN_PASSWORD_HASH is not set), so there is nothing to log in to — write endpoints are open (local dev mode).',
+        });
+        return;
+      }
+      const text = await readBody(req);
+      let body;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        sendJson(req, res, 400, { error: 'Body must be valid JSON.' });
+        return;
+      }
+      const credential = body && typeof body === 'object' ? body.credential : undefined;
+      if (typeof credential !== 'string' || credential.length === 0) {
+        sendJson(req, res, 400, { error: 'Body must carry a credential string (the Google ID token).' });
+        return;
+      }
+      let claims;
+      try {
+        claims = await verifyGoogleIdToken(credential, GOOGLE_CLIENT_ID);
+      } catch (err) {
+        // Detail stays server-side; the client gets one generic 401 so
+        // the response never reveals which check failed.
+        console.error(
+          `Google sign-in verification failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        sendJson(req, res, 401, { error: 'Google sign-in failed' });
+        return;
+      }
+      if (!ADMIN_EMAILS.has(claims.email.toLowerCase())) {
+        sendJson(req, res, 403, {
+          error: 'That Google account is not on the admin allowlist for this server.',
+        });
+        return;
+      }
+      const token = await sessionStore.create({ email: claims.email, provider: 'google' });
+      sendJson(req, res, 200, { admin: true }, {
+        'Set-Cookie': sessionCookieValue(token, requestIsSecure(req)),
+      });
+      return;
+    }
+
     if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
       const token = sessionTokenFrom(req);
       if (token) await sessionStore.delete(token);
@@ -1567,8 +1642,15 @@ const server = http.createServer(async (req, res) => {
         sendJson(req, res, 200, { admin: true, auth_enabled: false });
         return;
       }
-      if (await isAdminRequest(req)) {
-        sendJson(req, res, 200, { admin: true, auth_enabled: true });
+      const token = sessionTokenFrom(req);
+      const session = token ? await sessionStore.get(token) : null;
+      if (session) {
+        const body = { admin: true, auth_enabled: true };
+        // Identity fields ride along when the session carries them
+        // (Google sign-in); password sessions answer exactly as before.
+        if (session.email) body.email = session.email;
+        if (session.provider) body.provider = session.provider;
+        sendJson(req, res, 200, body);
         return;
       }
       sendJson(req, res, 401, { error: 'Not signed in' });
@@ -2248,6 +2330,14 @@ if (isMainModule) {
       console.log('');
     } else {
       console.log('  Admin auth: enabled (write endpoints require a session)');
+      if (GOOGLE_CLIENT_ID) {
+        console.log(
+          `  Google sign-in: enabled (${ADMIN_EMAILS.size} admin email(s) on the ADMIN_EMAILS allowlist)`,
+        );
+        if (ADMIN_EMAILS.size === 0) {
+          console.log('  *** WARNING: ADMIN_EMAILS is empty, so no Google account can be authorized.');
+        }
+      }
     }
   });
 }

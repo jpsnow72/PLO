@@ -26,6 +26,8 @@ Configuration (environment variables):
 | `JOB_TIMEOUT_MS`      | `1800000` (30 min)                        | Per-solve wall-clock cap                  |
 | `MULTIWAY_TIMEOUT_MS` | `30000` (30 s)                            | Per-request wall-clock cap for `POST /api/multiway/equity` |
 | `ADMIN_PASSWORD_HASH` | *(unset — auth DISABLED, see below)*      | scrypt hash of the admin password, from `node hash-password.mjs` |
+| `GOOGLE_CLIENT_ID`    | *(unset — Google sign-in OFF, see below)* | OAuth client id for Sign in with Google. Public configuration (also served by `GET /api/auth/config`); there is no client secret in this flow |
+| `ADMIN_EMAILS`        | *(unset — no Google account authorized)*  | Comma-separated allowlist of Google account emails (case-insensitive) that may mint an admin session via `POST /api/auth/google` |
 | `ALLOWED_ORIGIN`      | *(unset)*                                 | Exact origin allowed to make credentialed cross-origin calls (e.g. the Pages site origin) |
 | `INGEST_MAX_MB`       | `512`                                     | Max body size for `POST /api/library/ingest` (flop trees are big) |
 | `CATALOG_PATH`        | `../data/library/spot-catalog.json`       | Spot catalog for `GET /api/catalog` and the queue                 |
@@ -58,8 +60,10 @@ Configuration (environment variables):
 | GET    | `/api/quiz/progress`    | **[admin]** Quiz SRS state: `{ items, topics, intervals_days }` from `DATA_DIR/quiz-progress.json` (see "Quiz progress" below). |
 | POST   | `/api/quiz/answer`      | **[admin]** Body = `{ item_key, kind, topic: { texture, street, spot_type }, score, grading }`. Records one client-graded answer and advances the item's spaced-repetition ladder. Returns the updated `{ item, topic }`. |
 | POST   | `/api/auth/login`       | Body = `{ password }`. On success: `200 { admin: true }` + `plo_admin` session cookie. Wrong password: generic `401` after a small constant delay. |
+| POST   | `/api/auth/google`      | Body = `{ credential }` (a Google Identity Services ID token). Verifies the token (see "Google sign-in" below); an allowlisted account gets the same `200 { admin: true }` + session cookie. Verification failure: generic `401`. Verified but not allowlisted: `403`. Feature off (`GOOGLE_CLIENT_ID` unset): `503`. |
+| GET    | `/api/auth/config`      | Public sign-in config: `{ google_client_id }` (the `GOOGLE_CLIENT_ID` env value, or `null` when Google sign-in is off). Lets the UI show the Google button without a rebuild. |
 | POST   | `/api/auth/logout`      | Deletes the session (if any) and clears the cookie. Always `200`.          |
-| GET    | `/api/auth/me`          | `200 { admin: true, auth_enabled }` with a valid session (or when auth is disabled), else `401`. |
+| GET    | `/api/auth/me`          | `200 { admin: true, auth_enabled }` with a valid session (or when auth is disabled), else `401`. Google sessions also carry `email` + `provider` fields. |
 | GET    | `/api/runner/status`    | `{ queue_enabled, concurrency, paused, upload_configured, central_url }` for the admin runner UI. `central_url` is the configured central base URL from `runner-config.json` (or `null`); the session cookie is never exposed. |
 | GET    | `/api/heuristics`       | **[admin]** `{ heuristics: [...] }` — the personal heuristics log, oldest first. Stored in `DATA_DIR/heuristics.json` (see "Study layer" below). |
 | POST   | `/api/heuristics`       | **[admin]** Create a heuristic. Body: `{ text (required, non-empty), source?, tags?, linked_spot_ids?, status?, support_n?, mean_freq?, spread? }`. Unknown fields are stripped; ids are server-generated. `201` + the record. |
@@ -184,6 +188,44 @@ How it works:
   `GET /api/auth/me` reports `{ admin: true, auth_enabled: false }` so
   the UI can warn too. If the variable is set but malformed, the server
   fails **closed** (writes stay gated, all logins fail) and logs an error.
+
+### Google sign-in
+
+An alternative front door to the **same** admin session, for the owner:
+
+```bash
+GOOGLE_CLIENT_ID='555991794361-....apps.googleusercontent.com' \
+ADMIN_EMAILS='jpsnow72@gmail.com,finchlearn@gmail.com' \
+ADMIN_PASSWORD_HASH='scrypt$...' node server.mjs
+```
+
+- The login page asks `GET /api/auth/config` for the client id; when
+  one comes back it loads Google Identity Services and renders the
+  "Sign in with Google" button. The button's ID token is posted to
+  `POST /api/auth/google`. No client id → no button; the password form
+  is untouched. The client id is public configuration — the flow has
+  **no client secret** anywhere.
+- Verification (`google-auth.mjs`, `node:crypto` only): RS256 signature
+  against Google's JWKS (`https://www.googleapis.com/oauth2/v3/certs`,
+  cached per its Cache-Control, refetched once on an unknown `kid`),
+  `iss` is `accounts.google.com`, `aud` equals `GOOGLE_CLIENT_ID`,
+  `exp` in the future, `email_verified === true`. Any failure → one
+  generic `401` (the detail is logged server-side only).
+- Authorization is a separate step: the verified email must appear in
+  `ADMIN_EMAILS` (comma-separated, case-insensitive). A verified but
+  unlisted account gets a clear `403`, no session, and no partial
+  state — there are no non-admin accounts in v1.
+- A successful Google login mints the ordinary session (same cookie,
+  same 30-day TTL); the session record additionally stores `email` +
+  `provider: "google"`, which `GET /api/auth/me` returns so the UI can
+  show who is signed in. Password session records are unchanged.
+- Feature switches fail safe: `GOOGLE_CLIENT_ID` unset →
+  `POST /api/auth/google` answers `503` (never a crash) and the config
+  endpoint reports `google_client_id: null`. `ADMIN_EMAILS` unset →
+  every Google login is a `403` (and the server warns at startup when a
+  client id is set with an empty allowlist). When auth itself is
+  disabled (no `ADMIN_PASSWORD_HASH`), the Google endpoint answers the
+  same `400` as the password login — there is nothing to log in to.
 
 ## Quiz progress (S2)
 
