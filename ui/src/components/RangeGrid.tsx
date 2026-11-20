@@ -15,8 +15,10 @@ import {
 import { SUITEDNESS_FILTERS, type SuitednessFilter } from '../lib/preflop';
 import {
   aggregateFrequencies,
+  comboEvDiff,
   comboWeight,
   liveCombos,
+  nodeHasActionEvs,
   type SolveData,
   type SolveNode,
 } from '../lib/solveTree';
@@ -50,6 +52,11 @@ interface ComboInfo {
   freqs: number[];
   /** Whole-solve EV of the combo, null when the payload has none. */
   ev: number | null;
+  /**
+   * EV Diff at this node (main line vs best action, chips), null when
+   * the payload carries no per-action EVs for the combo (issue #8).
+   */
+  diff: number | null;
   classKey: string;
   remainingKey: string | null;
   suitedness: SuitednessShape | null;
@@ -160,6 +167,12 @@ export function RangeGrid({ data, node, selectedCombo, onSelectCombo }: Props) {
 
   const aggregates = useMemo(() => aggregateFrequencies(data, node), [data, node]);
 
+  // Whether this node carries per-action EVs (issue #8): the Diff
+  // column goes live and widens to fit values; without the field the
+  // column and its footnote render exactly as before.
+  const hasActionEvs = useMemo(() => nodeHasActionEvs(node), [node]);
+  const diffColClass = hasActionEvs ? 'w-12' : 'w-8';
+
   const infos = useMemo<ComboInfo[]>(() => {
     const suitFeature = SUITEDNESS_FILTERS.find((f) => f.id === suitFilter)?.feature ?? null;
     return liveCombos(node).map((combo) => {
@@ -174,6 +187,7 @@ export function RangeGrid({ data, node, selectedCombo, onSelectCombo }: Props) {
         weight: comboWeight(data, node.player, combo),
         freqs: node.strategy[combo] ?? [],
         ev: data.evs[node.player].get(combo) ?? null,
+        diff: comboEvDiff(node, combo),
         classKey: canonicalClass(combo),
         remainingKey: remainingClass(combo),
         suitedness,
@@ -485,7 +499,16 @@ export function RangeGrid({ data, node, selectedCombo, onSelectCombo }: Props) {
                       <span className="w-[5.75rem] shrink-0">Hand</span>
                       <span className="flex-1 text-center">Split</span>
                       <span className="w-14 text-right">EV (solve)</span>
-                      <span className="w-8 text-right">Diff</span>
+                      <span
+                        className={`${diffColClass} text-right`}
+                        title={
+                          hasActionEvs
+                            ? "EV of the solver's most-taken action for the combo minus its best action's EV at this node, in chips"
+                            : undefined
+                        }
+                      >
+                        Diff
+                      </span>
                       <span className="w-10 text-right">Weight</span>
                     </div>
                     <ul className="mt-1 flex flex-col gap-1">
@@ -522,12 +545,25 @@ export function RangeGrid({ data, node, selectedCombo, onSelectCombo }: Props) {
                               >
                                 {info.ev === null ? '—' : info.ev.toFixed(2)}
                               </span>
-                              <span
-                                className="num w-8 text-right font-mono text-ink-faint"
-                                title="Per-action EVs are not in the engine payload"
-                              >
-                                —
-                              </span>
+                              {info.diff === null ? (
+                                <span
+                                  className={`num ${diffColClass} text-right font-mono text-ink-faint`}
+                                  title="Per-action EVs are not in the engine payload"
+                                >
+                                  —
+                                </span>
+                              ) : (
+                                <span
+                                  className={`num ${diffColClass} text-right font-mono text-ink-dim`}
+                                  title={`Main line vs best action at this node: ${info.diff.toFixed(2)} chips${
+                                    node.pot > 0
+                                      ? ` (${((info.diff / node.pot) * 100).toFixed(1)}% of pot)`
+                                      : ''
+                                  }`}
+                                >
+                                  {info.diff.toFixed(2)}
+                                </span>
+                              )}
                               <span className="num w-10 text-right font-mono text-ink-dim">
                                 {info.weight.toFixed(2)}
                               </span>
@@ -548,8 +584,20 @@ export function RangeGrid({ data, node, selectedCombo, onSelectCombo }: Props) {
                       </button>
                     ) : null}
                     <p className="mt-1.5 text-xs leading-relaxed text-ink-faint">
-                      Sorted by whole-solve EV. EV is each combo's EV for the whole tree — the
-                      engine reports no per-action EVs, so Diff shows — instead of an estimate.
+                      {hasActionEvs ? (
+                        <>
+                          Sorted by whole-solve EV. Diff is each combo's main-line cost at
+                          this node: the EV of the solver's most-taken action for the combo
+                          minus its best action's EV, in chips, from the solve's per-action
+                          EVs — 0 when the main line is the best action.
+                        </>
+                      ) : (
+                        <>
+                          Sorted by whole-solve EV. EV is each combo's EV for the whole tree
+                          — the engine reports no per-action EVs, so Diff shows — instead of
+                          an estimate.
+                        </>
+                      )}
                     </p>
                   </div>
                 </>

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { parseCombo, type Card } from '../lib/cards';
 import { classifyOmahaHand, HAND_CATEGORIES, type HandCategory } from '../lib/handCategories';
-import { liveRange, type SolveData, type SolveNode } from '../lib/solveTree';
+import { liveRange, nodeHasActionEvs, type SolveData, type SolveNode } from '../lib/solveTree';
 import type { Player } from '../lib/types';
 import type { PathStep } from '../store/useStore';
 import { actionColor, prettyAction } from './actionStyle';
@@ -258,6 +258,18 @@ interface BucketModel {
  * range. When μ is not positive the same shape is taken from the
  * best live EV instead (0.75 / 0.5 / 0.25 of it); when even that is
  * not positive the range cannot be separated and we say so.
+ *
+ * Basis (issue #19 decision, EV-DIFF-NOTES.md): whole-solve EV, even
+ * when the payload carries per-action EVs (issue #8). Node EVs are
+ * whole-hand-net conditional values — chips already committed on the
+ * line are sunk into them — so the live range's node-EV mean shifts
+ * mechanically as a line develops and is non-positive in many
+ * facing-a-bet spots, collapsing this rule onto its max-fraction
+ * fallback: the same band labels would be cut from different anchors
+ * at different nodes. Whole-solve EV keeps one basis at every node,
+ * and at the root the two bases coincide (a root combo's node EV is
+ * its whole-solve EV), so nothing is lost where the reference's
+ * buckets are defined.
  */
 function bucketModel(data: SolveData, path: PathStep[], player: Player): BucketModel {
   const empty: BucketModel = {
@@ -315,6 +327,7 @@ function bucketModel(data: SolveData, path: PathStep[], player: Player): BucketM
 export function EvBucketsRail({ data, node, path }: Omit<RailProps, 'boardCards'>) {
   const actor = node.player;
   const model = useMemo(() => bucketModel(data, path, actor), [data, path, actor]);
+  const hasActionEvs = useMemo(() => nodeHasActionEvs(node), [node]);
   return (
     <section aria-label="EV buckets at this node" className={SECTION_CLASS}>
       <h2 className={HEADING_CLASS}>EV Buckets</h2>
@@ -355,9 +368,23 @@ export function EvBucketsRail({ data, node, path }: Omit<RailProps, 'boardCards'
             })}
           </div>
           <p className="mt-2 text-xs leading-relaxed text-ink-faint">
-            Whole-solve EV of the combos still live at this node — the same "EV (solve)" as the
-            Strategy tables, not a per-node EV; per-node buckets arrive with per-action EVs
-            (issue #8). Bands are set from this range's own distribution:{' '}
+            {hasActionEvs ? (
+              <>
+                Whole-solve EV of the combos still live at this node — the same "EV (solve)"
+                as the Strategy tables. This solve does carry per-action EVs, but the
+                buckets stay on whole-solve EV by design: node EVs are net of the chips
+                already committed on this line, so their mean shifts as the line develops
+                and the bands would not mean the same thing from node to node. Bands are
+                set from this range's own distribution:{' '}
+              </>
+            ) : (
+              <>
+                Whole-solve EV of the combos still live at this node — the same "EV (solve)"
+                as the Strategy tables, not a per-node EV; per-node buckets arrive with
+                per-action EVs (issue #8). Bands are set from this range's own
+                distribution:{' '}
+              </>
+            )}
             {model.basis === 'mean' ? (
               <>
                 Best ≥ {model.cuts.best.toFixed(1)}, Good ≥ {model.cuts.good.toFixed(1)}, Weak ≥{' '}

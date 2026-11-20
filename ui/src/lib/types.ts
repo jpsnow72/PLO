@@ -44,6 +44,13 @@ export interface RawSolveNode {
   actions: string[];
   /** combo string -> frequencies aligned with `actions`. */
   strategy: Record<string, number[]>;
+  /**
+   * Per-action EVs (issue #8): combo string -> EV of each action at this
+   * node, aligned with `actions`, in chips (whole-hand net). Absent in
+   * payloads produced before the engine emitted it — readers must treat
+   * a missing or malformed table as "not available", never estimate.
+   */
+  combo_action_evs?: Record<string, number[]>;
 }
 
 export interface RawSolve {
