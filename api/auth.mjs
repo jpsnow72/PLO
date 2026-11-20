@@ -99,14 +99,17 @@ function tokenHash(token) {
 
 /**
  * File-backed session store. Records are keyed by the SHA-256 hash of the
- * session token: { created_at, expires_at } (ISO strings). Loaded lazily,
- * pruned of expired entries on load and on creation, and persisted on
- * every change (temp file + rename, so a crash cannot truncate it).
+ * session token: { created_at, expires_at } (ISO strings), plus optional
+ * identity fields { email, provider } for sessions minted by an identity
+ * provider (Google sign-in — see google-auth.mjs). Password sessions
+ * carry no identity fields. Loaded lazily, pruned of expired entries on
+ * load and on creation, and persisted on every change (temp file +
+ * rename, so a crash cannot truncate it).
  */
 export class SessionStore {
   constructor(file) {
     this.file = file;
-    /** @type {Map<string, {created_at: string, expires_at: string}> | null} */
+    /** @type {Map<string, {created_at: string, expires_at: string, email?: string, provider?: string}> | null} */
     this.sessions = null;
   }
 
@@ -128,10 +131,15 @@ export class SessionStore {
           typeof rec.expires_at === 'string' &&
           Date.parse(rec.expires_at) > now
         ) {
-          this.sessions.set(hash, {
+          const record = {
             created_at: typeof rec.created_at === 'string' ? rec.created_at : new Date().toISOString(),
             expires_at: rec.expires_at,
-          });
+          };
+          if (typeof rec.email === 'string' && rec.email.length > 0) record.email = rec.email;
+          if (typeof rec.provider === 'string' && rec.provider.length > 0) {
+            record.provider = rec.provider;
+          }
+          this.sessions.set(hash, record);
         }
       }
     }
@@ -146,31 +154,50 @@ export class SessionStore {
     await fs.rename(tmp, this.file);
   }
 
-  /** Create a session; returns the raw token (shown to the client once). */
-  async create() {
+  /**
+   * Create a session; returns the raw token (shown to the client once).
+   * `identity` may carry { email, provider } for provider-minted sessions
+   * (Google sign-in); password sessions pass nothing.
+   */
+  async create(identity = {}) {
     const sessions = await this.load();
     const token = randomBytes(32).toString('base64url');
     const now = new Date();
-    sessions.set(tokenHash(token), {
+    const record = {
       created_at: now.toISOString(),
       expires_at: new Date(now.getTime() + SESSION_TTL_MS).toISOString(),
-    });
+    };
+    if (identity && typeof identity.email === 'string' && identity.email.length > 0) {
+      record.email = identity.email;
+    }
+    if (identity && typeof identity.provider === 'string' && identity.provider.length > 0) {
+      record.provider = identity.provider;
+    }
+    sessions.set(tokenHash(token), record);
     await this.save();
     return token;
   }
 
   /** True when the raw token names a live session. */
   async has(token) {
-    if (typeof token !== 'string' || token.length === 0) return false;
+    return (await this.get(token)) !== null;
+  }
+
+  /**
+   * The live session record for a raw token, or null. Expired records are
+   * pruned (and the prune persisted), exactly as in has().
+   */
+  async get(token) {
+    if (typeof token !== 'string' || token.length === 0) return null;
     const sessions = await this.load();
     const rec = sessions.get(tokenHash(token));
-    if (!rec) return false;
+    if (!rec) return null;
     if (Date.parse(rec.expires_at) <= Date.now()) {
       sessions.delete(tokenHash(token));
       await this.save();
-      return false;
+      return null;
     }
-    return true;
+    return { ...rec };
   }
 
   async delete(token) {
