@@ -33,8 +33,19 @@ interface AppState {
   // write endpoints require it when the server has auth enabled.
   isAdmin: boolean | null;
   authEnabled: boolean | null;
+  /**
+   * Identity of the current session when it carries one (Google
+   * sign-in: the account email + provider "google"). Password sessions
+   * and signed-out state leave both null.
+   */
+  authEmail: string | null;
+  authProvider: string | null;
   probeAdmin: () => Promise<void>;
-  setAdmin: (admin: boolean, authEnabled: boolean | null) => void;
+  setAdmin: (
+    admin: boolean,
+    authEnabled: boolean | null,
+    identity?: { email?: string | null; provider?: string | null } | null,
+  ) => void;
 
   // Loaded solve + tree navigation.
   solve: SolveData | null;
@@ -131,17 +142,33 @@ export const useStore = create<AppState>((set, get) => ({
 
   isAdmin: null,
   authEnabled: null,
+  authEmail: null,
+  authProvider: null,
   probeAdmin: async () => {
     if (get().isAdmin !== null) return; // probe once per app load
     try {
       const state = await fetchAuthMe();
-      set({ isAdmin: state.admin, authEnabled: state.authEnabled });
+      set({
+        isAdmin: state.admin,
+        authEnabled: state.authEnabled,
+        authEmail: state.admin ? (state.email ?? null) : null,
+        authProvider: state.admin ? (state.provider ?? null) : null,
+      });
     } catch {
       // API unreachable (sample mode): not admin, auth state unknown.
-      set({ isAdmin: false, authEnabled: null });
+      set({ isAdmin: false, authEnabled: null, authEmail: null, authProvider: null });
     }
   },
-  setAdmin: (admin, authEnabled) => set({ isAdmin: admin, authEnabled }),
+  setAdmin: (admin, authEnabled, identity) =>
+    set({
+      isAdmin: admin,
+      authEnabled,
+      // Signing out (or a session without identity) clears the identity;
+      // callers that probed /api/auth/me pass the state through so a
+      // Google session's email survives page-level refreshes.
+      authEmail: admin ? (identity?.email ?? null) : null,
+      authProvider: admin ? (identity?.provider ?? null) : null,
+    }),
 
   solve: null,
   solveName: '',

@@ -32,6 +32,7 @@ export function App() {
   const user = useStore((s) => s.user);
   const apiOnline = useStore((s) => s.apiOnline);
   const isAdmin = useStore((s) => s.isAdmin);
+  const authEmail = useStore((s) => s.authEmail);
   const probeAdmin = useStore((s) => s.probeAdmin);
 
   // One-shot admin-session probe: decides whether the Admin nav item shows.
@@ -96,7 +97,13 @@ export function App() {
                 : 'Engine: offline (sample mode)'}
           </p>
           <NavLink to="/login" className="mt-2 block text-ink-dim underline hover:text-ink">
-            {isAdmin ? 'Admin · signed in' : user ? `Account · ${user}` : 'Sign in'}
+            {isAdmin
+              ? authEmail
+                ? `Admin · ${authEmail}`
+                : 'Admin · signed in'
+              : user
+                ? `Account · ${user}`
+                : 'Sign in'}
           </NavLink>
         </div>
       </aside>
