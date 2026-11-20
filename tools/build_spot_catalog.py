@@ -13,6 +13,17 @@ the boundary class may be consumed partially so exactly ``cap`` concrete
 combos are kept (unless the action has fewer positive-frequency combos).
 Coverage is kept combo weight divided by total action combo weight.  It is
 not conditioned on board-card removal: the plan assigns that to the solver.
+
+Deep-stack mirror (``--stack-bb 200``): the same 300 spots with the root
+geometry recomputed at 200bb effective stacks.  Pots are preflop-determined
+and do not change with depth; only the stacks behind grow (flop roots carry
+200 chips behind instead of 100, and later-street roots subtract the same
+standard-line bets from that deeper base), so every SPR rises.  Entry ids
+gain a ``-200bb`` suffix and each entry records ``stack_bb``.  The default
+``--stack-bb 100`` mode reproduces ``spot-catalog.json`` byte-for-byte.
+Range sides, coverage, and estimates are carried over unchanged: the
+mirror's range sets are still the constructed v1 sets (a 200bb range-side
+re-pointing is a separate, later decision).
 """
 
 from __future__ import annotations
@@ -491,18 +502,23 @@ def size_menu(street: str) -> dict:
     raise ValueError(street)
 
 
-def root_state(pair: Pair, street: str, deep_dive: bool) -> tuple[float, float, float]:
+def root_state(
+    pair: Pair, street: str, deep_dive: bool, stack_bb: int = 100
+) -> tuple[float, float, float]:
     """Return (pot_chips, stacks_chips, SPR) at the solve root.
 
-    Catalog normalization: each side has 100 chips behind at the flop root.
-    SRP flop pot is 10 chips (SPR 10, inside the plan's ~8-12); 3-bet flop
-    pot is 30 chips (SPR 3.333, inside the plan's ~3-4).  Later-street roots
-    apply the declared standard line's bet/call or check/check exactly.
+    Catalog normalization: each side has ``stack_bb`` chips behind at the
+    flop root (100 in the base catalog).  SRP flop pot is 10 chips (SPR 10
+    at 100bb, inside the plan's ~8-12); 3-bet flop pot is 30 chips (SPR
+    3.333 at 100bb, inside the plan's ~3-4).  Later-street roots apply the
+    declared standard line's bet/call or check/check exactly.  The pot is
+    preflop-determined, so a deeper ``stack_bb`` changes only the stacks
+    behind (and therefore every SPR), never the pot.
     """
     if pair.pot_type == "srp":
-        pot, stacks = 10.0, 100.0
+        pot, stacks = 10.0, float(stack_bb)
     elif pair.pot_type == "3bet":
-        pot, stacks = 30.0, 100.0
+        pot, stacks = 30.0, float(stack_bb)
     else:
         raise ValueError(pair.pot_type)
 
@@ -584,10 +600,11 @@ def make_entry(
     street: str,
     seed: BoardSeed,
     deep_dive: bool = False,
+    stack_bb: int = 100,
 ) -> dict:
     board = board_for_seed(seed, street)
     cap = CAPS[street]
-    pot, stacks, spr = root_state(pair, street, deep_dive)
+    pot, stacks, spr = root_state(pair, street, deep_dive, stack_bb)
 
     def side_result(side: RangeSide) -> tuple[Optional[float], Optional[int], Optional[int]]:
         if side.set_id is None:
@@ -603,10 +620,11 @@ def make_entry(
     ip_cov, ip_kept, ip_action_combos = side_result(pair.ip)
     needs_range = pair.oop.set_id is None or pair.ip.set_id is None
     prefix = "deep-dive-" if deep_dive else ""
+    suffix = f"-{stack_bb}bb" if stack_bb != 100 else ""
     entry = {
         "id": (
             f"{prefix}{pair.table_size}-{pair.matchup_slug}-"
-            f"{_slug_cards(board)}-{street}"
+            f"{_slug_cards(board)}-{street}{suffix}"
         ),
         "group": group,
         "table_size": pair.table_size,
@@ -639,10 +657,12 @@ def make_entry(
         "status": "needs-range" if needs_range else "ready",
         "status_reason": pair.missing_reason if needs_range else None,
     }
+    if stack_bb != 100:
+        entry["stack_bb"] = stack_bb
     return entry
 
 
-def build_catalog(data: RangeData) -> dict:
+def build_catalog(data: RangeData, stack_bb: int = 100) -> dict:
     entries: list[dict] = []
 
     def add(
@@ -661,6 +681,7 @@ def build_catalog(data: RangeData) -> dict:
                     pair=pair,
                     street=street,
                     seed=seed_at(seed_start, i, street),
+                    stack_bb=stack_bb,
                 )
             )
 
@@ -718,6 +739,7 @@ def build_catalog(data: RangeData) -> dict:
                     street=street,
                     seed=seed_at(seed_start, i, street),
                     deep_dive=True,
+                    stack_bb=stack_bb,
                 )
             )
 
@@ -778,8 +800,11 @@ def build_catalog(data: RangeData) -> dict:
                 "basis": "Library plan aggregate for 216 turn/river solves; this catalog has 214 turn/river entries, so the plan aggregate is retained as a labelled planning bound rather than re-derived per entry.",
             },
         },
-        "entries": entries,
     }
+    if stack_bb != 100:
+        catalog["name"] = "PLO library spot catalog (200bb mirror)"
+        catalog["stack_bb"] = stack_bb
+    catalog["entries"] = entries
     return catalog
 
 
@@ -810,10 +835,19 @@ def verify_catalog(catalog: dict, data: RangeData) -> dict:
     ids = [entry["id"] for entry in entries]
     assert len(ids) == len(set(ids)), "Catalog ids are not unique"
 
+    catalog_stack_bb = catalog.get("stack_bb", 100)
+    assert all(
+        entry.get("stack_bb", 100) == catalog_stack_bb for entry in entries
+    ), "Catalog entries disagree on stack_bb"
+
     seed_by_flop = {" ".join(seed.flop): seed for seed in BOARD_SEEDS}
     needs_range = 0
     for entry in entries:
         street = entry["street"]
+        stack_bb = entry.get("stack_bb", 100)
+        assert stack_bb in (100, 200), entry["id"]
+        if stack_bb != 100:
+            assert entry["id"].endswith(f"-{stack_bb}bb"), entry["id"]
         cards = entry["board"].split()
         expected_cards = {"flop": 3, "turn": 4, "river": 5}[street]
         assert len(cards) == expected_cards, entry["id"]
@@ -831,7 +865,8 @@ def verify_catalog(catalog: dict, data: RangeData) -> dict:
             if street == "river":
                 assert cards[4] in entry["line"], entry["id"]
         pot, stacks, spr = root_state(
-            _pair_for_entry(entry), street, entry["group"] == GROUP_DEEP
+            _pair_for_entry(entry), street, entry["group"] == GROUP_DEEP,
+            entry.get("stack_bb", 100),
         )
         assert math.isclose(entry["pot_chips"], pot, abs_tol=1e-9), entry["id"]
         assert math.isclose(entry["stacks_chips"], stacks, abs_tol=1e-9), entry["id"]
@@ -913,6 +948,19 @@ def main(argv: Optional[list[str]] = None) -> int:
         action="store_true",
         help="Re-read --out and assert counts, boards, geometry, and coverage math.",
     )
+    parser.add_argument(
+        "--stack-bb",
+        type=int,
+        default=100,
+        choices=(100, 200),
+        help=(
+            "Effective stack depth for the catalog geometry. 100 (default) "
+            "reproduces spot-catalog.json byte-for-byte; 200 emits the "
+            "deep-stack mirror (pair with --out data/library/"
+            "spot-catalog-200bb.json): entry ids gain a -200bb suffix and "
+            "each entry records stack_bb."
+        ),
+    )
     args = parser.parse_args(argv)
     out = args.out if args.out.is_absolute() else ROOT / args.out
     preflop_dir = (
@@ -926,7 +974,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(f"VERIFY PASS: {json.dumps(result, indent=2, sort_keys=True)}")
         return 0
 
-    catalog = build_catalog(data)
+    catalog = build_catalog(data, stack_bb=args.stack_bb)
     # Verify in memory before writing so a bad generator cannot leave a
     # plausible-looking but internally inconsistent catalog behind.
     verify_catalog(catalog, data)
