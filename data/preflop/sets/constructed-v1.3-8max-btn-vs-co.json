@@ -13,8 +13,8 @@
     "method": "constructed-equity-v1",
     "tool": "build-ranges (plo-solve)",
     "tool_version": "0.1.0",
-    "config_version": "ranges-config-v1.3",
-    "config_hash": "fnv1a64:71075a11989c54d0",
+    "config_version": "ranges-config-v1.4",
+    "config_hash": "fnv1a64:132f05f92137c5d3",
     "sources": [],
     "derivation": "derived-by-mapping: targets derived from the same rake variant's 6-max targets by the players-behind seat mapping; no published 8-max PLO4 chart exists (GTO Wizard offers no standard 8-max cash set - Straddle / Straddle+Ante only) and none is cited as a source."
   },

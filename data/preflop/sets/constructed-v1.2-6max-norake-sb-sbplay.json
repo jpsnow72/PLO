@@ -18,8 +18,8 @@
     "method": "constructed-equity-v1",
     "tool": "build-ranges (plo-solve)",
     "tool_version": "0.1.0",
-    "config_version": "ranges-config-v1.3",
-    "config_hash": "fnv1a64:71075a11989c54d0",
+    "config_version": "ranges-config-v1.4",
+    "config_hash": "fnv1a64:132f05f92137c5d3",
     "sources": [{
       "name": "GTO Wizard - PLO Cash 6-max Classic, cEV (no rake) solution totals cited as cross-check targets; ranges constructed independently",
       "url": "https://app.gtowizard.com/solutions/plo",
