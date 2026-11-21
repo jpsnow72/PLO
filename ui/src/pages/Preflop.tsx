@@ -84,12 +84,30 @@ const ACTION_LABEL: Record<string, string> = {
   fold: 'Fold',
 };
 
+/**
+ * Strategy-column header colours (issue #40): the theme's own action
+ * tokens from index.css — fold slate (--action-fold), call green
+ * (--accent-green, the card-table green), the raise family muted red
+ * (--action-raise). Header tints only; the bars elsewhere on the page
+ * keep ACTION_COLOR. An action the map does not name (a set's own
+ * recorded key, e.g. an SB-play variant) falls back to the fold slate.
+ */
+const COLUMN_COLOR: Record<string, string> = {
+  fold: 'var(--action-fold)',
+  call: 'var(--accent-green)',
+  raise: 'var(--action-raise)',
+  three_bet: 'var(--action-raise)',
+  four_bet: 'var(--action-raise)',
+};
+const COLUMN_COLOR_FALLBACK = 'var(--action-fold)';
+
 /** Display order for a set's action menu. */
 const ACTION_ORDER = ['raise', 'three_bet', 'four_bet', 'call', 'fold'];
 
-const ROW_CAP = 200;
+/** Classes listed per action column on the Strategy tab. */
+const COLUMN_ROW_CAP = 200;
 const MATRIX_ROW_CAP = 100;
-/** Classes listed per action on the Ranges tab (Strategy holds the full list). */
+/** Classes listed per action on the Ranges tab (Strategy holds the columns). */
 const RANGE_CLASS_CAP = 50;
 
 type RangeView = 'strategy' | 'matrix' | 'ranges' | 'breakdown' | 'compare';
@@ -108,8 +126,6 @@ function hexToRgba(hex: string, alpha: number): string {
   if (Number.isNaN(n)) return hex;
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
-
-type SortKey = 'frequency' | 'equity' | 'score' | 'hand';
 
 interface ClassRow {
   key: string;
@@ -314,7 +330,6 @@ export function PreflopPage() {
   const [setError, setSetError] = useState<string | null>(null);
 
   const [action, setAction] = useState<string>('raise');
-  const [sortKey, setSortKey] = useState<SortKey>('frequency');
   const [filter, setFilter] = useState('');
 
   const [view, setView] = useState<RangeView>('strategy');
@@ -643,37 +658,46 @@ export function PreflopPage() {
   // vs-* families with Call (the same rule the set header applies).
   const familyHeadline = group === 'first-in' ? 'raise' : 'call';
 
-  const rows = useMemo<ClassRow[]>(() => {
+  // ----- Strategy columns (issue #40) -----
+  // One column per action the set itself records, in the reference's
+  // shape: a header carrying the action's combo-weighted total and its
+  // combo-weighted combo count, then every class that takes the action
+  // at some frequency, densest first (frequency, then combo
+  // multiplicity, then key). A mixed class appears in each column it
+  // participates in, at that action's frequency — the set document's
+  // per-class action map is the data model, nothing is re-derived.
+  // The column list comes from the set's own totals (orderedActions),
+  // never hardcoded per context: RFI sets yield Fold/Raise, vs-RFI
+  // sets Fold/Call/3-bet, continuations Fold/Call/4-bet, SB-play sets
+  // whatever actions they record. The header's combo count is computed
+  // over the unfiltered classes so it always matches the header %.
+  const strategyColumns = useMemo(() => {
     if (!setDoc) return [];
-    const all: ClassRow[] = Object.entries(setDoc.hands).map(([key, actions]) => ({
-      key,
-      actions,
-      cls: classByHand?.get(key) ?? null,
-      multiplicity: multiplicityOf(key, classByHand),
-    }));
     const needle = filter.trim().toLowerCase().replace(/\s+/g, ' ');
-    const filtered = needle
-      ? all.filter((r) => r.key.toLowerCase().replace(/\s+/g, ' ').includes(needle))
-      : all;
-    const byKey = (a: ClassRow, b: ClassRow) => a.key.localeCompare(b.key);
-    switch (sortKey) {
-      case 'frequency':
-        filtered.sort((a, b) => (b.actions[action] ?? 0) - (a.actions[action] ?? 0) || byKey(a, b));
-        break;
-      case 'equity':
-        filtered.sort(
-          (a, b) => (b.cls?.equity_vs_random ?? -1) - (a.cls?.equity_vs_random ?? -1) || byKey(a, b),
-        );
-        break;
-      case 'score':
-        filtered.sort((a, b) => (b.cls?.score ?? -1) - (a.cls?.score ?? -1) || byKey(a, b));
-        break;
-      case 'hand':
-        filtered.sort(byKey);
-        break;
-    }
-    return filtered;
-  }, [setDoc, classByHand, filter, sortKey, action]);
+    return orderedActions(totals).map((a) => {
+      let weightedCombos = 0;
+      const colRows: { key: string; freq: number; multiplicity: number }[] = [];
+      for (const [key, actions] of Object.entries(setDoc.hands)) {
+        const freq = actions[a] ?? 0;
+        if (freq <= 0) continue;
+        const multiplicity = multiplicityOf(key, classByHand);
+        weightedCombos += multiplicity * freq;
+        if (needle && !key.toLowerCase().replace(/\s+/g, ' ').includes(needle)) continue;
+        colRows.push({ key, freq, multiplicity });
+      }
+      colRows.sort(
+        (x, y) =>
+          y.freq - x.freq || y.multiplicity - x.multiplicity || x.key.localeCompare(y.key),
+      );
+      return {
+        action: a,
+        total: totals[a] ?? 0,
+        weightedCombos,
+        classCount: colRows.length,
+        rows: colRows.slice(0, COLUMN_ROW_CAP),
+      };
+    });
+  }, [setDoc, totals, classByHand, filter]);
 
   // ----- Matrix drill-down -----
   // Suitedness filtering reads the class table's exact features, so the
@@ -1114,57 +1138,18 @@ export function PreflopPage() {
                 </Pill>
                 <span className="text-xs text-ink-faint">
                   {view === 'strategy'
-                    ? 'Pair-rank aggregates and the full class list for this set.'
+                    ? 'One column per action: every hand in this set under each action it takes.'
                     : view === 'matrix'
                       ? 'Pick a rank pair to drill into the classes that contain both ranks.'
                       : view === 'ranges'
                         ? 'This set as ranges: the classes behind each action, strongest first.'
                         : view === 'breakdown'
-                          ? 'How the selected action is mixed across the set, and by suitedness.'
+                          ? 'Pair-rank and suitedness aggregates, and how the selected action is mixed across the set.'
                           : 'Every position in this scenario side by side, plus the combined range.'}
                 </span>
               </div>
 
-              {view === 'strategy' ? (
-                <>
-              <section
-                aria-label="Pair rank summary"
-                className="rounded-lg border border-navy-700 bg-navy-900 p-4"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-sm font-semibold text-ink">
-                    {ACTION_LABEL[action] ?? action} frequency by pair rank
-                  </h2>
-                  <div className="ml-auto flex flex-wrap gap-1.5">
-                    {actionsInSet.map((a) => (
-                      <Pill key={a} active={action === a} onClick={() => setAction(a)}>
-                        {ACTION_LABEL[a] ?? a}
-                      </Pill>
-                    ))}
-                  </div>
-                </div>
-                {classByHand ? (
-                  <ul className="mt-3 grid gap-x-6 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3">
-                    {summary.map((b) => (
-                      <li key={b.key} className="flex items-center gap-2 text-xs">
-                        <span className="w-40 shrink-0 text-ink-dim">{b.label}</span>
-                        <div className="flex-1">
-                          <FrequencyBar fraction={b.fraction} color={ACTION_COLOR[action] ?? '#7a8aa0'} height="h-2" />
-                        </div>
-                        <span className="w-14 text-right font-mono text-ink-dim">{pctText(b.fraction)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-sm text-ink-dim">
-                    {classTableMissing
-                      ? 'The class table has not been generated on a host yet, so pair-rank aggregates and hand features are unavailable. Frequencies above are computed from the set document alone.'
-                      : 'Loading class features…'}
-                  </p>
-                )}
-              </section>
-                </>
-              ) : null}
+
 
               {view === 'breakdown' ? (
               <section
@@ -1237,20 +1222,44 @@ export function PreflopPage() {
                     </ul>
                   </>
                 ) : null}
+                {classByHand ? (
+                  <>
+                    <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                      {ACTION_LABEL[action] ?? action} frequency by pair rank
+                    </h3>
+                    <ul className="mt-2 grid gap-x-6 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                      {summary.map((b) => (
+                        <li key={b.key} className="flex items-center gap-2 text-xs">
+                          <span className="w-40 shrink-0 text-ink-dim">{b.label}</span>
+                          <div className="flex-1">
+                            <FrequencyBar fraction={b.fraction} color={ACTION_COLOR[action] ?? '#7a8aa0'} height="h-2" />
+                          </div>
+                          <span className="w-14 text-right font-mono text-ink-dim">{pctText(b.fraction)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <p className="mt-3 text-xs text-ink-dim">
+                    {classTableMissing
+                      ? 'The class table has not been generated on a host yet, so pair-rank aggregates and hand features are unavailable. Frequencies above are computed from the set document alone.'
+                      : 'Loading class features…'}
+                  </p>
+                )}
               </section>
               ) : null}
 
               {view === 'strategy' ? (
                 <>
               <section
-                aria-label="Hand classes"
+                aria-label="Strategy by action"
                 className="rounded-lg border border-navy-700 bg-navy-900 p-4"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-sm font-semibold text-ink">
-                    Hand classes{' '}
+                    Strategy — hands by action{' '}
                     <span className="font-normal text-ink-faint">
-                      ({rows.length.toLocaleString()} in this set)
+                      ({Object.keys(setDoc.hands).length.toLocaleString()} classes in this set)
                     </span>
                   </h2>
                   <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -1264,30 +1273,16 @@ export function PreflopPage() {
                         className="ml-2 w-32 rounded-md border border-navy-700 bg-navy-850 px-2 py-1 font-mono text-xs text-ink"
                       />
                     </label>
-                    <label className="text-xs text-ink-dim">
-                      Sort
-                      <select
-                        value={sortKey}
-                        onChange={(e) => setSortKey(e.target.value as SortKey)}
-                        className="ml-2 rounded-md border border-navy-700 bg-navy-850 px-2 py-1 text-xs text-ink"
-                      >
-                        <option value="frequency">{ACTION_LABEL[action] ?? action} frequency</option>
-                        <option value="equity" disabled={!classByHand}>
-                          Equity vs random
-                        </option>
-                        <option value="score" disabled={!classByHand}>
-                          Construction score
-                        </option>
-                        <option value="hand">Hand A–Z</option>
-                      </select>
-                    </label>
                   </div>
                 </div>
                 <p className="mt-1 text-xs text-ink-faint">
-                  Showing the first {Math.min(ROW_CAP, rows.length).toLocaleString()} of{' '}
-                  {rows.length.toLocaleString()} classes — filter to narrow the list. Frequencies
-                  are per class; combos counts weight each class by its concrete combo count.
-                  Click a class for its full action split, combos and features.
+                  One column per action this set records. Each column lists every class that
+                  takes the action, densest first; a class that mixes appears in each column
+                  it plays, at that action's frequency. Freq is the class's frequency for the
+                  action in this set; Weight is the class's concrete combo count (its
+                  multiplicity — the same count the class detail panel shows). Constructed
+                  ranges carry no per-hand EV, so no EV columns are shown. Click a class for
+                  its full action split, combos and features.
                 </p>
                 {selClassRow ? (
                   <div className="mt-3">
@@ -1300,63 +1295,109 @@ export function PreflopPage() {
                     />
                   </div>
                 ) : null}
-                <div className="mt-2 overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-navy-700 text-xs uppercase tracking-wide text-ink-faint">
-                        <th className="py-1.5 pr-3 font-medium">Class</th>
-                        <th className="py-1.5 pr-3 font-medium">Combos</th>
-                        <th className="py-1.5 pr-3 font-medium">
-                          {ACTION_LABEL[action] ?? action}
-                        </th>
-                        <th className="py-1.5 pr-3 font-medium">All actions</th>
-                        <th className="py-1.5 pr-3 font-medium">Equity vs random</th>
-                        <th className="py-1.5 font-medium">Features</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.slice(0, ROW_CAP).map((r) => (
-                        <tr
-                          key={r.key}
-                          onClick={() => setSelClass(r.key)}
-                          aria-selected={selClass === r.key}
-                          className={`cursor-pointer border-b border-navy-800 hover:bg-navy-850 ${
-                            selClass === r.key ? 'bg-navy-850' : ''
-                          }`}
-                        >
-                          <td className="py-1.5 pr-3 font-mono text-xs text-ink">{r.key}</td>
-                          <td className="py-1.5 pr-3 font-mono text-xs text-ink-dim">
-                            {r.multiplicity}
-                          </td>
-                          <td className="w-48 py-1.5 pr-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-24">
-                                <FrequencyBar
-                                  fraction={r.actions[action] ?? 0}
-                                  color={ACTION_COLOR[action] ?? '#7a8aa0'}
-                                  height="h-2"
-                                />
-                              </div>
-                              <span className="font-mono text-xs text-ink-dim">
-                                {pctText(r.actions[action] ?? 0)}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-1.5 pr-3 text-xs text-ink-dim">
-                            {Object.entries(r.actions)
-                              .map(([a, f]) => `${ACTION_LABEL[a] ?? a} ${pctText(f)}`)
-                              .join(' · ')}
-                          </td>
-                          <td className="py-1.5 pr-3 font-mono text-xs text-ink-dim">
-                            {r.cls ? pctText(r.cls.equity_vs_random) : '—'}
-                          </td>
-                          <td className="py-1.5 text-xs text-ink-dim">
-                            {r.cls ? featureTags(r.cls).join(' · ') : '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="mt-3 grid items-start gap-3 lg:grid-cols-[repeat(auto-fit,minmax(290px,1fr))]">
+                  {strategyColumns.map((col) => (
+                    <div
+                      key={col.action}
+                      className="overflow-hidden rounded-lg border border-navy-700 bg-navy-850"
+                    >
+                      <div className="relative px-3 py-2.5">
+                        <div
+                          className="absolute inset-0 opacity-25"
+                          style={{
+                            backgroundColor: COLUMN_COLOR[col.action] ?? COLUMN_COLOR_FALLBACK,
+                          }}
+                          aria-hidden="true"
+                        />
+                        <div className="relative flex items-baseline justify-between gap-2">
+                          <h3
+                            className="text-sm font-semibold"
+                            style={{
+                              color: COLUMN_COLOR[col.action] ?? COLUMN_COLOR_FALLBACK,
+                            }}
+                          >
+                            {ACTION_LABEL[col.action] ?? col.action}
+                          </h3>
+                          <span className="font-mono text-[11px] text-ink-dim">
+                            {Math.round(col.weightedCombos).toLocaleString()} combos
+                          </span>
+                        </div>
+                        <div className="relative mt-0.5 font-mono text-xl font-bold text-ink">
+                          {pctText(col.total)}
+                        </div>
+                      </div>
+                      <div className="max-h-[540px] overflow-y-auto">
+                        <table className="w-full text-left text-sm">
+                          <thead>
+                            <tr className="border-b border-navy-700 text-xs uppercase tracking-wide text-ink-faint">
+                              <th className="py-1.5 pl-3 pr-2 font-medium">Hand</th>
+                              <th className="py-1.5 pr-2 font-medium">Freq</th>
+                              <th
+                                className="py-1.5 pr-3 text-right font-medium"
+                                title="Concrete combos in the class (multiplicity)"
+                              >
+                                Weight
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {col.rows.map((r) => {
+                              const cards = parseCombo(r.key);
+                              return (
+                                <tr
+                                  key={r.key}
+                                  onClick={() => setSelClass(r.key)}
+                                  aria-selected={selClass === r.key}
+                                  className={`cursor-pointer border-b border-navy-800 hover:bg-navy-900 ${
+                                    selClass === r.key ? 'bg-navy-900' : ''
+                                  }`}
+                                >
+                                  <td className="py-1.5 pl-3 pr-2">
+                                    {cards ? (
+                                      <CardRow cards={cards} size="xs" />
+                                    ) : (
+                                      <span className="font-mono text-xs text-ink">{r.key}</span>
+                                    )}
+                                  </td>
+                                  <td className="w-32 py-1.5 pr-2">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-14">
+                                        <FrequencyBar
+                                          fraction={r.freq}
+                                          color={ACTION_COLOR[col.action] ?? '#7a8aa0'}
+                                          height="h-2"
+                                        />
+                                      </div>
+                                      <span className="font-mono text-xs text-ink-dim">
+                                        {pctText(r.freq)}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td
+                                    className="py-1.5 pr-3 text-right font-mono text-xs text-ink-dim"
+                                    title={`${r.multiplicity.toLocaleString()} concrete combos — ${totalCombos > 0 ? ((r.multiplicity / totalCombos) * 100).toFixed(2) : '0.00'}% of this set`}
+                                  >
+                                    {r.multiplicity}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        {col.rows.length === 0 ? (
+                          <p className="px-3 py-2 text-xs text-ink-faint">
+                            No classes match the filter.
+                          </p>
+                        ) : null}
+                      </div>
+                      {col.classCount > col.rows.length ? (
+                        <p className="border-t border-navy-700 px-3 py-1.5 text-[11px] text-ink-faint">
+                          Densest {col.rows.length.toLocaleString()} of{' '}
+                          {col.classCount.toLocaleString()} classes — filter to narrow.
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
               </section>
                 </>
@@ -1692,8 +1733,8 @@ export function PreflopPage() {
                       </div>
                       {r.classCount > r.rows.length ? (
                         <p className="mt-1.5 text-xs text-ink-faint">
-                          Strongest {r.rows.length} classes shown — the full class list is in the
-                          Strategy tab.
+                          Strongest {r.rows.length} classes shown — the Strategy tab lists
+                          every class per action.
                         </p>
                       ) : null}
                     </div>
