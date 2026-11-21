@@ -13,8 +13,8 @@
     "method": "constructed-equity-v1.1",
     "tool": "build-ranges (plo-solve)",
     "tool_version": "0.1.0",
-    "config_version": "ranges-config-v1.4",
-    "config_hash": "fnv1a64:132f05f92137c5d3",
+    "config_version": "ranges-config-v1.5",
+    "config_hash": "fnv1a64:150d6bb6dbd96f77",
     "sources": [],
     "derivation": "constructed-equity-v1.1 continuation: eligible classes = the opener's RFI classes (input set constructed-v1.3-8max-co-rfi, raise frequency > 0); scored against the three-bettor's three_bet slice (input set constructed-v1.3-8max-btn-vs-co) with realisation 0.84 (continuer out of position postflop). Continuation targets are INTERNAL CONSTRUCTION PARAMETERS - fractions of the opener's raising range by weight (continue 50.0% of the opening range; of the continue slice, call 82.0% / four_bet 18.0%). cross_check: no published anchor - method disclosed."
   },
