@@ -26,6 +26,11 @@ import {
   type PreflopSetIndexEntry,
 } from '../lib/preflop';
 import {
+  lockToPayload,
+  validatePercentages,
+  type LockDraft,
+} from '../lib/nodelocks';
+import {
   buildSpot,
   defaultWizardForm,
   parseRangeText,
@@ -35,6 +40,7 @@ import {
   type StreetSizes,
   type WizardForm,
 } from '../lib/spot';
+import { NodeLockEditor } from '../components/NodeLockEditor';
 import type { JobRecord } from '../lib/types';
 import { useStore } from '../store/useStore';
 
@@ -458,8 +464,37 @@ export function SolverPage() {
   const setApiOnline = useStore((s) => s.setApiOnline);
   const loadRawSolve = useStore((s) => s.loadRawSolve);
   const loadSample = useStore((s) => s.loadSample);
+  const lockHandoff = useStore((s) => s.lockHandoff);
+  const setLockHandoff = useStore((s) => s.setLockHandoff);
 
   const [form, setForm] = useState<WizardForm>(defaultWizardForm);
+  // Node locks staged for this solve (issue #9): built in the
+  // Explorer's Edit Node editor and carried over via the lock
+  // hand-off, then adjusted here in the Node locks fieldset. Emitted
+  // as the spot's `locks` array on submit (see onSubmit).
+  const [locks, setLocks] = useState<LockDraft[]>([]);
+
+  // Consume the Explorer's lock hand-off once: spot geometry into the
+  // form, locks into the fieldset, hand-off cleared so a later visit
+  // starts clean.
+  useEffect(() => {
+    if (!lockHandoff) return;
+    setForm((f) => ({
+      ...f,
+      board: lockHandoff.board,
+      oopRange: lockHandoff.oopRange,
+      ipRange: lockHandoff.ipRange,
+      oopRangeSet: null,
+      ipRangeSet: null,
+      pot: lockHandoff.pot,
+      stacks: lockHandoff.stacks,
+    }));
+    setLocks(lockHandoff.locks);
+    setNotice(
+      'Spot and node locks carried over from the Explorer. Check the bet sizes — the wizard’s current menus apply — then solve.',
+    );
+    setLockHandoff(null);
+  }, [lockHandoff, setLockHandoff]);
   const [preflopIndex, setPreflopIndex] = useState<PreflopIndex | null>(null);
   const [classByHand, setClassByHand] = useState<Map<string, PreflopClass> | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
@@ -540,6 +575,20 @@ export function SolverPage() {
     if (!built.spot) {
       setErrors(built.errors);
       return;
+    }
+    // Node locks (issue #9): validate the staged drafts and emit the
+    // engine's payload shape. A bad lock blocks the submit with its
+    // reason — locks are never silently dropped or "fixed".
+    const lockErrors = locks
+      .map((l) => validatePercentages(l.percentages))
+      .filter((e): e is string => e !== null)
+      .map((e) => `Node locks: ${e}`);
+    if (lockErrors.length > 0) {
+      setErrors(lockErrors);
+      return;
+    }
+    if (locks.length > 0) {
+      built.spot.locks = locks.map(lockToPayload);
     }
     setErrors([]);
     try {
@@ -886,23 +935,25 @@ export function SolverPage() {
           can take a long time — they run as background jobs and land in the library when done.
         </p>
 
-        {/* Node locks: the engine + API accept them today (spot JSON
-            "locks"), but the visual editor is issue #9 — the honest
-            maximum here is a disabled affordance that says exactly that,
-            never a control that silently drops the user's intent. */}
-        <fieldset disabled className="rounded-lg border border-navy-700 bg-navy-900 p-3">
+        {/* Node locks (issue #9): the visual editor lives in the
+            Explorer (Edit Node on a solved tree — a lock needs a real
+            node, its actions and the solver's frequencies there).
+            Locks staged there are carried into this fieldset, where
+            their percentages can still be adjusted or removed before
+            the solve is submitted with them. */}
+        <fieldset className="rounded-lg border border-navy-700 bg-navy-900 p-3">
           <legend className="px-1 text-sm font-semibold text-ink">Node locks</legend>
-          <label className="flex items-center gap-2 text-sm text-ink-faint">
-            <input type="checkbox" disabled className="h-4 w-4" />
-            Attach node locks to this solve
-          </label>
-          <p className="mt-1 text-xs text-ink-faint">
-            The engine and API already accept locks — fix one player&apos;s action frequencies
-            at a decision node and re-solve the rest of the tree around them; locked results are
-            badged LOCKED, never GTO. The visual editor (pick a node in the Explorer and set its
-            frequencies) is issue #9 and is not built yet, so locks can&apos;t be attached from
-            this form today — for now they can only be supplied in the spot JSON sent to the
-            API.
+          <NodeLockEditor node={null} locks={locks} onChange={setLocks} />
+          <p className="mt-2 text-xs text-ink-faint">
+            To add a lock, open a solve in the{' '}
+            <Link to="/explorer" className="font-semibold text-table-light underline">
+              Explorer
+            </Link>{' '}
+            and use Edit node on the node you want to fix — locks name nodes in a solved tree,
+            so they can&apos;t be authored against a spot that has not been solved yet. If a
+            lock&apos;s node does not exist in this solve&apos;s tree (for example because the
+            bet-size menus differ from the original solve), the engine rejects the job and its
+            error is shown in the jobs list — locks are never silently dropped.
           </p>
         </fieldset>
 
@@ -965,6 +1016,14 @@ export function SolverPage() {
                   {job.status}
                   {job.id === activeJobId ? '…' : ''}
                 </span>
+                {job.locked ? (
+                  <span
+                    className="rounded-full border border-accent px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-accent"
+                    title="This solve was nodelocked — its strategy is priced as played, not an equilibrium."
+                  >
+                    Locked
+                  </span>
+                ) : null}
                 {job.oop_range_set ? (
                   <span className="text-xs text-ink-faint">OOP set: {job.oop_range_set}</span>
                 ) : null}

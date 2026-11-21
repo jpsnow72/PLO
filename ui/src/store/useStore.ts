@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { fetchAuthMe, fetchSampleSolve } from '../lib/api';
 import type { TrainerFocus } from '../lib/drills';
+import type { LockDraft } from '../lib/nodelocks';
 import { DRAW_COLORS, DRAW_WIDTHS, type DrawStroke, type DrawTool } from '../lib/drawing';
 import {
   parseSolve,
@@ -18,6 +19,24 @@ export interface PathStep {
 }
 
 export type SolveSource = 'sample' | 'library' | 'job';
+
+/**
+ * Explorer -> Solver hand-off for a locked re-solve (issue #9): the
+ * loaded solve's spot geometry (board, both full ranges as
+ * combo:weight text, pot, stacks) plus the locks built in the Edit
+ * Node editor. One-shot, like trainerFocus: the Solver consumes and
+ * clears it on mount. Bet-size menus are NOT carried — a solve
+ * payload does not record them — so the wizard's current menus apply;
+ * the Explorer's editor copy says so before the hand-off happens.
+ */
+export interface LockHandoff {
+  board: string;
+  oopRange: string;
+  ipRange: string;
+  pot: number;
+  stacks: number;
+  locks: LockDraft[];
+}
 
 interface AppState {
   // Local placeholder auth (no real accounts in this slice).
@@ -101,6 +120,8 @@ interface AppState {
   // focus that survives a reload would be a stale promise.
   trainerFocus: TrainerFocus | null;
   setTrainerFocus: (focus: TrainerFocus | null) => void;
+  lockHandoff: LockHandoff | null;
+  setLockHandoff: (handoff: LockHandoff | null) => void;
   /**
    * Range-set id the Starting Hands drill should open preselected
    * (set by the Quiz's preflop drill entries); consumed and cleared
@@ -300,6 +321,8 @@ export const useStore = create<AppState>((set, get) => ({
 
   trainerFocus: null,
   setTrainerFocus: (focus) => set({ trainerFocus: focus }),
+  lockHandoff: null,
+  setLockHandoff: (handoff) => set({ lockHandoff: handoff }),
   preflopDrillSetId: null,
   setPreflopDrillSetId: (id) => set({ preflopDrillSetId: id }),
 

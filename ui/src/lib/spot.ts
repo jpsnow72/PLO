@@ -15,8 +15,10 @@
 //                river_include_all_in; solved exactly unless the spot JSON
 //                requests bucketing (the wizard never does)
 //   both: max_iterations, target_exploitability_pct
-//   optional: locks (engine + API accept them; the wizard does not emit
-//   them — the visual lock editor is issue #9, see SOLVER-PARITY-NOTES.md)
+//   optional: locks (engine + API accept them; the wizard emits the
+//   locks staged in its Node locks fieldset — built in the Explorer's
+//   Edit Node editor, issue #9, see NODELOCK-UI-NOTES.md — attached to
+//   the built spot by Solver.tsx, not by buildSpot)
 
 import { parseCardList, parseCombo } from './cards';
 

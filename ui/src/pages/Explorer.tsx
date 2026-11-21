@@ -10,6 +10,7 @@ import { ExplainPanel } from '../components/ExplainPanel';
 import { HandDetail } from '../components/HandDetail';
 import { LinkToHeuristic } from '../components/LinkToHeuristic';
 import { MultiwayLens } from '../components/MultiwayLens';
+import { NodeLockEditor } from '../components/NodeLockEditor';
 import { NodeStrip } from '../components/NodeStrip';
 import { CategoriesRail, EvBucketsRail } from '../components/RailInsights';
 import { RangeGrid } from '../components/RangeGrid';
@@ -18,6 +19,12 @@ import { ShortcutsHelp } from '../components/ShortcutsHelp';
 import { StrategyTables } from '../components/StrategyTables';
 import { TableView } from '../components/TableView';
 import { parseCard } from '../lib/cards';
+import {
+  assembleLineLocks,
+  nodeLockLabel,
+  solverPercentages,
+  type LockDraft,
+} from '../lib/nodelocks';
 import { sampledInfo } from '../lib/sampled';
 import { aggregateFrequencies, rangeEv } from '../lib/solveTree';
 import { useExplorerHotkeys } from '../lib/useExplorerHotkeys';
@@ -49,12 +56,33 @@ export function ExplorerPage() {
   const goToStep = useStore((s) => s.goToStep);
   const resetPath = useStore((s) => s.resetPath);
   const setTrainerFocus = useStore((s) => s.setTrainerFocus);
+  const setLockHandoff = useStore((s) => s.setLockHandoff);
   const navigate = useNavigate();
 
   const node = currentNodeOf(solve, path);
   const [selectedCombo, setSelectedCombo] = useState<string | null>(null);
   const [view, setView] = useState<ExplorerView>('strategy');
   const [pickerDismissed, setPickerDismissed] = useState(false);
+  // Node-lock editor state (issue #9): the locks being built against
+  // the loaded solve + whether the panel is open. Locks belong to one
+  // solve's tree — a new solve (or a new node, for line locks) resets
+  // the parts that named the old context.
+  const [lockEditorOpen, setLockEditorOpen] = useState(false);
+  const [locks, setLocks] = useState<LockDraft[]>([]);
+  const [lineLocked, setLineLocked] = useState(false);
+
+  useEffect(() => {
+    setLocks([]);
+    setLineLocked(false);
+    setLockEditorOpen(false);
+  }, [solveId, solveName]);
+
+  // Walking to another node invalidates line locks (they named the
+  // old line); hand-set node locks stay — they name their own node.
+  useEffect(() => {
+    setLocks((prev) => prev.filter((l) => l.source !== 'line'));
+    setLineLocked(false);
+  }, [node?.history]);
 
   // Keyboard navigation: ←/→ walk the line, 1–5 take an action
   // (issue #25). The hook guards itself (typing, open picker,
@@ -122,6 +150,45 @@ export function ExplorerPage() {
   const oopEv = rangeEv(solve, 'OOP');
   const ipEv = rangeEv(solve, 'IP');
   const sampled = sampledInfo(solveRangeExpansion);
+  // Earlier decision nodes on the current line a line lock would pin
+  // (path steps before the current node, single-action nodes skipped
+  // exactly as assembleLineLocks skips them).
+  const lineLockCount = path
+    .slice(0, -1)
+    .filter((s) => {
+      const n = solve.nodesByHistory.get(s.nodeHistory);
+      return n !== undefined && n.actions.length >= 2;
+    }).length;
+  const currentNodeDraft = locks.find(
+    (l) => l.history === node.history && l.source !== 'line',
+  );
+  const onLineLockChange = (on: boolean) => {
+    if (on) {
+      if (!currentNodeDraft) return; // the toggle is disabled until a node lock exists
+      setLocks(assembleLineLocks(solve, path, currentNodeDraft));
+      setLineLocked(true);
+    } else {
+      setLocks((prev) => prev.filter((l) => l.source !== 'line'));
+      setLineLocked(false);
+    }
+  };
+  const onLocksChange = (next: LockDraft[]) => {
+    setLocks(next);
+    if (!next.some((l) => l.source === 'line')) setLineLocked(false);
+  };
+  const runLockedSolve = () => {
+    const rangeText = (p: 'OOP' | 'IP') =>
+      [...solve.weights[p].entries()].map(([combo, w]) => `${combo}:${w}`).join(', ');
+    setLockHandoff({
+      board: solve.raw.board,
+      oopRange: rangeText('OOP'),
+      ipRange: rangeText('IP'),
+      pot: solve.raw.starting_pot,
+      stacks: solve.raw.effective_stack,
+      locks: locks.map((l) => ({ ...l, source: 'staged' as const })),
+    });
+    navigate('/solver');
+  };
   const pendingStreet = pendingRunout?.[0]?.street ?? null;
   const potOddsPct = node.to_call > 0 ? (node.to_call / (node.pot + node.to_call)) * 100 : null;
 
@@ -151,6 +218,14 @@ export function ExplorerPage() {
         </div>
         <div className="ml-auto flex items-center gap-2">
           {sampled ? <SampledChip info={sampled} /> : null}
+          {solve.raw.locked ? (
+            <span
+              className="rounded-full border border-accent px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-accent"
+              title="This solve was nodelocked — its strategy is priced as played, not an equilibrium."
+            >
+              Locked
+            </span>
+          ) : null}
           <AccuracyBadge nashPct={solve.raw.exploitability.nash_distance_pct} />
         </div>
       </header>
@@ -183,6 +258,20 @@ export function ExplorerPage() {
                 className="rounded px-1.5 py-0.5 text-xs text-ink-dim hover:bg-navy-800 hover:text-ink"
               >
                 Reset line
+              </button>
+              <button
+                type="button"
+                disabled={node.actions.length < 2}
+                title={
+                  node.actions.length < 2
+                    ? 'This node has no decision to lock'
+                    : 'Fix this player’s overall action frequencies at this node and re-solve around them (nodelocking)'
+                }
+                onClick={() => setLockEditorOpen((open) => !open)}
+                aria-expanded={lockEditorOpen}
+                className="rounded bg-navy-800 px-2 py-0.5 text-xs font-semibold text-accent ring-1 ring-navy-600 hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Edit node
               </button>
               <button
                 type="button"
@@ -229,6 +318,64 @@ export function ExplorerPage() {
           ) : null}
 
           <ActionList actions={node.actions} aggregates={aggregates} onChoose={chooseAction} />
+
+          {lockEditorOpen ? (
+            <section
+              aria-label="Node lock editor"
+              className="rounded-lg border border-accent/60 bg-navy-900 p-3"
+            >
+              <div className="mb-2 flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-ink">Edit node — node locks</h3>
+                <button
+                  type="button"
+                  onClick={() => setLockEditorOpen(false)}
+                  className="ml-auto rounded px-1.5 py-0.5 text-xs text-ink-dim hover:bg-navy-800 hover:text-ink"
+                >
+                  Close
+                </button>
+              </div>
+              <NodeLockEditor
+                key={node.history}
+                node={{
+                  history: node.history,
+                  player: node.player,
+                  actionLabels: node.actions,
+                  label: nodeLockLabel(node),
+                  solverPercentages: solverPercentages(solve, node),
+                }}
+                locks={locks}
+                onChange={onLocksChange}
+                lineLockCount={lineLockCount}
+                lineLocked={lineLocked}
+                onLineLockChange={currentNodeDraft ? onLineLockChange : undefined}
+              />
+              {lineLockCount > 0 && !currentNodeDraft ? (
+                <p className="mt-2 text-xs text-ink-faint">
+                  Add a lock for this node first — the line lock then pins the {lineLockCount}{' '}
+                  earlier decision{lineLockCount === 1 ? '' : 's'} at the solver&apos;s
+                  frequencies alongside it.
+                </p>
+              ) : null}
+              <div className="mt-3 border-t border-navy-700 pt-3">
+                <button
+                  type="button"
+                  disabled={locks.length === 0}
+                  onClick={runLockedSolve}
+                  className="rounded-md bg-table px-3 py-2 text-sm font-semibold text-white hover:bg-table-dark disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Run locked solve in the Solver
+                </button>
+                <p className="mt-2 text-xs text-ink-faint">
+                  Running a locked solve is a NEW solve: the Solver opens with this spot&apos;s
+                  board, both full ranges, pot and stacks, and your locks attached. A solve
+                  payload does not record its bet-size menus, so the wizard&apos;s current
+                  menus apply — if the original solve used different sizes, a lock&apos;s node
+                  may not exist in the new tree; the engine then rejects the job with that
+                  error shown, and no lock is ever silently dropped.
+                </p>
+              </div>
+            </section>
+          ) : null}
 
           {/* View tabs: Strategy / Matrix / Table / Ranges / Blockers */}
           <div className="mt-1 flex gap-1.5 border-b border-navy-700" role="tablist" aria-label="Explorer views">
@@ -402,10 +549,21 @@ export function ExplorerPage() {
               Accuracy
             </h2>
             <AccuracyBadge nashPct={solve.raw.exploitability.nash_distance_pct} />
-            <p className="mt-2 text-xs text-ink-dim">
-              Measured against a best response by the engine's independent checker — certified
-              solver output, {solve.raw.iterations.toLocaleString()} iterations.
-            </p>
+            {solve.raw.locked ? (
+              <p className="mt-2 text-xs text-ink-dim">
+                This solve was <span className="font-semibold text-accent">nodelocked</span>:{' '}
+                {solve.raw.locks?.length ?? 0} node
+                {solve.raw.locks?.length === 1 ? '' : 's'} held at the frequencies its author
+                set. The number above is the checker pricing that locked profile exactly as
+                played — it is <span className="text-ink">not</span> an equilibrium and is
+                never certified as GTO.
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-ink-dim">
+                Measured against a best response by the engine's independent checker — certified
+                solver output, {solve.raw.iterations.toLocaleString()} iterations.
+              </p>
+            )}
             <p className="mt-2 flex items-center gap-2 text-xs text-ink-dim">
               <ApproximationBadge /> guidance only (multiway lens, V2) — never a measured solve.
             </p>
