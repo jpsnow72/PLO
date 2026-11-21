@@ -53,11 +53,22 @@ export interface RawSolveNode {
   combo_action_evs?: Record<string, number[]>;
 }
 
+/** One nodelock as the engine echoes it in solve output (see NODELOCK-NOTES.md). */
+export interface NodeLock {
+  history: string;
+  player: Player;
+  frequencies: number[];
+}
+
 export interface RawSolve {
   board: string;
   starting_pot: number;
   effective_stack: number;
   iterations: number;
+  /** Nodelock badge fields (always emitted by the engine since the
+   *  nodelock ship; absent in older payloads — treat as unlocked). */
+  locked?: boolean;
+  locks?: NodeLock[];
   exploitability: Exploitability;
   oop_evs: ComboEv[];
   ip_evs: ComboEv[];
@@ -78,6 +89,8 @@ export interface JobRecord {
   ip_range_set?: string | null;
   /** Range-trimming record when capped range sets fed this solve. */
   range_expansion?: RangeExpansion | null;
+  /** True when the job's spot carried node locks (badged LOCKED, never GTO). */
+  locked?: boolean;
   created_at: string;
   finished_at: string | null;
   nash_distance_pct: number | null;
