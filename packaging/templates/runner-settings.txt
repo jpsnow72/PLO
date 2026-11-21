@@ -3,9 +3,9 @@
 #
 # QUEUE_RANGE_MODE: how a catalog spot's preflop ranges are trimmed to
 # the per-side combo cap before solving.
-#   top    = keep the highest-weight combos (a deterministic
-#            premium-heavy slice of the range)
 #   sample = draw combos in proportion to their range weight, so the
 #            trimmed range sketches the whole range (the draw is
-#            seeded per spot, so it is the same on every run)
-QUEUE_RANGE_MODE=top
+#            seeded per spot, so it is the same on every run) (default)
+#   top    = keep the highest-weight combos (a deterministic
+#            premium-heavy slice of the range)
+QUEUE_RANGE_MODE=sample

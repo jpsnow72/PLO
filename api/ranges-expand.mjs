@@ -263,7 +263,7 @@ export function createRangeExpander(preflopDirArg) {
    * @param {string} opts.setId
    * @param {string} [opts.action]  defaults via defaultActionForSet()
    * @param {number|null} [opts.cap]  max combos kept; null/omitted = all
-   * @param {'top'|'sample'} [opts.mode]  cap selection mode (default 'top')
+   * @param {'top'|'sample'} [opts.mode]  cap selection mode (default 'sample')
    * @param {number|string} [opts.seed]  sampling seed (mode 'sample')
    * @param {string|null} [opts.baseSetId]  product-weight base set (3-bet
    *   continuation sides: the opener's RFI set)
@@ -277,7 +277,7 @@ export function createRangeExpander(preflopDirArg) {
     const {
       setId,
       cap = null,
-      mode = 'top',
+      mode = 'sample',
       seed = null,
       baseSetId = null,
       baseAction = 'raise',

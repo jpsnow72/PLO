@@ -16,8 +16,8 @@ setlocal
 cd /d "%~dp0"
 
 rem --- Range mode from runner-settings.txt (QUEUE_RANGE_MODE) ---
-rem Default "top" when the file or the setting is absent.
-set "QUEUE_RANGE_MODE=top"
+rem Default "sample" when the file or the setting is absent.
+set "QUEUE_RANGE_MODE=sample"
 if exist "%~dp0runner-settings.txt" (
   for /f "usebackq tokens=1* delims==" %%A in ("%~dp0runner-settings.txt") do (
     if "%%A"=="QUEUE_RANGE_MODE" set "QUEUE_RANGE_MODE=%%B"

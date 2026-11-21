@@ -255,7 +255,7 @@ export function HeuristicsPage() {
     setOpenError(null);
     try {
       const raw = await fetchLibrarySolve(id);
-      if (loadRawSolve(raw, item.name, 'library', id)) navigate('/explorer');
+      if (loadRawSolve(raw, item.name, 'library', id, item.range_expansion)) navigate('/explorer');
       else setOpenError(`"${item.name}" could not be parsed by the UI.`);
     } catch {
       setOpenError('Could not fetch that solve from the job service.');

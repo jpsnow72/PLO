@@ -116,7 +116,7 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? '';
 const CATALOG_PATH =
   process.env.CATALOG_PATH ?? path.resolve(HERE, '..', 'data', 'library', 'spot-catalog.json');
 const QUEUE_ENABLED = process.env.QUEUE_ENABLED === '1';
-const QUEUE_RANGE_MODE = process.env.QUEUE_RANGE_MODE ?? 'top';
+const QUEUE_RANGE_MODE = process.env.QUEUE_RANGE_MODE ?? 'sample';
 const QUEUE_RANGE_SEED = process.env.QUEUE_RANGE_SEED ?? '';
 const QUEUE_MAX_ITERATIONS = Number(process.env.QUEUE_MAX_ITERATIONS ?? 2_000_000);
 const QUEUE_SMOKE_MAX_ITERATIONS = process.env.QUEUE_SMOKE_MAX_ITERATIONS
@@ -434,6 +434,11 @@ async function listLibrary() {
         effective_stack:
           typeof result?.effective_stack === 'number' ? result.effective_stack : null,
         locked: result?.locked === true || meta.locked === true,
+        // Range-trimming record from the solve's meta sidecar (null for
+        // solves that never went through capped range-set expansion —
+        // hand-entered ranges, the bundled sample). The UI badges
+        // sampled solves from this; see ui/src/lib/sampled.ts.
+        range_expansion: meta.range_expansion ?? null,
       });
     } catch {
       // Skip unreadable entries rather than failing the whole list.
@@ -1735,7 +1740,7 @@ const server = http.createServer(async (req, res) => {
                   ? spot[`${side}_range_action`]
                   : null,
               cap: spot[`${side}_range_cap`] ?? null,
-              mode: spot[`${side}_range_mode`] ?? 'top',
+              mode: spot[`${side}_range_mode`] ?? 'sample',
               seed: spot[`${side}_range_seed`] ?? null,
               baseSetId: spot[`${side}_range_base_set`] ?? null,
               baseAction: spot[`${side}_range_base_action`] ?? 'raise',

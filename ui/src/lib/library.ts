@@ -24,9 +24,10 @@
 //  - Locked rows are badged LOCKED and are filterable, never re-labelled.
 
 import type { CatalogEntry } from './runner';
+import { sampledInfo, type SampledInfo } from './sampled';
 import type { SolveData } from './solveTree';
 import { boardFamilies, type TextureFamily } from './texture';
-import type { LibraryItem } from './types';
+import type { LibraryItem, RangeExpansion } from './types';
 
 export type LibraryRowSource = 'library' | 'custom' | 'sample';
 export type Street = 'flop' | 'turn' | 'river';
@@ -45,6 +46,10 @@ export interface LibraryRow {
   startingPot: number | null;
   effectiveStack: number | null;
   locked: boolean;
+  /** Stored range-trimming record; null when the solve was uncapped. */
+  rangeExpansion: RangeExpansion | null;
+  /** Non-null when the row badges SAMPLED (see lib/sampled.ts). */
+  sampled: SampledInfo | null;
   families: TextureFamily[];
   /** Catalog join (by spot_id); null for custom solves and the sample. */
   catalog: CatalogEntry | null;
@@ -119,6 +124,8 @@ export function libraryRow(
     startingPot: item.starting_pot ?? null,
     effectiveStack: item.effective_stack ?? null,
     locked: item.locked === true,
+    rangeExpansion: item.range_expansion ?? null,
+    sampled: sampledInfo(item.range_expansion),
     families: boardFamilies(item.board),
     catalog,
   };
@@ -137,6 +144,8 @@ export function sampleRow(parsed: SolveData): LibraryRow {
     startingPot: parsed.raw.starting_pot,
     effectiveStack: parsed.raw.effective_stack,
     locked: raw.locked === true,
+    rangeExpansion: null,
+    sampled: null,
     families: boardFamilies(parsed.raw.board),
     catalog: null,
   };

@@ -12,7 +12,7 @@ cd "$(dirname "$0")"
 PKG="$PWD"
 
 # --- Range mode from runner-settings.txt (QUEUE_RANGE_MODE) ---
-QUEUE_RANGE_MODE="top"
+QUEUE_RANGE_MODE="sample"
 if [[ -f "$PKG/runner-settings.txt" ]]; then
   v="$(grep -E '^QUEUE_RANGE_MODE=' "$PKG/runner-settings.txt" | tail -n 1 | cut -d= -f2- || true)"
   [[ -n "${v:-}" ]] && QUEUE_RANGE_MODE="$v"

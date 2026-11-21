@@ -569,7 +569,7 @@ export function SolverPage() {
     setOpening(true);
     try {
       const raw = await fetchJobResult(job.id);
-      if (loadRawSolve(raw, `Custom solve · ${job.board}`, 'job', job.id)) {
+      if (loadRawSolve(raw, `Custom solve · ${job.board}`, 'job', job.id, job.range_expansion)) {
         navigate('/explorer');
       } else {
         setErrors(['The finished solve could not be parsed by the UI.']);
