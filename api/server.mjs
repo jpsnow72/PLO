@@ -13,6 +13,8 @@
 //   POST /api/queue/control     pause/resume/remove/set_concurrency [admin]
 //   GET  /api/preflop/index     preflop range-set index (data/preflop/index.json)
 //   GET  /api/preflop/sets/:id  one preflop range set (id must be in the index)
+//   GET  /api/preflop/          legacy alias of /api/preflop/index (#42)
+//   GET  /api/preflop/set/:id   legacy alias of /api/preflop/sets/:id (#42)
 //   GET  /api/quiz/progress     SRS item states + per-topic accuracy [admin]
 //   POST /api/quiz/answer       record one graded quiz answer [admin]
 //   GET  /api/preflop/class-table  per-class feature/equity table
@@ -1937,7 +1939,13 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    if (req.method === 'GET' && url.pathname === '/api/preflop/index') {
+    // Legacy alias (#42): the first Preflop UI fetched the index from
+    // /api/preflop/ — stale cached app shells still do, so serve them the
+    // same file instead of the catch-all 404.
+    if (
+      req.method === 'GET' &&
+      (url.pathname === '/api/preflop/index' || url.pathname === '/api/preflop/')
+    ) {
       await sendJsonFile(req, res, path.join(PREFLOP_DIR, 'index.json'));
       return;
     }
@@ -1957,7 +1965,16 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (req.method === 'GET' && parts[0] === 'api' && parts[1] === 'preflop' && parts[2] === 'sets' && parts[3]) {
+    // Legacy alias (#42): the first Preflop UI fetched a set from
+    // /api/preflop/set/:id (singular). Both shapes land here — the id is
+    // parts[3] either way, so the lookup and its 404 body are shared.
+    if (
+      req.method === 'GET' &&
+      parts[0] === 'api' &&
+      parts[1] === 'preflop' &&
+      (parts[2] === 'sets' || parts[2] === 'set') &&
+      parts[3]
+    ) {
       let entry;
       try {
         entry = await findPreflopSetEntry(parts[3]);

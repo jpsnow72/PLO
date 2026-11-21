@@ -1,0 +1,42 @@
+# Cache policy for the Cloudflare Pages deployment (issue #42).
+#
+# The app shell (the SPA HTML) must be revalidated on every load so a new
+# deploy is picked up immediately: a stale shell keeps calling API paths
+# that may have moved, which is exactly how old clients ended up on the
+# retired /api/preflop/ paths and saw "Preflop library unavailable".
+# Vite's fingerprinted files under /assets/* are immutable by name, so
+# they may cache for a year. /api/* is deliberately absent here — the
+# Pages Function owns those responses.
+#
+# One block per SPA route (App.tsx); add new routes here as they ship.
+
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/explore
+  Cache-Control: no-cache
+/explorer
+  Cache-Control: no-cache
+/solver
+  Cache-Control: no-cache
+/preflop
+  Cache-Control: no-cache
+/starting-hands
+  Cache-Control: no-cache
+/quick-review
+  Cache-Control: no-cache
+/quiz
+  Cache-Control: no-cache
+/heuristics
+  Cache-Control: no-cache
+/settings
+  Cache-Control: no-cache
+/login
+  Cache-Control: no-cache
+/admin
+  Cache-Control: no-cache
+/admin/runner
+  Cache-Control: no-cache
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
