@@ -31,7 +31,20 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DIST_DIR="$ROOT/packaging/dist"
 PKG="$DIST_DIR/plo-runner"
 BINARIES=(solve-river solve-turn solve-flop)
-API_FILES=(server.mjs auth.mjs hash-password.mjs ranges-expand.mjs runner-login.mjs uploader.mjs README.md package.json)
+# API files are DERIVED, never hand-listed (#35): every runtime module in
+# api/ (all *.mjs except *.test.mjs) plus the two non-module files the
+# server expects beside it. The previous hand-maintained list silently
+# went stale and shipped a package whose server could not boot (missing
+# google-auth.mjs, quiz.mjs, study.mjs). The completeness check below is
+# the second line of defence.
+API_FILES=()
+for f in "$ROOT"/api/*.mjs; do
+  case "$(basename "$f")" in
+    *.test.mjs) continue ;;
+    *) API_FILES+=("$(basename "$f")") ;;
+  esac
+done
+API_FILES+=(README.md package.json)
 
 fail() {
   echo "ERROR: $*" >&2
@@ -71,6 +84,18 @@ mkdir -p "$PKG/api" "$PKG/ui" "$PKG/engine-linux" "$PKG/data/library" "$PKG/loca
 for f in "${API_FILES[@]}"; do
   cp "$ROOT/api/$f" "$PKG/api/$f"
 done
+
+# Completeness check (#35): every relative .mjs import specifier in the
+# packaged api/*.mjs must resolve to a file inside the package. This is
+# the guard that would have caught the stale-list defect at assemble
+# time: server.mjs imported ./google-auth.mjs, ./quiz.mjs and
+# ./study.mjs, none of which were in the shipped package.
+for f in "$PKG"/api/*.mjs; do
+  while IFS= read -r mod; do
+    [[ -f "$PKG/api/$mod" ]] || fail "packaged $(basename "$f") imports './$mod', which is missing from $PKG/api — the package would not boot. Check the API_FILES derivation in assemble-package.sh."
+  done < <(grep -oE "'\./[^']+\.mjs'" "$f" | tr -d "'" | sed 's|^\./||' | sort -u)
+done
+echo "API completeness check passed (${#API_FILES[@]} api files)."
 
 cp -r "$ROOT/ui/dist" "$PKG/ui/dist"
 
@@ -115,4 +140,4 @@ echo "Total size: $(du -sh "$PKG" | cut -f1)"
 if [[ "$WIN_OK" -ne 1 ]]; then
   echo "NOTE: engine-win/ is EMPTY in this package (see warning above) - start.bat cannot solve on Windows yet."
 fi
-echo "Next: zip the plo-runner folder as-is, or test the Linux variant with $PKG/start.sh"
+echo "Next: boot-smoke the package with packaging/smoke-package.sh, then zip the plo-runner folder as-is, or test the Linux variant with $PKG/start.sh"

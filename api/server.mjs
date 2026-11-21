@@ -304,8 +304,12 @@ async function runJob(job, spot) {
   const resultPath = path.join(dir, 'result.json');
   await fs.writeFile(spotPath, JSON.stringify(spot, null, 2));
 
-  const binaryName =
+  const baseName =
     job.kind === 'flop' ? 'solve-flop' : job.kind === 'turn' ? 'solve-turn' : 'solve-river';
+  // Windows engine files carry the .exe extension (same branch as the
+  // multiway-equity invocation below); without it every queue job on
+  // Windows failed with "Engine binary not found" (#35).
+  const binaryName = process.platform === 'win32' ? `${baseName}.exe` : baseName;
   const binary = path.join(ENGINE_BIN, binaryName);
   try {
     await fs.access(binary);
