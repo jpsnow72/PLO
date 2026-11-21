@@ -33,7 +33,7 @@ Configuration (environment variables):
 | `CATALOG_PATH`        | `../data/library/spot-catalog.json`       | Spot catalog for `GET /api/catalog` and the queue                 |
 | `UI_DIR`              | `../ui/dist` (relative)                   | Built UI served same-origin for non-API GET paths (SPA fallback to `index.html`); ignored when no build exists there |
 | `QUEUE_ENABLED`       | *(unset — queue worker off)*              | `1` starts the catalog queue worker + upload retries              |
-| `QUEUE_RANGE_MODE`    | `top`                                     | Catalog range-cap mode: `top` or `sample`                         |
+| `QUEUE_RANGE_MODE`    | `sample`                                  | Catalog range-cap mode: `sample` or `top`                         |
 | `QUEUE_RANGE_SEED`    | *(unset)*                                 | Optional salt for per-spot sampling seeds                         |
 | `QUEUE_MAX_ITERATIONS`| `2000000`                                 | Iteration ceiling for catalog solves                              |
 | `QUEUE_SMOKE_MAX_ITERATIONS` | *(unset)*                          | Smoke override for the above (coordinator verification)           |

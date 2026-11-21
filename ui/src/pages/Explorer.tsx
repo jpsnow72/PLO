@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AccuracyBadge, ApproximationBadge } from '../components/AccuracyBadge';
+import { SampledChip } from '../components/SampledChip';
 import { ActionList } from '../components/ActionList';
 import { BlockersView } from '../components/BlockersView';
 import { CardPicker } from '../components/CardPicker';
@@ -17,6 +18,7 @@ import { ShortcutsHelp } from '../components/ShortcutsHelp';
 import { StrategyTables } from '../components/StrategyTables';
 import { TableView } from '../components/TableView';
 import { parseCard } from '../lib/cards';
+import { sampledInfo } from '../lib/sampled';
 import { aggregateFrequencies, rangeEv } from '../lib/solveTree';
 import { useExplorerHotkeys } from '../lib/useExplorerHotkeys';
 import { currentNodeOf, useStore } from '../store/useStore';
@@ -35,6 +37,7 @@ export function ExplorerPage() {
   const solveName = useStore((s) => s.solveName);
   const solveSource = useStore((s) => s.solveSource);
   const solveId = useStore((s) => s.solveId);
+  const solveRangeExpansion = useStore((s) => s.solveRangeExpansion);
   const loadStatus = useStore((s) => s.loadStatus);
   const loadError = useStore((s) => s.loadError);
   const loadSample = useStore((s) => s.loadSample);
@@ -118,6 +121,7 @@ export function ExplorerPage() {
     .join('\n');
   const oopEv = rangeEv(solve, 'OOP');
   const ipEv = rangeEv(solve, 'IP');
+  const sampled = sampledInfo(solveRangeExpansion);
   const pendingStreet = pendingRunout?.[0]?.street ?? null;
   const potOddsPct = node.to_call > 0 ? (node.to_call / (node.pot + node.to_call)) * 100 : null;
 
@@ -145,7 +149,8 @@ export function ExplorerPage() {
             {solveSource === 'sample' ? ' · bundled fixture' : ''}
           </p>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {sampled ? <SampledChip info={sampled} /> : null}
           <AccuracyBadge nashPct={solve.raw.exploitability.nash_distance_pct} />
         </div>
       </header>

@@ -9,7 +9,7 @@ import {
   type SolveData,
   type SolveNode,
 } from '../lib/solveTree';
-import type { JobRecord } from '../lib/types';
+import type { JobRecord, RangeExpansion } from '../lib/types';
 
 export interface PathStep {
   nodeHistory: string;
@@ -57,13 +57,27 @@ interface AppState {
    * affordance records this id in a heuristic's linked_spot_ids.
    */
   solveId: string | null;
+  /**
+   * The loaded solve's stored range-trimming record, when the opening
+   * surface had it (Library/Dashboard/Heuristics rows, Solver jobs).
+   * The engine payload itself does not carry it — it lives in the
+   * solve's meta — so surfaces that open a solve by id alone leave it
+   * null and the Explorer simply shows no SAMPLED chip.
+   */
+  solveRangeExpansion: RangeExpansion | null;
   loadStatus: 'idle' | 'loading' | 'ready' | 'error';
   loadError: string | null;
   path: PathStep[];
   pendingRunout: RunoutOption[] | null;
   terminalAction: string | null;
   loadSample: () => Promise<void>;
-  loadRawSolve: (raw: unknown, name: string, source: SolveSource, id?: string | null) => boolean;
+  loadRawSolve: (
+    raw: unknown,
+    name: string,
+    source: SolveSource,
+    id?: string | null,
+    rangeExpansion?: RangeExpansion | null,
+  ) => boolean;
   chooseAction: (actionLabel: string) => void;
   chooseRunout: (card: string) => void;
   dismissRunout: () => void;
@@ -174,6 +188,7 @@ export const useStore = create<AppState>((set, get) => ({
   solveName: '',
   solveSource: null,
   solveId: null,
+  solveRangeExpansion: null,
   loadStatus: 'idle',
   loadError: null,
   path: [ROOT_STEP],
@@ -194,7 +209,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  loadRawSolve: (raw, name, source, id) => {
+  loadRawSolve: (raw, name, source, id, rangeExpansion) => {
     const data = parseSolve(raw);
     if (!data) {
       set({ loadStatus: 'error', loadError: `"${name}" is not a valid engine solve` });
@@ -205,6 +220,7 @@ export const useStore = create<AppState>((set, get) => ({
       solveName: name,
       solveSource: source,
       solveId: id ?? null,
+      solveRangeExpansion: rangeExpansion ?? null,
       loadStatus: 'ready',
       loadError: null,
       path: [ROOT_STEP],

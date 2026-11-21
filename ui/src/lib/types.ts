@@ -76,11 +76,39 @@ export interface JobRecord {
   /** Preflop range-set ids loaded for this solve, when set-mode was used. */
   oop_range_set?: string | null;
   ip_range_set?: string | null;
+  /** Range-trimming record when capped range sets fed this solve. */
+  range_expansion?: RangeExpansion | null;
   created_at: string;
   finished_at: string | null;
   nash_distance_pct: number | null;
   iterations: number | null;
   error: string | null;
+}
+
+/** One side's range-trimming record, as stored in a solve's meta. */
+export interface RangeExpansionSide {
+  set?: string | null;
+  action?: string | null;
+  cap?: number | null;
+  /** 'sample' (weighted draw) or 'top' (highest-weight slice). */
+  mode?: string | null;
+  seed?: number | null;
+  kept_combos?: number | null;
+  total_combos?: number | null;
+  /** Percent of the side's total range weight kept after the cap (0–100). */
+  coverage_pct?: number | null;
+  base_set?: string | null;
+  base_action?: string | null;
+}
+
+/**
+ * How a solve's preflop ranges were trimmed to their per-side caps before
+ * solving. Present only when capped range sets fed the solve; absent/null
+ * for hand-entered ranges and the bundled sample. See lib/sampled.ts.
+ */
+export interface RangeExpansion {
+  oop?: RangeExpansionSide | null;
+  ip?: RangeExpansionSide | null;
 }
 
 export interface LibraryItem {
@@ -101,6 +129,8 @@ export interface LibraryItem {
   effective_stack?: number | null;
   /** True when the solve was nodelocked (badged LOCKED, never GTO). */
   locked?: boolean;
+  /** Range-trimming record from the solve's meta; null when uncapped. */
+  range_expansion?: RangeExpansion | null;
 }
 
 /** Admin session state, from GET /api/auth/me. */

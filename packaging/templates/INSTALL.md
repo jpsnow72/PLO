@@ -96,11 +96,11 @@ spot's ranges are trimmed to a per-side cap before solving (the catalog
 shows the coverage percentage for every spot). `runner-settings.txt`
 chooses how, via `QUEUE_RANGE_MODE`:
 
-- `top` (default) — keep the highest-weight combos: a deterministic,
-  premium-heavy slice of the range.
-- `sample` — draw combos in proportion to their range weight, so the
+- `sample` (default) — draw combos in proportion to their range weight, so the
   trimmed range sketches the whole range; the draw is seeded per spot,
   so every run and every machine gets the same sample.
+- `top` — keep the highest-weight combos: a deterministic,
+  premium-heavy slice of the range.
 
 Edit the value, save the file, and restart the runner to apply it.
 

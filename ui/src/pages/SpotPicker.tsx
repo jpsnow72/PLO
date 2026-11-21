@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AccuracyBadge } from '../components/AccuracyBadge';
+import { SampledChip } from '../components/SampledChip';
 import { CardRow } from '../components/CardChip';
 import { fetchCatalog, fetchLibrary, fetchLibrarySolve, fetchSampleSolve } from '../lib/api';
 import { parseCardList } from '../lib/cards';
@@ -199,7 +200,7 @@ export function SpotPickerPage() {
     if (!row.libraryId) return;
     try {
       const raw = await fetchLibrarySolve(row.libraryId);
-      if (loadRawSolve(raw, row.name, 'library', row.libraryId)) navigate('/explorer');
+      if (loadRawSolve(raw, row.name, 'library', row.libraryId, row.rangeExpansion)) navigate('/explorer');
       else setError(`"${row.name}" could not be parsed by the UI.`);
     } catch {
       setError('Could not fetch that solve from the job service.');
@@ -469,6 +470,7 @@ export function SpotPickerPage() {
                           Locked
                         </span>
                       ) : null}
+                      {row.sampled ? <SampledChip info={row.sampled} /> : null}
                       <span className="ml-auto">
                         {row.locked ? (
                           row.nashPct !== null ? (

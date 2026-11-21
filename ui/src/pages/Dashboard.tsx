@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { AccuracyBadge } from '../components/AccuracyBadge';
 import { fetchJobs, fetchJobResult, fetchLibrary, fetchLibrarySolve, fetchSampleSolve } from '../lib/api';
 import { parseSolve } from '../lib/solveTree';
-import type { JobRecord, LibraryItem } from '../lib/types';
+import type { JobRecord, LibraryItem, RangeExpansion } from '../lib/types';
 import { useStore } from '../store/useStore';
 
 export function DashboardPage() {
@@ -66,8 +66,14 @@ export function DashboardPage() {
     };
   }, [setApiOnline]);
 
-  const openRaw = (raw: unknown, name: string, source: 'library' | 'job', id: string) => {
-    if (loadRawSolve(raw, name, source, id)) {
+  const openRaw = (
+    raw: unknown,
+    name: string,
+    source: 'library' | 'job',
+    id: string,
+    rangeExpansion?: RangeExpansion | null,
+  ) => {
+    if (loadRawSolve(raw, name, source, id, rangeExpansion)) {
       navigate('/explorer');
     } else {
       setOpenError(`"${name}" could not be parsed by the UI.`);
@@ -77,7 +83,7 @@ export function DashboardPage() {
   const openLibraryItem = async (item: LibraryItem) => {
     try {
       const raw = await fetchLibrarySolve(item.id);
-      openRaw(raw, item.name, 'library', item.id);
+      openRaw(raw, item.name, 'library', item.id, item.range_expansion);
     } catch {
       setOpenError('Could not fetch that solve from the job service.');
     }
@@ -86,7 +92,7 @@ export function DashboardPage() {
   const openJob = async (job: JobRecord) => {
     try {
       const raw = await fetchJobResult(job.id);
-      openRaw(raw, `Custom solve · ${job.board}`, 'job', job.id);
+      openRaw(raw, `Custom solve · ${job.board}`, 'job', job.id, job.range_expansion);
     } catch {
       setOpenError('Could not fetch that job result.');
     }
