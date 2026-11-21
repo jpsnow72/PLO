@@ -97,7 +97,22 @@ set records its `rake` variant. See `PREFLOP-8MAX-NOTES.md` at the
 repository root for the full mapping tables and the regeneration
 runbook.
 
-Regenerate with the v1.3 config (the canonical one — a run with an
+**v1.5 retarget (config `ranges-config-v1.5.json`)**: no new family —
+three raked 6-max construction targets adopt the **GTO Wizard PLO100
+raked totals** that v1.2 recorded as informational anchors (owner
+decision 2026-11-21, after the 2026-11-20 cross-check found them to be
+the family's only >1pp misses): BTN RFI 49% → 42.6% (the old target
+matched the *no-rake* anchor although this family describes the raked
+game), BB vs UTG call 16.3% → 24.2%, BB vs BTN call 30% → 32.2%.
+Three-bet targets already matched and do not move. Every other
+family's targets are literals in the config (the seat-mapping
+derivations were applied at authoring time, not at generation time),
+so no other family moves; within the raked 6-max family, SB vs BTN
+and the two BTN continuation sets follow the retargeted BTN range.
+Set ids are unchanged — only the config version/hash in each set's
+provenance moves. See `RETARGET-NOTES.md` at the repository root.
+
+Regenerate with the v1.5 config (the canonical one — a run with an
 older config rewrites `index.json` without the newer entries):
 
 ```
@@ -119,9 +134,15 @@ audited back to its inputs.
 - `ranges-config-v1.2.json` — everything in v1 (the raked family,
   unchanged) plus the `norake_6max` section (the no-rake family's GTO
   Wizard cEV targets).
-- `ranges-config-v1.3.json` — the canonical builder config: everything in
-  v1.2 plus the `eightmax` section (the 8-max families for both rake
-  variants, derived by seat mapping). `build-ranges` defaults to it.
+- `ranges-config-v1.3.json` — everything in v1.2 plus the `eightmax`
+  section (the 8-max families for both rake variants, derived by seat
+  mapping).
+- `ranges-config-v1.4.json` — everything in v1.3 plus the
+  `deep200_6max` section (the 200bb no-rake 6-max family).
+- `ranges-config-v1.5.json` — the canonical builder config: everything
+  in v1.4 with three raked 6-max targets retargeted to the GTO Wizard
+  PLO100 raked anchors (BTN RFI 42.6%, BB vs UTG call 24.2%, BB vs BTN
+  call 32.2%). `build-ranges` defaults to it.
 - `sets/` — generated constructed range sets, one JSON file per set.
 - `class-table.json` — generated per-class features/equities/scores.
 - `index.json` — catalogue of the range sets present in this directory.

@@ -29,15 +29,27 @@
 //! `stack_bb` recording (200 on the deep sets, 100 everywhere else, in
 //! documents and index entries), and v1.3-family stability under the
 //! new config.
+//!
+//! The v1.5 tests load data/preflop/ranges-config-v1.5.json: the
+//! retarget — three raked 6-max targets (BTN RFI, BB vs UTG call,
+//! BB vs BTN call) adopt the GTO Wizard PLO100 raked anchors the v1.2
+//! config recorded as informational, three-bet targets do not move,
+//! and an exhaustive config-level guard asserts every other target,
+//! weight, seed and sample count is identical to v1.4 (identical
+//! inputs are what make the gate's per-set `hands` hash guard exact
+//! for every set outside the retarget's dependency closure).
 
 use plo_solve::ranges::{
     action_freqs, build_continuation_set, build_continuation_set_styled, build_response_set,
     build_response_set_styled, build_rfi_set, build_rfi_set_styled, compute_features,
     enumerate_classes, equity_vs_pool, index_entry_json, is_canonical_key,
     opening_weighted_totals, opener_pool, score_all_classes, score_from_components,
-    validate_rangeset, RangesConfig, CLASS_COUNT, RAKE_NO_RAKE, RAKE_RAKED, TOTAL_COMBOS,
+    validate_rangeset, ContinuationsConfig, PairTarget, RangesConfig, RfiTarget, CLASS_COUNT,
+    RAKE_NO_RAKE, RAKE_RAKED, TOTAL_COMBOS,
 };
 use plo_solve::JsonValue;
+
+use std::collections::BTreeMap;
 
 fn load_config() -> RangesConfig {
     let path = format!(
@@ -73,6 +85,15 @@ fn load_config_v14() -> RangesConfig {
     );
     let text = std::fs::read_to_string(&path).expect("read ranges-config-v1.4.json");
     RangesConfig::from_json_text(&text).expect("parse ranges-config-v1.4.json")
+}
+
+fn load_config_v15() -> RangesConfig {
+    let path = format!(
+        "{}/../../../data/preflop/ranges-config-v1.5.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let text = std::fs::read_to_string(&path).expect("read ranges-config-v1.5.json");
+    RangesConfig::from_json_text(&text).expect("parse ranges-config-v1.5.json")
 }
 
 fn small_samples(
@@ -1495,4 +1516,324 @@ fn deep200_sets_hit_targets_and_validate() {
         .expect("continuation_matchup must find deep matchups");
     assert_eq!(found_m.three_bettor_set, doc.id);
     assert_eq!(found_cont.id_prefix, "constructed-v1.4-6max-deep200");
+}
+
+// ---------------------------------------------------------------------
+// v1.5: the retarget — three raked 6-max targets adopt the GTO Wizard
+// PLO100 raked anchors (owner decision 2026-11-21; decision ticket #10,
+// build ticket #32). Everything else in the config is v1.4 verbatim.
+// ---------------------------------------------------------------------
+
+/// Equality guard helper: two RFI target maps must agree on every entry
+/// except the positions named in `except` (asserted separately by the
+/// caller). This is the test-level half of the v1.5 hash guard: the
+/// generator is deterministic, so identical targets + seed + samples +
+/// weights are what make the gate's per-set `hands` SHA-256 comparison
+/// exact for every set the retarget does not touch.
+fn assert_rfi_targets_eq(
+    a: &BTreeMap<String, RfiTarget>,
+    b: &BTreeMap<String, RfiTarget>,
+    ctx: &str,
+    except: &[&str],
+) {
+    assert_eq!(a.len(), b.len(), "{ctx}: position count differs");
+    for (pos, ta) in a {
+        let tb = b.get(pos).unwrap_or_else(|| panic!("{ctx}: {pos} missing"));
+        if except.contains(&pos.as_str()) {
+            continue;
+        }
+        assert_eq!(ta.target, tb.target, "{ctx} {pos}: target moved");
+        assert_eq!(ta.band, tb.band, "{ctx} {pos}: band moved");
+        assert_eq!(ta.kind, tb.kind, "{ctx} {pos}: kind moved");
+    }
+}
+
+/// Equality guard helper for response target maps (responder -> opener).
+fn assert_pair_targets_eq(
+    a: &BTreeMap<String, BTreeMap<String, PairTarget>>,
+    b: &BTreeMap<String, BTreeMap<String, PairTarget>>,
+    ctx: &str,
+    except: &[&str],
+) {
+    assert_eq!(a.len(), b.len(), "{ctx}: responder count differs");
+    for (resp, ma) in a {
+        let mb = b.get(resp).unwrap_or_else(|| panic!("{ctx}: {resp} missing"));
+        assert_eq!(ma.len(), mb.len(), "{ctx} {resp}: opener count differs");
+        for (opener, ta) in ma {
+            let tb = mb.get(opener).unwrap_or_else(|| panic!("{ctx} {resp}: {opener} missing"));
+            if except.contains(&format!("{resp}/{opener}").as_str()) {
+                continue;
+            }
+            assert_eq!(ta.three_bet, tb.three_bet, "{ctx} {resp} vs {opener}: three_bet moved");
+            assert_eq!(ta.call, tb.call, "{ctx} {resp} vs {opener}: call moved");
+            assert_eq!(ta.kind, tb.kind, "{ctx} {resp} vs {opener}: kind moved");
+        }
+    }
+}
+
+/// Equality guard helper for one continuations section.
+fn assert_continuations_eq(
+    a: &Option<ContinuationsConfig>,
+    b: &Option<ContinuationsConfig>,
+    ctx: &str,
+) {
+    match (a, b) {
+        (None, None) => {}
+        (Some(ca), Some(cb)) => {
+            assert_eq!(ca.continue_fraction_of_open, cb.continue_fraction_of_open, "{ctx}: continue fraction moved");
+            assert_eq!(ca.call_fraction_of_continue, cb.call_fraction_of_continue, "{ctx}: call fraction moved");
+            assert_eq!(ca.four_bet_fraction_of_continue, cb.four_bet_fraction_of_continue, "{ctx}: four-bet fraction moved");
+            assert_eq!(ca.samples_vs_three_bettor, cb.samples_vs_three_bettor, "{ctx}: samples moved");
+            assert_eq!(ca.id_prefix, cb.id_prefix, "{ctx}: id prefix moved");
+            let ma: Vec<(&str, &str, &str, &str)> = ca
+                .matchups
+                .iter()
+                .map(|m| {
+                    (
+                        m.continuer.as_str(),
+                        m.three_bettor.as_str(),
+                        m.opener_rfi_set.as_str(),
+                        m.three_bettor_set.as_str(),
+                    )
+                })
+                .collect();
+            let mb: Vec<(&str, &str, &str, &str)> = cb
+                .matchups
+                .iter()
+                .map(|m| {
+                    (
+                        m.continuer.as_str(),
+                        m.three_bettor.as_str(),
+                        m.opener_rfi_set.as_str(),
+                        m.three_bettor_set.as_str(),
+                    )
+                })
+                .collect();
+            assert_eq!(ma, mb, "{ctx}: matchups moved");
+        }
+        _ => panic!("{ctx}: continuations presence differs"),
+    }
+}
+
+#[test]
+fn v15_config_retargets_raked_6max_to_gtw_anchors() {
+    let cfg = load_config_v15();
+    let old = load_config_v14();
+    assert_eq!(cfg.version, "ranges-config-v1.5");
+    assert_eq!(old.version, "ranges-config-v1.4");
+
+    // (1) BTN RFI: 49% -> the GTO Wizard raked anchor 42.6%, band = the
+    // anchor +/-1pp (the convention the deep200 anchors use). The new
+    // target equals the anchor recorded in this same config.
+    let btn = &cfg.rfi_targets["6max"]["BTN"];
+    assert_eq!(btn.target, 0.426);
+    assert_eq!(btn.band, [0.416, 0.436]);
+    assert_eq!(btn.kind, "anchor");
+    assert_eq!(cfg.gtw_raked_rfi.get("BTN"), Some(&0.426));
+    assert_eq!(btn.target, cfg.gtw_raked_rfi["BTN"]);
+
+    // (2) BB vs UTG call 16.3% -> 24.2%; (3) BB vs BTN call 30% -> 32.2%.
+    // Both equal the recorded GTO Wizard raked defense anchors.
+    let bbu = &cfg.response_targets["6max"]["BB"]["UTG"];
+    assert_eq!(bbu.call, 0.242);
+    assert_eq!(bbu.call, cfg.gtw_raked_defense["BB"]["UTG"].call);
+    let bbb = &cfg.response_targets["6max"]["BB"]["BTN"];
+    assert_eq!(bbb.call, 0.322);
+    assert_eq!(bbb.call, cfg.gtw_raked_defense["BB"]["BTN"].call);
+
+    // Three-bet targets do NOT move (they already matched the raked
+    // solution within tolerance: 4.3 exactly, 9.0 vs 10.1 inside 3pp).
+    assert_eq!(bbu.three_bet, 0.043);
+    assert_eq!(bbu.three_bet, old.response_targets["6max"]["BB"]["UTG"].three_bet);
+    assert_eq!(bbb.three_bet, 0.09);
+    assert_eq!(bbb.three_bet, old.response_targets["6max"]["BB"]["BTN"].three_bet);
+    assert_eq!(bbu.kind, "anchor");
+    assert_eq!(bbb.kind, "anchor");
+
+    // The hash guard, config level: EVERY other input to generation is
+    // identical to v1.4. Top-level raked maps first (both table sizes),
+    // with exactly the retargeted entries excepted.
+    for table in ["6max", "9max"] {
+        let except: &[&str] = if table == "6max" { &["BTN"] } else { &[] };
+        assert_rfi_targets_eq(&cfg.rfi_targets[table], &old.rfi_targets[table], &format!("rfi {table}"), except);
+    }
+    assert_pair_targets_eq(
+        &cfg.response_targets["6max"],
+        &old.response_targets["6max"],
+        "response 6max",
+        &["BB/UTG", "BB/BTN"],
+    );
+    assert_pair_targets_eq(&cfg.response_targets["9max"], &old.response_targets["9max"], "response 9max", &[]);
+    assert_continuations_eq(&cfg.continuations, &old.continuations, "continuations raked");
+
+    // No-rake family: verbatim.
+    let (nr, nr_old) = (
+        cfg.norake.as_ref().expect("v1.5 keeps the no-rake family"),
+        old.norake.as_ref().expect("v1.4 no-rake family"),
+    );
+    assert_rfi_targets_eq(&nr.rfi_targets, &nr_old.rfi_targets, "norake rfi", &[]);
+    assert_pair_targets_eq(&nr.response_targets, &nr_old.response_targets, "norake response", &[]);
+    assert_continuations_eq(&nr.continuations, &nr_old.continuations, "norake continuations");
+
+    // 8-max families: verbatim literals (the seat-mapping derivations
+    // were applied at authoring time; nothing is derived at generation
+    // time, so the retarget provably cannot move 8-max outputs).
+    let (em, em_old) = (
+        cfg.eightmax.as_ref().expect("v1.5 keeps the 8-max families"),
+        old.eightmax.as_ref().expect("v1.4 8-max families"),
+    );
+    assert_rfi_targets_eq(&em.raked.rfi_targets, &em_old.raked.rfi_targets, "8max raked rfi", &[]);
+    assert_pair_targets_eq(&em.raked.response_targets, &em_old.raked.response_targets, "8max raked response", &[]);
+    assert_continuations_eq(&em.raked.continuations, &em_old.raked.continuations, "8max raked continuations");
+    assert_rfi_targets_eq(&em.norake.rfi_targets, &em_old.norake.rfi_targets, "8max norake rfi", &[]);
+    assert_pair_targets_eq(&em.norake.response_targets, &em_old.norake.response_targets, "8max norake response", &[]);
+    assert_continuations_eq(&em.norake.continuations, &em_old.norake.continuations, "8max norake continuations");
+
+    // Deep200 family: verbatim, stack still in its section.
+    let (d, d_old) = (
+        cfg.deep200.as_ref().expect("v1.5 keeps the deep family"),
+        old.deep200.as_ref().expect("v1.4 deep family"),
+    );
+    assert_eq!(d.stack_bb, d_old.stack_bb);
+    assert_rfi_targets_eq(&d.rfi_targets, &d_old.rfi_targets, "deep200 rfi", &[]);
+    assert_pair_targets_eq(&d.response_targets, &d_old.response_targets, "deep200 response", &[]);
+    assert_continuations_eq(&d.continuations, &d_old.continuations, "deep200 continuations");
+
+    // The construction machinery inputs: seed, samples, weights,
+    // components, ramp, floors, realisation, stack, tolerance.
+    assert_eq!(cfg.seed, old.seed);
+    assert_eq!(cfg.samples_vs_random, old.samples_vs_random);
+    assert_eq!(cfg.samples_vs_reference, old.samples_vs_reference);
+    assert_eq!(cfg.samples_vs_opener, old.samples_vs_opener);
+    assert_eq!(cfg.reference_top_fraction, old.reference_top_fraction);
+    assert_eq!(cfg.weights.equity_vs_random, old.weights.equity_vs_random);
+    assert_eq!(cfg.weights.equity_vs_reference, old.weights.equity_vs_reference);
+    assert_eq!(cfg.weights.pair, old.weights.pair);
+    assert_eq!(cfg.weights.suitedness, old.weights.suitedness);
+    assert_eq!(cfg.weights.connectedness, old.weights.connectedness);
+    assert_eq!(cfg.weights.high_card, old.weights.high_card);
+    assert_eq!(cfg.ramp_band, old.ramp_band);
+    assert_eq!(cfg.call_equity_floor, old.call_equity_floor);
+    assert_eq!(cfg.realisation_in_position, old.realisation_in_position);
+    assert_eq!(cfg.realisation_out_of_position, old.realisation_out_of_position);
+    assert_eq!(cfg.stack_bb, old.stack_bb);
+    assert_eq!(cfg.cross_check_defense_tolerance, old.cross_check_defense_tolerance);
+    assert_eq!(cfg.btn_vs, old.btn_vs);
+    // The recorded cross-check anchors themselves are untouched.
+    assert_eq!(cfg.gtw_raked_rfi, old.gtw_raked_rfi);
+    assert_eq!(cfg.upswing_rfi, old.upswing_rfi);
+}
+
+#[test]
+fn v15_retargeted_sets_hit_gtw_targets_and_validate() {
+    let cfg = load_config_v15();
+    let test_cfg = small_samples(&cfg, 800, 400, 2000, 2000);
+    let classes = score_all_classes(&test_cfg);
+
+    // BTN RFI at the retargeted anchor: id stable (ids name the family,
+    // not the generating config), rake recorded, provenance now names
+    // the v1.5 config, sources unchanged (PLO.com top-level + 3 cited).
+    let btn_doc = build_rfi_set(&test_cfg, &classes, "6max", "BTN").expect("retargeted BTN RFI");
+    assert_eq!(btn_doc.id, "constructed-v1-6max-btn-rfi");
+    assert_eq!(btn_doc.rake, RAKE_RAKED);
+    assert!(
+        (btn_doc.achieved["raise"] - 0.426).abs() <= 0.005,
+        "BTN raise {} vs GTW raked anchor 0.426",
+        btn_doc.achieved["raise"]
+    );
+    let parsed = JsonValue::parse(&btn_doc.to_json(&test_cfg)).expect("emitted JSON parses");
+    assert_eq!(
+        parsed.get("provenance").and_then(|p| p.get("config_version")).and_then(|v| v.as_str()),
+        Some("ranges-config-v1.5")
+    );
+    let prov = parsed.get("provenance").expect("provenance block present");
+    let sources = prov.get("sources").and_then(|v| v.as_array()).expect("sources array");
+    assert_eq!(sources.len(), 3, "raked provenance still cites all three sources");
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", btn_doc.id, errors);
+
+    // Equities vs BTN's retargeted range, shared by both BB and SB
+    // responses below (the generator's per-opener pass shape).
+    let btn_freq = action_freqs(&btn_doc, &classes, "raise");
+    let btn_pool = opener_pool(&classes, &btn_freq);
+    let eq_vs_btn: Vec<f64> = classes
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            equity_vs_pool(
+                &c.class.representative,
+                &btn_pool,
+                test_cfg.samples_vs_opener,
+                test_cfg.seed ^ (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15),
+            )
+        })
+        .collect();
+
+    // BB vs BTN at the retargeted call width; 3-bet unmoved.
+    let bb_btn = build_response_set(&test_cfg, &classes, &eq_vs_btn, "6max", "BB", "BTN").expect("BB vs BTN");
+    assert_eq!(bb_btn.id, "constructed-v1-6max-bb-vs-btn");
+    assert!(
+        (bb_btn.achieved["call"] - 0.322).abs() <= 0.005,
+        "BB vs BTN call {} vs GTW raked anchor 0.322",
+        bb_btn.achieved["call"]
+    );
+    assert!(
+        (bb_btn.achieved["three_bet"] - 0.09).abs() <= 0.005,
+        "BB vs BTN 3bet {} vs unmoved target 0.09",
+        bb_btn.achieved["three_bet"]
+    );
+    let parsed = JsonValue::parse(&bb_btn.to_json(&test_cfg)).expect("emitted JSON parses");
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", bb_btn.id, errors);
+
+    // BB vs UTG at the retargeted call width; 3-bet unmoved.
+    let utg_doc = build_rfi_set(&test_cfg, &classes, "6max", "UTG").expect("UTG RFI");
+    let utg_freq = action_freqs(&utg_doc, &classes, "raise");
+    let utg_pool = opener_pool(&classes, &utg_freq);
+    let eq_vs_utg: Vec<f64> = classes
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            equity_vs_pool(
+                &c.class.representative,
+                &utg_pool,
+                test_cfg.samples_vs_opener,
+                test_cfg.seed ^ (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15),
+            )
+        })
+        .collect();
+    let bb_utg = build_response_set(&test_cfg, &classes, &eq_vs_utg, "6max", "BB", "UTG").expect("BB vs UTG");
+    assert_eq!(bb_utg.id, "constructed-v1-6max-bb-vs-utg");
+    assert!(
+        (bb_utg.achieved["call"] - 0.242).abs() <= 0.005,
+        "BB vs UTG call {} vs GTW raked anchor 0.242",
+        bb_utg.achieved["call"]
+    );
+    assert!(
+        (bb_utg.achieved["three_bet"] - 0.043).abs() <= 0.005,
+        "BB vs UTG 3bet {} vs unmoved target 0.043",
+        bb_utg.achieved["three_bet"]
+    );
+    let parsed = JsonValue::parse(&bb_utg.to_json(&test_cfg)).expect("emitted JSON parses");
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", bb_utg.id, errors);
+
+    // The knock-on set: SB vs BTN is built against BTN's retargeted
+    // range, but its own targets did not move — it must still land on
+    // them (call 4.5%, 3-bet 9%) and validate under the new opener.
+    let sb_btn = build_response_set(&test_cfg, &classes, &eq_vs_btn, "6max", "SB", "BTN").expect("SB vs BTN");
+    assert_eq!(sb_btn.id, "constructed-v1-6max-sb-vs-btn");
+    assert!(
+        (sb_btn.achieved["call"] - 0.045).abs() <= 0.005,
+        "SB vs BTN call {} vs unmoved target 0.045",
+        sb_btn.achieved["call"]
+    );
+    assert!(
+        (sb_btn.achieved["three_bet"] - 0.09).abs() <= 0.005,
+        "SB vs BTN 3bet {} vs unmoved target 0.09",
+        sb_btn.achieved["three_bet"]
+    );
+    let parsed = JsonValue::parse(&sb_btn.to_json(&test_cfg)).expect("emitted JSON parses");
+    let errors = validate_rangeset(&parsed);
+    assert!(errors.is_empty(), "{} schema errors: {:?}", sb_btn.id, errors);
 }
