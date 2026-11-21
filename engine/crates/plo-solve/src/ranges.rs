@@ -70,6 +70,22 @@
 //! emitting the config's top-level 100, the deep family emits its
 //! section's 200.
 //!
+//! v1.5 (config `ranges-config-v1.5`): the RETARGET. No new family — three
+//! raked 6-max construction targets adopt the GTO Wizard PLO100 raked
+//! totals that v1.2 recorded as informational anchors (owner decision
+//! 2026-11-21, after the 2026-11-20 cross-check found them to be the
+//! family's only >1pp misses): BTN RFI 49% -> 42.6% (the old target
+//! matched the no-rake anchor, not the raked game this family describes),
+//! BB vs UTG call 16.3% -> 24.2%, BB vs BTN call 30% -> 32.2%. Three-bet
+//! targets already matched and do not move. Every other family's targets
+//! are literals in the config (the seat-mapping derivations were applied
+//! at authoring time), so no other family can move; within the raked
+//! 6-max family, the sets built against BTN's range (SB vs BTN) and the
+//! two BTN continuation sets follow the retargeted inputs, and every
+//! other set regenerates byte-identically. Set ids are unchanged — they
+//! name the family, not the generating config; only the config
+//! version/hash in provenance moves. See RETARGET-NOTES.md.
+//!
 //! Equity note: exact preflop hand-vs-range equity would need
 //! C(48,4) opponent combos x C(44,5) boards per class, which is not feasible to
 //! enumerate, so equities are Monte Carlo estimates with a fixed seed (fully

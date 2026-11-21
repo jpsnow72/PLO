@@ -18,15 +18,17 @@
 //! The sets are CONSTRUCTED ranges (exact card features + seeded Monte Carlo
 //! equities fitted to documented target frequencies). They are not solver
 //! output and are never labelled GTO. All tunables live in
-//! `data/preflop/ranges-config-v1.4.json` (the v1.4 config is the canonical
-//! one: the raked family plus the `norake_6max` no-rake family plus the
+//! `data/preflop/ranges-config-v1.5.json` (the v1.5 config is the canonical
+//! one: the raked family — its BTN RFI and BB call targets retargeted to
+//! the GTO Wizard PLO100 raked anchors in v1.5 — plus the `norake_6max`
+//! no-rake family plus the
 //! `eightmax` 8-max families for both variants plus the `deep200_6max`
 //! 200bb no-rake family; every set records its `rake` variant, and the
 //! deep family records `stack_bb` 200 where every other family records
 //! the top-level 100). Older configs remain readable via `--config` for
 //! historical reproduction — note a run with an older config rewrites
 //! index.json without the newer entries, so always regenerate with the
-//! v1.4 config.
+//! v1.5 config.
 
 use std::collections::HashMap;
 use std::env;
@@ -63,7 +65,7 @@ fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
             "-h" | "--help" => {
                 println!(
                     "Usage: build-ranges [--config PATH] [--data-dir PATH] [--check]\n\
-                     Defaults: --data-dir data/preflop, --config <data-dir>/ranges-config-v1.4.json\n\
+                     Defaults: --data-dir data/preflop, --config <data-dir>/ranges-config-v1.5.json\n\
                      Without --check, generates the constructed range sets and prints the cross-check.\n\
                      With --check, validates the emitted files and prints the cross-check only."
                 );
@@ -91,7 +93,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config_path = args
         .config
         .map(PathBuf::from)
-        .unwrap_or_else(|| data_dir.join("ranges-config-v1.4.json"));
+        .unwrap_or_else(|| data_dir.join("ranges-config-v1.5.json"));
     let config_text = fs::read_to_string(&config_path)
         .map_err(|e| format!("cannot read config {}: {e}", config_path.display()))?;
     let cfg = RangesConfig::from_json_text(&config_text)?;
