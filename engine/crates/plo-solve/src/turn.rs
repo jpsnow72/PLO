@@ -27,6 +27,7 @@ use crate::action_ev::{compute_action_evs_turn, NodeActionEvs};
 use crate::br::{compute_exploitability_turn, ExploitabilityReport};
 use crate::cfr::{ComboEv, DcfrConfig, NodeStrategy};
 use crate::locks::{resolve_locks_turn, NodeLock};
+use crate::progress::ProgressReporter;
 use crate::game::{
     legal_bet_sizes, legal_raise_sizes, Action, NodeId, Player, SolveError, TerminalNode,
     TreeConfig, CHIP_EPS,
@@ -1252,6 +1253,7 @@ fn solve_turn_impl(
 
     let mut iterations_done = 0usize;
     let mut final_report: Option<ExploitabilityReport> = None;
+    let progress = ProgressReporter::new();
 
     for iter in 1..=config.max_iterations {
         iterations_done = iter;
@@ -1287,6 +1289,15 @@ fn solve_turn_impl(
             neg_discount,
             strat_weight,
         );
+
+        // Progress reporting (issue #48): price the current average
+        // strategy with the same checker the final number uses, on the
+        // same snapshot extraction. Read-only — see progress.rs.
+        if progress.due(iter) {
+            let strategies: Vec<NodeStrategy> = state.average_strategies(game);
+            let report = compute_exploitability_turn(game, &strategies);
+            progress.report(iter, report.nash_distance_pct);
+        }
 
         if config.target_exploitability_pct > 0.0
             && config.check_interval > 0

@@ -44,6 +44,7 @@ use crate::br::{compute_exploitability_flop, ExploitabilityReport};
 use crate::buckets::{assign_buckets, BucketAssignment};
 use crate::cfr::{ComboEv, DcfrConfig, NodeStrategy};
 use crate::locks::{resolve_locks_flop, NodeLock};
+use crate::progress::ProgressReporter;
 use crate::game::{
     legal_bet_sizes, legal_raise_sizes, Action, NodeId, Player, SolveError, TerminalNode,
     TreeConfig, CHIP_EPS,
@@ -923,6 +924,33 @@ impl FlopNodeBuffer {
     }
 }
 
+/// Extracts the current average strategies (flop street + every live
+/// subtree) in exactly the shape the final result carries. Shared by
+/// the final extraction and the mid-solve progress check (issue #48),
+/// so a progress reading prices the same snapshot the final checker
+/// prices. Read-only: every extractor here takes `&self` and allocates
+/// fresh `NodeStrategy` values; nothing writes back into the buffers
+/// or subtree states.
+fn flop_average_strategies(
+    game: &FlopGame,
+    buffers: &[FlopNodeBuffer],
+    states: &[Option<TurnSolverState>],
+) -> (Vec<NodeStrategy>, Vec<Vec<NodeStrategy>>) {
+    let flop_strategies: Vec<NodeStrategy> = (0..game.num_decision_nodes())
+        .map(|did| buffers[did].to_node_strategy(game, did))
+        .collect();
+    let subtree_strategies: Vec<Vec<NodeStrategy>> = game
+        .subtrees
+        .iter()
+        .zip(states.iter())
+        .map(|(sub, state)| match (sub.game.as_ref(), state.as_ref()) {
+            (Some(g), Some(s)) => s.average_strategies(g),
+            _ => Vec::new(),
+        })
+        .collect();
+    (flop_strategies, subtree_strategies)
+}
+
 /// Solves a [`FlopGame`] with vectorised Discounted CFR: bucketed on the flop
 /// street, exact in every turn/river subtree. Runs exactly
 /// `config.max_iterations` iterations (early stopping is disabled — see the
@@ -998,6 +1026,8 @@ pub fn solve_flop_with_threads(
         game.combos[1].iter().map(|c| c.weight).collect(),
     ];
 
+    let progress = ProgressReporter::new();
+
     for iter in 1..=config.max_iterations {
         let t = iter as f64;
         let t_alpha = t.powf(config.alpha);
@@ -1037,20 +1067,24 @@ pub fn solve_flop_with_threads(
                 &init_reach[q_idx].clone(),
             );
         }
+
+        // Progress reporting (issue #48): price the current average
+        // strategy with the same checker the final number uses, on the
+        // same snapshot extraction. Read-only — see progress.rs. Note
+        // a flop checker pass prices all 49 turn subtrees exactly, so
+        // it costs far more than a river/turn pass relative to one
+        // iteration; the interval default is measured at the gate.
+        if progress.due(iter) {
+            let (flop_strategies, subtree_strategies) =
+                flop_average_strategies(game, &buffers, &states);
+            let report =
+                compute_exploitability_flop(game, &flop_strategies, &subtree_strategies);
+            progress.report(iter, report.nash_distance_pct);
+        }
     }
 
-    let flop_strategies: Vec<NodeStrategy> = (0..game.num_decision_nodes())
-        .map(|did| buffers[did].to_node_strategy(game, did))
-        .collect();
-    let subtree_strategies: Vec<Vec<NodeStrategy>> = game
-        .subtrees
-        .iter()
-        .zip(states.iter())
-        .map(|(sub, state)| match (sub.game.as_ref(), state.as_ref()) {
-            (Some(g), Some(s)) => s.average_strategies(g),
-            _ => Vec::new(),
-        })
-        .collect();
+    let (flop_strategies, subtree_strategies) =
+        flop_average_strategies(game, &buffers, &states);
 
     let exploitability = compute_exploitability_flop(game, &flop_strategies, &subtree_strategies);
 

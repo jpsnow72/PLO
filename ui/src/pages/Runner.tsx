@@ -82,9 +82,11 @@ function UploadChip({ item }: { item: QueueItem }) {
  * Admin → Solve runner: browse the 300-spot catalog, enqueue spots, and
  * watch the local queue solve them. All state comes from the job service
  * (RUN-1 endpoints); the page polls the queue every 2 s while open.
- * A running solve shows elapsed time only — the service reports Nash and
- * iterations when a solve finishes, and this page invents nothing before
- * then (no fake progress bars).
+ * A running solve shows elapsed time, plus — once the engine reports
+ * one — its own checker-measured progress (iteration + current Nash
+ * distance vs the spot's target, issue #48). Final Nash and iterations
+ * still arrive only when a solve finishes, and this page invents
+ * nothing the engine did not measure (no fake progress bars).
  */
 export function RunnerPage() {
   const isAdmin = useStore((s) => s.isAdmin);
@@ -565,6 +567,15 @@ export function RunnerPage() {
                     <span className="capitalize">{item.state}</span>
                     {item.state === 'running' ? (
                       <span>solving… · elapsed {formatElapsed(item.started_at, nowMs)}</span>
+                    ) : null}
+                    {item.state === 'running' && item.progress ? (
+                      <span>
+                        iter {item.progress.iter.toLocaleString()} · expl{' '}
+                        {item.progress.expl_pct.toFixed(4)}%
+                        {item.target_exploitability_pct !== null
+                          ? ` · target ${item.target_exploitability_pct.toFixed(2)}%`
+                          : ''}
+                      </span>
                     ) : null}
                     {item.state === 'done' ? (
                       <>

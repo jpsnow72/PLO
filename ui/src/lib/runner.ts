@@ -48,6 +48,19 @@ export interface CatalogResponse {
   entries: CatalogEntry[];
 }
 
+/**
+ * Latest mid-solve progress reading from the engine (issue #48): the
+ * checker-priced Nash distance of the average strategy as of `iter`,
+ * measured `elapsed_s` into the solve, received by the server at
+ * `received_at`. Present only while a solve reports; never estimated.
+ */
+export interface JobProgress {
+  iter: number;
+  expl_pct: number;
+  elapsed_s: number;
+  received_at: string;
+}
+
 export interface QueueItem {
   spot_id: string;
   state: QueueItemState;
@@ -64,6 +77,10 @@ export interface QueueItem {
   /** Set when the item finishes; null/absent until then. */
   nash_distance_pct: number | null;
   iterations: number | null;
+  /** Latest mid-solve progress reading (issue #48); null until the engine reports one. */
+  progress: JobProgress | null;
+  /** The spot's accuracy target (% of pot), when the spot carries one. */
+  target_exploitability_pct: number | null;
 }
 
 export interface QueueResponse {
@@ -162,6 +179,16 @@ export function parseCatalogResponse(v: unknown): CatalogResponse | null {
   };
 }
 
+function isJobProgress(v: unknown): v is JobProgress {
+  if (!isRecord(v)) return false;
+  return (
+    isNumber(v.iter) &&
+    isNumber(v.expl_pct) &&
+    isNumber(v.elapsed_s) &&
+    typeof v.received_at === 'string'
+  );
+}
+
 export function isQueueItem(v: unknown): v is QueueItem {
   if (!isRecord(v)) return false;
   return (
@@ -181,7 +208,12 @@ export function isQueueItem(v: unknown): v is QueueItem {
     (v.nash_distance_pct === undefined ||
       v.nash_distance_pct === null ||
       isNumber(v.nash_distance_pct)) &&
-    (v.iterations === undefined || v.iterations === null || isNumber(v.iterations))
+    (v.iterations === undefined || v.iterations === null || isNumber(v.iterations)) &&
+    // Progress + target arrive with issue #48; absent on older servers.
+    (v.progress === undefined || v.progress === null || isJobProgress(v.progress)) &&
+    (v.target_exploitability_pct === undefined ||
+      v.target_exploitability_pct === null ||
+      isNumber(v.target_exploitability_pct))
   );
 }
 
@@ -194,6 +226,8 @@ export function normaliseQueueItem(item: QueueItem): QueueItem {
     uploaded_at: item.uploaded_at ?? null,
     nash_distance_pct: item.nash_distance_pct ?? null,
     iterations: item.iterations ?? null,
+    progress: item.progress ?? null,
+    target_exploitability_pct: item.target_exploitability_pct ?? null,
   };
 }
 

@@ -12,6 +12,7 @@ use crate::action_ev::{compute_action_evs_river, NodeActionEvs};
 use crate::br::{compute_exploitability, ExploitabilityReport};
 use crate::game::{Action, Node, NodeId, Player, RiverGame, TerminalNode};
 use crate::locks::{resolve_locks_river, NodeLock};
+use crate::progress::ProgressReporter;
 
 /// Configuration parameters for the Discounted CFR river solver.
 #[derive(Clone, Debug, PartialEq)]
@@ -412,6 +413,7 @@ pub fn solve_river(game: &RiverGame, config: &DcfrConfig) -> SolveResult {
 
     let mut iterations_done = 0usize;
     let mut final_report: Option<ExploitabilityReport> = None;
+    let progress = ProgressReporter::new();
 
     for iter in 1..=config.max_iterations {
         iterations_done = iter;
@@ -463,6 +465,17 @@ pub fn solve_river(game: &RiverGame, config: &DcfrConfig) -> SolveResult {
             neg_discount,
             strat_weight,
         );
+
+        // Progress reporting (issue #48): price the current average
+        // strategy with the same checker the final number uses, on the
+        // same snapshot extraction. Read-only — see progress.rs.
+        if progress.due(iter) {
+            let strategies: Vec<NodeStrategy> = (0..game.num_decision_nodes())
+                .map(|did| buffers[did].to_node_strategy(game, did))
+                .collect();
+            let report = compute_exploitability(game, &strategies);
+            progress.report(iter, report.nash_distance_pct);
+        }
 
         // Check early stopping criteria if enabled
         if config.target_exploitability_pct > 0.0

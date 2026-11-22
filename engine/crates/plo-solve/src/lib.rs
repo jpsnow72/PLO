@@ -17,6 +17,7 @@ pub mod game;
 pub mod json;
 pub mod locks;
 pub mod parallel;
+pub mod progress;
 pub mod turn;
 
 pub use action_ev::{

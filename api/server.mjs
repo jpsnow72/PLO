@@ -70,7 +70,7 @@
 
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import { createWriteStream, promises as fs } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -220,6 +220,17 @@ async function submitJob(spot, meta = {}) {
     spot_id: meta.spot_id ?? null,
     range_expansion: meta.range_expansion ?? null,
     locked: Array.isArray(spot.locks) && spot.locks.length > 0,
+    // The spot's accuracy target (% of pot) when the submission carries
+    // one — the yardstick a running solve's progress readings are
+    // compared against (issue #48). Null when the spot names no target.
+    target_exploitability_pct:
+      typeof spot.target_exploitability_pct === 'number' &&
+      Number.isFinite(spot.target_exploitability_pct)
+        ? spot.target_exploitability_pct
+        : null,
+    // Latest mid-solve PROGRESS reading from the engine (issue #48);
+    // null until the engine reports one. Never fabricated.
+    progress: null,
     created_at: nowIso(),
     finished_at: null,
     nash_distance_pct: null,
@@ -298,6 +309,10 @@ async function writeJobFile(job) {
   await fs.writeFile(path.join(dir, 'job.json'), JSON.stringify(job, null, 2));
 }
 
+/** Mid-solve progress lines emitted by the engine on stderr (issue #48). */
+const PROGRESS_LINE_RE =
+  /^PROGRESS iter=(\d+) expl_pct=(-?[0-9]+(?:\.[0-9]+)?) elapsed_s=(\d+)$/;
+
 async function runJob(job, spot) {
   job.status = 'running';
   await writeJobFile(job);
@@ -323,11 +338,39 @@ async function runJob(job, spot) {
     return;
   }
 
+  // Engine stderr is captured to a per-job log (issue #48): the engine
+  // reports mid-solve PROGRESS lines on stderr, and until now the
+  // stream was dropped on the floor, leaving a running solve a black
+  // box. The full stream lands in engine.log; the in-memory tail keeps
+  // its historical job — the failure message — unchanged.
+  const engineLog = createWriteStream(path.join(dir, 'engine.log'), { flags: 'a' });
+  engineLog.on('error', () => undefined);
   const code = await new Promise((resolve) => {
     const child = spawn(binary, [spotPath, resultPath], { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
+    let lineBuffer = '';
     child.stderr.on('data', (chunk) => {
-      stderr += String(chunk);
+      const text = String(chunk);
+      stderr += text;
+      engineLog.write(text);
+      // Keep the latest PROGRESS reading on the job record (issue #48).
+      // In memory only: it reaches job.json on the next record write
+      // (job settle), never one file write per progress line.
+      lineBuffer += text;
+      let nl = lineBuffer.indexOf('\n');
+      while (nl >= 0) {
+        const m = PROGRESS_LINE_RE.exec(lineBuffer.slice(0, nl).trim());
+        if (m) {
+          job.progress = {
+            iter: Number(m[1]),
+            expl_pct: Number(m[2]),
+            elapsed_s: Number(m[3]),
+            received_at: nowIso(),
+          };
+        }
+        lineBuffer = lineBuffer.slice(nl + 1);
+        nl = lineBuffer.indexOf('\n');
+      }
     });
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
@@ -342,6 +385,7 @@ async function runJob(job, spot) {
       resolve(exitCode ?? -1);
     });
   });
+  await new Promise((resolve) => engineLog.end(() => resolve()));
 
   if (code !== 0) {
     job.status = 'error';
@@ -1291,6 +1335,14 @@ async function queueTick() {
         await saveQueue();
         continue;
       }
+      // Progress mirror (issue #48): a running item shows its job's
+      // latest mid-solve reading and the spot's target. In memory only
+      // — GET /api/queue reads these objects live, and the values
+      // persist with the next saveQueue() a state change triggers
+      // (including the settle writes below); never a queue.json
+      // rewrite per progress line.
+      item.progress = job.progress ?? null;
+      item.target_exploitability_pct = job.target_exploitability_pct ?? null;
       if (job.status === 'done') {
         let libraryExists = false;
         try {
