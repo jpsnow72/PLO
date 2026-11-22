@@ -5,6 +5,8 @@
 pub mod br;
 pub mod cfr;
 pub mod game;
+pub mod holdem;
+pub mod holdem_br;
 pub mod json;
 pub mod turn;
 
@@ -15,9 +17,14 @@ pub use game::{
     NodeId, Player, PotLimitBounds, RiverGame, RiverSpot, SolveError, TerminalNode, TreeConfig,
     CHIP_EPS,
 };
+pub use holdem::{
+    holdem_bet_sizes, holdem_raise_sizes, solve_holdem_river, HoldemGame, HoldemSolveResult,
+    HoldemSpot, HoldemTreeConfig,
+};
+pub use holdem_br::compute_holdem_exploitability;
 pub use json::{
-    format_solve_result_json, format_turn_solve_result_json, parse_spot_json,
-    parse_turn_spot_json, JsonValue,
+    format_holdem_solve_result_json, format_solve_result_json, format_turn_solve_result_json,
+    parse_holdem_spot_json, parse_spot_json, parse_turn_spot_json, JsonValue,
 };
 pub use turn::{
     solve_turn, ChanceNode, Street, TurnDecisionNode, TurnGame, TurnNode, TurnSolveResult,

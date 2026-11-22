@@ -12,6 +12,14 @@ path = "src/bin/solve-river.rs"
 name = "solve-turn"
 path = "src/bin/solve-turn.rs"
 
+[[bin]]
+name = "solve-holdem"
+path = "src/bin/solve-holdem.rs"
+
+[[bin]]
+name = "solve"
+path = "src/bin/solve.rs"
+
 [dependencies]
 plo-cards = { path = "../plo-cards" }
 plo-eval = { path = "../plo-eval" }

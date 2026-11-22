@@ -3,6 +3,7 @@
 
 pub mod equity;
 pub mod eval5;
+pub mod holdem;
 pub mod omaha;
 pub mod rng;
 
@@ -12,6 +13,7 @@ pub use equity::{
     EquityMode, EquityResult, PloRange, WeightedCombo, DEFAULT_MC_SEED, DEFAULT_PREFLOP_MC_SAMPLES,
 };
 pub use eval5::{eval_5cards, eval_5cards_mask, HandCategory, HandRank};
+pub use holdem::{eval_holdem, HoldemCombo, HoldemRange};
 pub use omaha::{
     compare_omaha, eval_omaha, eval_omaha_mask, eval_omaha_pairs_triples, extract_board_triples,
     extract_hole_pairs, ShowdownOutcome,

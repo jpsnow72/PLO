@@ -1,10 +1,13 @@
 //! Zero-dependency JSON parser and serializer for `solve-river` spot inputs and strategy outputs.
 
 use plo_cards::{format_cards, Card};
-use plo_eval::PloRange;
+use plo_eval::{HoldemRange, PloRange};
 
 use crate::cfr::{DcfrConfig, SolveResult};
 use crate::game::{RiverGame, RiverSpot, SolveError, TreeConfig};
+use crate::holdem::{
+    HoldemGame, HoldemSolveResult, HoldemSpot, HoldemTreeConfig,
+};
 use crate::turn::{TurnGame, TurnSolveResult, TurnSpot};
 
 /// Minimal recursive-descent JSON value representation (`std` only).
@@ -400,6 +403,178 @@ pub fn parse_spot_json(input: &str) -> Result<(RiverSpot, DcfrConfig), SolveErro
     Ok((spot, dcfr_config))
 }
 
+/// Parses a Hold'em river spot and solver configuration from a JSON string.
+pub fn parse_holdem_spot_json(input: &str) -> Result<(HoldemSpot, DcfrConfig), SolveError> {
+    let root = JsonValue::parse(input)?;
+    let board = parse_board_value(
+        root.get("board")
+            .ok_or_else(|| SolveError::JsonError("missing required field \"board\"".into()))?,
+    )?;
+    let ranges = match (
+        root.get("oop_range").or_else(|| root.get("oop")),
+        root.get("ip_range").or_else(|| root.get("ip")),
+    ) {
+        (Some(oop), Some(ip)) => (oop, ip),
+        _ => {
+            let values = root
+                .get("ranges")
+                .and_then(JsonValue::as_array)
+                .filter(|values| values.len() == 2)
+                .ok_or_else(|| {
+                    SolveError::JsonError(
+                        "missing range fields or invalid \"ranges\" array".into(),
+                    )
+                })?;
+            (&values[0], &values[1])
+        }
+    };
+    let oop_range = parse_holdem_range_value(ranges.0)?;
+    let ip_range = parse_holdem_range_value(ranges.1)?;
+    let starting_pot = root
+        .get("pot")
+        .or_else(|| root.get("starting_pot"))
+        .and_then(JsonValue::as_f64)
+        .ok_or_else(|| SolveError::JsonError("missing required numeric field \"pot\"".into()))?;
+    let stack_value = root
+        .get("stacks")
+        .or_else(|| root.get("effective_stack"))
+        .or_else(|| root.get("stack"))
+        .ok_or_else(|| SolveError::JsonError("missing required field \"stack\"".into()))?;
+    let effective_stack = if let Some(value) = stack_value.as_f64() {
+        value
+    } else if let Some(values) = stack_value.as_array() {
+        if values.is_empty() {
+            return Err(SolveError::JsonError("\"stacks\" array cannot be empty".into()));
+        }
+        let mut min_stack = f64::INFINITY;
+        for value in values {
+            min_stack = min_stack.min(value.as_f64().ok_or_else(|| {
+                SolveError::JsonError("\"stacks\" elements must be numbers".into())
+            })?);
+        }
+        min_stack
+    } else {
+        return Err(SolveError::JsonError(
+            "\"stacks\" must be a number or array of numbers".into(),
+        ));
+    };
+
+    let mut tree_config = HoldemTreeConfig::default();
+    parse_size_list(&root, "bet_sizes", &mut tree_config.bet_sizes)?;
+    parse_size_list(&root, "raise_sizes", &mut tree_config.raise_sizes)?;
+    if let Some(value) = root.get("max_raises").and_then(JsonValue::as_f64) {
+        tree_config.max_raises = value.max(0.0) as usize;
+    }
+
+    let mut dcfr = DcfrConfig::default();
+    if let Some(value) = root
+        .get("max_iterations")
+        .or_else(|| root.get("iterations"))
+        .and_then(JsonValue::as_f64)
+    {
+        dcfr.max_iterations = value.max(1.0) as usize;
+    }
+    if let Some(value) = root
+        .get("target_exploitability_pct")
+        .or_else(|| root.get("target_exploitability"))
+        .and_then(JsonValue::as_f64)
+    {
+        dcfr.target_exploitability_pct = value.max(0.0);
+    }
+    Ok((
+        HoldemSpot {
+            board,
+            oop_range,
+            ip_range,
+            starting_pot,
+            effective_stack,
+            tree_config,
+        },
+        dcfr,
+    ))
+}
+
+fn parse_size_list(
+    root: &JsonValue,
+    field: &str,
+    output: &mut Vec<f64>,
+) -> Result<(), SolveError> {
+    if let Some(values) = root.get(field).and_then(JsonValue::as_array) {
+        output.clear();
+        for value in values {
+            output.push(value.as_f64().ok_or_else(|| {
+                SolveError::JsonError(format!("\"{field}\" must contain numbers"))
+            })?);
+        }
+    }
+    Ok(())
+}
+
+fn parse_holdem_range_value(value: &JsonValue) -> Result<HoldemRange, SolveError> {
+    let mut range = HoldemRange::new();
+    match value {
+        JsonValue::String(specs) => {
+            for spec in specs.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+                let (hand, weight) = parse_combo_colon_weight(spec)?;
+                range.push(Card::parse_n::<2>(hand)?, weight)?;
+            }
+        }
+        JsonValue::Array(items) => {
+            for item in items {
+                match item {
+                    JsonValue::String(spec) => {
+                        let (hand, weight) = parse_combo_colon_weight(spec)?;
+                        range.push(Card::parse_n::<2>(hand)?, weight)?;
+                    }
+                    JsonValue::Array(pair) if pair.len() == 2 => {
+                        let hand = pair[0].as_str().ok_or_else(|| {
+                            SolveError::JsonError("combo hand must be a string".into())
+                        })?;
+                        let weight = pair[1].as_f64().ok_or_else(|| {
+                            SolveError::JsonError("combo weight must be a number".into())
+                        })?;
+                        range.push(Card::parse_n::<2>(hand)?, weight)?;
+                    }
+                    JsonValue::Object(_) => {
+                        let hand = item
+                            .get("combo")
+                            .or_else(|| item.get("hand"))
+                            .and_then(JsonValue::as_str)
+                            .ok_or_else(|| {
+                                SolveError::JsonError(
+                                    "range object must have a \"combo\" or \"hand\" string".into(),
+                                )
+                            })?;
+                        let weight = item
+                            .get("weight")
+                            .and_then(JsonValue::as_f64)
+                            .unwrap_or(1.0);
+                        range.push(Card::parse_n::<2>(hand)?, weight)?;
+                    }
+                    _ => {
+                        return Err(SolveError::JsonError(
+                            "unsupported range array element format".into(),
+                        ))
+                    }
+                }
+            }
+        }
+        JsonValue::Object(entries) => {
+            for (hand, value) in entries {
+                let weight = value.as_f64().ok_or_else(|| {
+                    SolveError::JsonError(format!("weight for combo \"{hand}\" must be a number"))
+                })?;
+                range.push(Card::parse_n::<2>(hand)?, weight)?;
+            }
+        }
+        _ => return Err(SolveError::JsonError("range must be a string, array, or object".into())),
+    }
+    if range.is_empty() {
+        return Err(SolveError::Equity(plo_eval::EquityError::EmptyRange));
+    }
+    Ok(range)
+}
+
 fn parse_board_value(val: &JsonValue) -> Result<[Card; 5], SolveError> {
     match val {
         JsonValue::String(s) => Ok(Card::parse_n::<5>(s)?),
@@ -517,6 +692,7 @@ fn parse_combo_colon_weight(s: &str) -> Result<(&str, f64), SolveError> {
 pub fn format_solve_result_json(game: &RiverGame, result: &SolveResult) -> String {
     let mut out = String::with_capacity(16384);
     out.push_str("{\n");
+    out.push_str("  \"game\": \"plo\",\n");
     out.push_str(&format!(
         "  \"board\": \"{}\",\n",
         format_cards(&game.board)
@@ -644,6 +820,79 @@ pub fn format_solve_result_json(game: &RiverGame, result: &SolveResult) -> Strin
     }
     out.push_str("  ]\n");
     out.push_str("}\n");
+    out
+}
+
+/// Serializes a Hold'em river strategy in the same node/action format as the PLO solver.
+pub fn format_holdem_solve_result_json(
+    game: &HoldemGame,
+    result: &HoldemSolveResult,
+) -> String {
+    let mut out = String::with_capacity(8192);
+    out.push_str("{\n");
+    out.push_str("  \"game\": \"holdem\",\n");
+    out.push_str(&format!(
+        "  \"board\": \"{}\",\n",
+        format_cards(&game.board)
+    ));
+    out.push_str(&format!("  \"starting_pot\": {:.6},\n", game.starting_pot));
+    out.push_str(&format!(
+        "  \"effective_stack\": {:.6},\n",
+        game.effective_stack
+    ));
+    out.push_str(&format!("  \"iterations\": {},\n", result.iterations));
+    out.push_str(&format!(
+        "  \"exploitability\": {{\"nash_distance_pct\": {:.6}, \"nash_distance_chips\": {:.6}}},\n",
+        result.exploitability.nash_distance_pct, result.exploitability.nash_distance_chips
+    ));
+    out.push_str("  \"nodes\": [\n");
+    for (node_index, strategy) in result.strategies.iter().enumerate() {
+        let decision = game.decision_node(strategy.decision_id);
+        out.push_str("    {\n");
+        out.push_str(&format!("      \"decision_id\": {},\n", strategy.decision_id));
+        out.push_str(&format!("      \"node_id\": {},\n", strategy.node_id));
+        out.push_str(&format!("      \"player\": \"{}\",\n", strategy.player));
+        out.push_str(&format!("      \"history\": \"{}\",\n", strategy.history));
+        out.push_str(&format!("      \"pot\": {:.6},\n", decision.current_pot));
+        out.push_str(&format!("      \"to_call\": {:.6},\n", decision.to_call));
+        out.push_str("      \"actions\": [");
+        for (index, action) in strategy.actions.iter().enumerate() {
+            if index > 0 {
+                out.push_str(", ");
+            }
+            out.push_str(&format!("\"{}\"", action.label()));
+        }
+        out.push_str("],\n      \"strategy\": {\n");
+        let combos = &game.combos[strategy.player.index()];
+        for (combo_index, combo) in combos.iter().enumerate() {
+            let comma = if combo_index + 1 == combos.len() {
+                ""
+            } else {
+                ","
+            };
+            out.push_str(&format!(
+                "        \"{}\": [",
+                format_cards(&combo.cards)
+            ));
+            for (action_index, probability) in
+                strategy.combo_strategy(combo_index).iter().enumerate()
+            {
+                if action_index > 0 {
+                    out.push_str(", ");
+                }
+                out.push_str(&format!("{probability:.6}"));
+            }
+            out.push_str(&format!("]{comma}\n"));
+        }
+        out.push_str("      }\n");
+        let comma = if node_index + 1 == result.strategies.len() {
+            ""
+        } else {
+            ","
+        };
+        out.push_str(&format!("    }}{comma}\n"));
+    }
+    out.push_str("  ]\n}\n");
     out
 }
 
