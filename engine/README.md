@@ -85,3 +85,41 @@ CLI: `solve-turn`) that extends the E2 river solver to a game starting on the tu
   and two 120-combo convergence spots (wet and paired boards) held to the 0.3%-of-pot
   checker bar. The heavy tests are release-only (`#[cfg(not(debug_assertions))]`)
   because debug-mode wall time over 48 runouts is impractical.
+
+## No-Limit Hold'em River Solver
+
+`plo-solve` also provides two-card Hold'em river solving with no-limit bet and
+raise sizing, card-removal-aware ranges, DCFR strategies, and an independent
+best-response exploitability report. The shared `solve` CLI selects the game
+using the input JSON `game` field, so a client can switch between `"plo"` and
+`"holdem"` while keeping one JSON request/response path. Hold'em ranges use
+explicit physical two-card combinations, like the PLO solver's explicit
+four-card combinations.
+
+Example request:
+
+```json
+{
+  "game": "holdem",
+  "board": "2c 3d 4h 5s 9c",
+  "oop_range": ["Ac Ad", "Qc Qd"],
+  "ip_range": ["Kc Kd", "Jc Jd"],
+  "pot": 100,
+  "stack": 300,
+  "bet_sizes": [0.5, 1.0, 2.0],
+  "raise_sizes": [1.0],
+  "max_raises": 2,
+  "iterations": 1000
+}
+```
+
+Run it from this workspace with
+`cargo run --release -p plo-solve --bin solve < spot.json`; omit `game` or set
+it to `"plo"` for the existing PLO river solver. `solve-holdem` is also
+available when a caller wants an explicit Hold'em-only command.
+
+The current checkout contains only the Rust engine and no website or web
+service. The JSON game selector is the integration point for a website client,
+but a website toggle itself must be added in the repository that contains that
+UI. Hold'em solving currently covers river spots; the existing turn solver
+remains PLO-only.

@@ -198,6 +198,7 @@ impl fmt::Display for EquityResult {
 pub enum EquityError {
     ParseError(CardParseError),
     InvalidHandCardCount(usize),
+    InvalidHoldemHandCardCount(usize),
     InvalidBoardCardCount(usize),
     CardCollision,
     EmptyRange,
@@ -212,6 +213,9 @@ impl fmt::Display for EquityError {
             EquityError::ParseError(e) => write!(f, "card parse error: {e}"),
             EquityError::InvalidHandCardCount(n) => {
                 write!(f, "PLO hand must have 4 distinct cards, got {n}")
+            }
+            EquityError::InvalidHoldemHandCardCount(n) => {
+                write!(f, "Hold'em hand must have 2 distinct cards, got {n}")
             }
             EquityError::InvalidBoardCardCount(n) => {
                 write!(f, "board must have between 0 and 5 distinct cards, got {n}")
