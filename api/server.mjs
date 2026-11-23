@@ -450,15 +450,59 @@ async function listLibrary() {
     const id = file.replace(/\.json$/, '');
     const full = path.join(LIBRARY_DIR, file);
     try {
+      const stat = await fs.stat(full);
+      // Meta-first (issue #55): a readable meta sidecar carries every
+      // field the list needs, so the solve document itself is never
+      // read or parsed on this path — parsing multi-hundred-MB solve
+      // files made GET /api/library take ~77 s and 502 through Pages.
+      // The sidecar is usable only when it parses to a plain object.
+      let meta = null;
+      try {
+        const parsed = JSON.parse(
+          await fs.readFile(path.join(LIBRARY_DIR, `${id}.meta.json`), 'utf8'),
+        );
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          meta = parsed;
+        }
+      } catch {
+        meta = null;
+      }
+      if (meta) {
+        items.push({
+          id,
+          name: meta.name ?? `Solve · ${meta.board ?? id}`,
+          kind: meta.kind ?? meta.street ?? kindForBoard(meta.board) ?? 'river',
+          board: meta.board ?? '',
+          oop_range_set: meta.oop_range_set ?? null,
+          ip_range_set: meta.ip_range_set ?? null,
+          spot_id: meta.spot_id ?? meta.id ?? null,
+          nash_distance_pct: meta.nash_distance_pct ?? null,
+          iterations: meta.iterations ?? null,
+          finished_at: meta.finished_at ?? null,
+          size_bytes: stat.size,
+          // Geometry + lock state from the sidecar (written from the
+          // solve document at publish/ingest time). Metas written
+          // before those fields were recorded carry neither, so legacy
+          // entries list null here until their sidecar is backfilled —
+          // the solve document itself still holds the values.
+          starting_pot: typeof meta.starting_pot === 'number' ? meta.starting_pot : null,
+          effective_stack:
+            typeof meta.effective_stack === 'number' ? meta.effective_stack : null,
+          locked: meta.locked === true,
+          // Range-trimming record from the meta sidecar (null for
+          // solves that never went through capped range-set expansion —
+          // hand-entered ranges, the bundled sample). The UI badges
+          // sampled solves from this; see ui/src/lib/sampled.ts.
+          range_expansion: meta.range_expansion ?? null,
+        });
+        continue;
+      }
+      // Fallback: no usable sidecar — the historical behaviour, reading
+      // the solve document itself (with an empty meta, exactly as the
+      // pre-#55 code did when the sidecar was missing or unreadable).
       const raw = await fs.readFile(full, 'utf8');
       const result = JSON.parse(raw);
-      let meta = {};
-      try {
-        meta = JSON.parse(await fs.readFile(path.join(LIBRARY_DIR, `${id}.meta.json`), 'utf8'));
-      } catch {
-        meta = {};
-      }
-      const stat = await fs.stat(full);
+      meta = {};
       items.push({
         id,
         name: meta.name ?? `Solve · ${result.board ?? id}`,
