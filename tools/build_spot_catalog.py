@@ -659,6 +659,11 @@ def make_entry(
     }
     if stack_bb != 100:
         entry["stack_bb"] = stack_bb
+    if street == "flop" and stack_bb == 100:
+        # Justin's 2026-11-23 call: queued 100bb flops solve to 0.5%
+        # instead of the balanced-tier 0.3% (TARGET-OVERRIDE-NOTES.md).
+        # The server honors this per-entry override over the tier rule.
+        entry["target_exploitability_pct"] = 0.5
     return entry
 
 
@@ -857,6 +862,8 @@ def verify_catalog(catalog: dict, data: RangeData) -> dict:
         assert entry["board_family"] == seed.family, entry["id"]
         assert entry["cap_per_side"] == CAPS[street], entry["id"]
         assert entry["tier"] == ("precise" if street == "river" else "balanced"), entry["id"]
+        if street == "flop" and stack_bb == 100:
+            assert entry.get("target_exploitability_pct") == 0.5, entry["id"]
         assert entry["size_menu"] == size_menu(street), entry["id"]
         if street == "flop":
             assert entry["line"] is None, entry["id"]

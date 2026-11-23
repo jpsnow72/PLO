@@ -109,7 +109,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-ah-qd-4c-flop",
@@ -179,7 +180,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-qs-jd-tc-flop",
@@ -249,7 +251,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-ks-qh-jd-flop",
@@ -319,7 +322,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-9s-8d-7c-flop",
@@ -389,7 +393,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-ts-9h-8d-flop",
@@ -459,7 +464,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-6s-5d-4c-flop",
@@ -529,7 +535,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-5s-4h-3d-flop",
@@ -599,7 +606,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-as-ad-kc-flop",
@@ -669,7 +677,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-ks-kh-qd-flop",
@@ -739,7 +748,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-7s-7d-2c-flop",
@@ -809,7 +819,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-5s-5h-3d-flop",
@@ -879,7 +890,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-as-ad-ac-flop",
@@ -949,7 +961,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-8s-8d-8c-flop",
@@ -1019,7 +1032,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-as-ks-7s-flop",
@@ -1089,7 +1103,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-qh-jh-4h-flop",
@@ -1159,7 +1174,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-as-ks-7d-flop",
@@ -1229,7 +1245,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-qh-jh-4d-flop",
@@ -1299,7 +1316,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-js-ts-8d-flop",
@@ -1369,7 +1387,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-9h-8h-6d-flop",
@@ -1439,7 +1458,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-ks-8d-3c-flop",
@@ -1509,7 +1529,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-qs-9d-4c-flop",
@@ -1579,7 +1600,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-8s-5d-2c-flop",
@@ -1649,7 +1671,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-7s-4d-2c-flop",
@@ -1719,7 +1742,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-as-kd-7c-3s-turn",
@@ -3769,7 +3793,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-co-vs-bb-as-ks-7d-flop",
@@ -3839,7 +3864,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-co-vs-bb-qh-jh-4d-flop",
@@ -3909,7 +3935,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-co-vs-bb-js-ts-8d-flop",
@@ -3979,7 +4006,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-co-vs-bb-9h-8h-6d-flop",
@@ -4049,7 +4077,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-co-vs-bb-ks-8d-3c-flop",
@@ -4119,7 +4148,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-co-vs-bb-qs-9d-4c-flop",
@@ -4189,7 +4219,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-co-vs-bb-8s-5d-2c-flop",
@@ -4259,7 +4290,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-co-vs-bb-7s-4d-2c-flop",
@@ -4329,7 +4361,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-co-vs-bb-qh-jh-4h-2s-turn",
@@ -4999,7 +5032,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-mp-vs-bb-7s-4d-2c-flop",
@@ -5069,7 +5103,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-mp-vs-bb-as-4d-3c-flop",
@@ -5139,7 +5174,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-mp-vs-bb-ah-5d-2c-flop",
@@ -5209,7 +5245,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-mp-vs-bb-as-kd-7c-flop",
@@ -5279,7 +5316,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-mp-vs-bb-ah-qd-4c-flop",
@@ -5349,7 +5387,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-mp-vs-bb-qs-jd-tc-flop",
@@ -5419,7 +5458,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-mp-vs-bb-ks-qh-jd-flop",
@@ -5489,7 +5529,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-mp-vs-bb-9s-8d-7c-flop",
@@ -5559,7 +5600,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-mp-vs-bb-8s-5d-2c-ts-turn",
@@ -6229,7 +6271,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-sb-vs-bb-js-ts-8d-flop",
@@ -6299,7 +6342,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-sb-vs-bb-9h-8h-6d-flop",
@@ -6369,7 +6413,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-sb-vs-bb-ks-8d-3c-flop",
@@ -6439,7 +6484,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-sb-vs-bb-qs-9d-4c-flop",
@@ -6509,7 +6555,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-sb-vs-bb-8s-5d-2c-flop",
@@ -6579,7 +6626,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-sb-vs-bb-7s-4d-2c-flop",
@@ -6649,7 +6697,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-sb-vs-bb-as-4d-3c-flop",
@@ -6719,7 +6768,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-sb-vs-bb-qh-jh-4d-2s-turn",
@@ -7669,7 +7719,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-3bet-ts-9h-8d-flop",
@@ -7739,7 +7790,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-3bet-6s-5d-4c-flop",
@@ -7809,7 +7861,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-3bet-5s-4h-3d-flop",
@@ -7879,7 +7932,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-3bet-as-ad-kc-flop",
@@ -7949,7 +8003,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-3bet-ks-kh-qd-flop",
@@ -8019,7 +8074,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-3bet-7s-7d-2c-flop",
@@ -8089,7 +8145,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-bb-3bet-9s-8d-7c-2s-turn",
@@ -8869,7 +8926,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-sb-3bet-qh-jh-4h-flop",
@@ -8939,7 +8997,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-sb-3bet-as-ks-7d-flop",
@@ -9009,7 +9068,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-sb-3bet-qh-jh-4d-flop",
@@ -9079,7 +9139,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-sb-3bet-js-ts-8d-flop",
@@ -9149,7 +9210,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-sb-3bet-9h-8h-6d-flop",
@@ -9219,7 +9281,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-sb-3bet-ks-8d-3c-flop",
@@ -9289,7 +9352,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-btn-vs-sb-3bet-as-ks-7s-3s-turn",
@@ -10069,7 +10133,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-co-vs-btn-3bet-ah-5d-2c-flop",
@@ -10139,7 +10204,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-co-vs-btn-3bet-as-kd-7c-flop",
@@ -10209,7 +10275,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-co-vs-btn-3bet-ah-qd-4c-flop",
@@ -10279,7 +10346,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-co-vs-btn-3bet-qs-jd-tc-flop",
@@ -10349,7 +10417,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-co-vs-btn-3bet-ks-qh-jd-flop",
@@ -10419,7 +10488,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-co-vs-btn-3bet-9s-8d-7c-flop",
@@ -10489,7 +10559,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "6max-co-vs-btn-3bet-as-4d-3c-6s-turn",
@@ -15449,7 +15520,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "9max-utg-vs-bb-ah-qd-4c-flop",
@@ -15519,7 +15591,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "9max-utg-vs-bb-qs-jd-tc-flop",
@@ -15589,7 +15662,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "9max-utg-vs-bb-ks-qh-jd-flop",
@@ -15659,7 +15733,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "9max-utg-vs-bb-as-kd-7c-3s-turn",
@@ -16059,7 +16134,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "9max-utgplus1-vs-bb-as-ad-kc-flop",
@@ -16129,7 +16205,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "9max-utgplus1-vs-bb-ks-kh-qd-flop",
@@ -16199,7 +16276,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "9max-utgplus1-vs-bb-7s-7d-2c-flop",
@@ -16269,7 +16347,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "9max-utgplus1-vs-bb-5s-4h-3d-7s-turn",
@@ -16669,7 +16748,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "9max-lj-vs-bb-qh-jh-4h-flop",
@@ -16739,7 +16819,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "9max-lj-vs-bb-as-ks-7d-flop",
@@ -16809,7 +16890,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "9max-lj-vs-bb-qh-jh-4d-flop",
@@ -16879,7 +16961,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "9max-lj-vs-bb-as-ks-7s-3s-turn",
@@ -17279,7 +17362,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "9max-hj-vs-bb-8s-5d-2c-flop",
@@ -17349,7 +17433,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "9max-hj-vs-bb-7s-4d-2c-flop",
@@ -17419,7 +17504,8 @@
         "basis": "Library plan compute budget: flop solves at ~5-9 single-core hours each."
       },
       "status": "ready",
-      "status_reason": null
+      "status_reason": null,
+      "target_exploitability_pct": 0.5
     },
     {
       "id": "9max-hj-vs-bb-qs-9d-4c-2s-turn",
