@@ -82,6 +82,14 @@ above, both complete modulo the disclosed gaps. The bundled sample solve
 ships without a sidecar in the repo data dir, so it takes the fallback path,
 unchanged.
 
+Cross-path parity, as asserted in `api/library-meta-list.test.mjs`, holds
+for the doc-sourced fields only (`board`, `kind`, `name`,
+`nash_distance_pct`, `iterations`, `finished_at`, `starting_pot`,
+`effective_stack`, `locked`, plus per-file `size_bytes`); the meta-only
+fields (`oop_range_set`, `ip_range_set`, `spot_id`, `range_expansion`) are
+null on the fallback path, exactly as before this change, because the
+document never carried them.
+
 ## Gate must verify
 
 1. Full api suite green with the glob invocation in a built tree:
