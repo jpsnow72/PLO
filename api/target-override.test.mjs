@@ -122,6 +122,16 @@ async function getQueueItems() {
 async function watchQueue(timeoutMs = 120000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
+    // The imported server module never starts the queueTick interval
+    // (that lives in the main-entry block), so drive ticks through the
+    // public API instead: a no-op set_concurrency POST triggers a tick
+    // server-side, settling finished jobs and starting queued ones.
+    const tick = await fetch(`${baseUrl}/api/queue/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set_concurrency', value: 1 }),
+    });
+    assert.equal(tick.status, 200);
     const items = await getQueueItems();
     if (
       items.length === 5 &&
