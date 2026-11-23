@@ -83,18 +83,25 @@ seed(
 // (4) Neither readable: skipped, while the healthy entries still list.
 seed('both-bad', '{broken', 'nope{');
 
-// (5) Shape parity: a meta-sourced item and a doc-sourced item built
-// from equivalent data must carry the same keys and values (except
-// size_bytes, which follows each file's own byte length).
+// (5) Cross-path parity: for the fields both paths source from the
+// document, a meta-sourced item and a doc-sourced item built from
+// equivalent data must agree. The meta-only fields (oop_range_set,
+// ip_range_set, spot_id, range_expansion) are the sidecar's alone —
+// the document never carried them — so they are asserted separately
+// below rather than folded into the twin comparison. The meta twin
+// carries no name, so both paths exercise the `Solve · <board>`
+// fallback.
 const twinMeta = {
-  name: 'Solve · As Kd 7c',
   kind: 'flop',
   street: 'flop',
   board: 'As Kd 7c',
   oop_range_set: 'set-a',
   ip_range_set: 'set-b',
-  spot_id: null,
-  range_expansion: null,
+  spot_id: 'twin-spot',
+  range_expansion: {
+    oop: { mode: 'sample', coverage_pct: 50 },
+    ip: { mode: 'sample', coverage_pct: 75 },
+  },
   locked: false,
   starting_pot: 100,
   effective_stack: 150,
@@ -203,10 +210,39 @@ test('GET /api/library lists from the meta sidecar and keeps the doc fallback', 
   assert.equal(byId.has('both-bad'), false);
   assert.equal(library.length, 5);
 
-  // (5) Same keys and values from either path for equivalent data.
-  const { size_bytes: metaSize, ...metaItem } = byId.get('meta-twin');
-  const { size_bytes: docSize, ...docItem } = byId.get('doc-twin');
-  assert.deepEqual(metaItem, docItem);
-  assert.equal(metaSize, Buffer.byteLength(BOGUS, 'utf8'));
-  assert.equal(docSize, Buffer.byteLength(JSON.stringify(twinDoc), 'utf8'));
+  // (5) Parity on the doc-sourced fields for equivalent data. (id is
+  // excluded — it is each entry's own filename — and size_bytes is
+  // asserted separately below: it follows each file's own length.)
+  const metaTwin = byId.get('meta-twin');
+  const docTwin = byId.get('doc-twin');
+  const DOC_SOURCED = [
+    'board',
+    'kind',
+    'name',
+    'nash_distance_pct',
+    'iterations',
+    'finished_at',
+    'starting_pot',
+    'effective_stack',
+    'locked',
+  ];
+  const docSourced = (item) =>
+    Object.fromEntries(DOC_SOURCED.map((key) => [key, item[key]]));
+  assert.deepEqual(docSourced(metaTwin), docSourced(docTwin));
+  // The name fallback fired on both paths (neither twin supplies one).
+  assert.equal(metaTwin.name, 'Solve · As Kd 7c');
+  assert.equal(docTwin.name, 'Solve · As Kd 7c');
+  assert.equal(metaTwin.size_bytes, Buffer.byteLength(BOGUS, 'utf8'));
+  assert.equal(docTwin.size_bytes, Buffer.byteLength(JSON.stringify(twinDoc), 'utf8'));
+  // Meta-only fields: the meta path lists the seeded sidecar values;
+  // the doc fallback lists null — the historical behaviour, since the
+  // document never carried these fields (same as (2) above).
+  assert.equal(metaTwin.oop_range_set, 'set-a');
+  assert.equal(metaTwin.ip_range_set, 'set-b');
+  assert.equal(metaTwin.spot_id, 'twin-spot');
+  assert.deepEqual(metaTwin.range_expansion, twinMeta.range_expansion);
+  assert.equal(docTwin.oop_range_set, null);
+  assert.equal(docTwin.ip_range_set, null);
+  assert.equal(docTwin.spot_id, null);
+  assert.equal(docTwin.range_expansion, null);
 });
