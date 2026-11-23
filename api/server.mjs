@@ -419,6 +419,11 @@ async function runJob(job, spot) {
           spot_id: job.spot_id ?? null,
           range_expansion: job.range_expansion ?? null,
           locked: job.locked ?? false,
+          // Geometry, copied from the engine result so the library
+          // list can be built from this sidecar alone (issue #55).
+          starting_pot: typeof result?.starting_pot === 'number' ? result.starting_pot : null,
+          effective_stack:
+            typeof result?.effective_stack === 'number' ? result.effective_stack : null,
           nash_distance_pct: job.nash_distance_pct,
           iterations: job.iterations,
           finished_at: job.finished_at,
@@ -2039,6 +2044,12 @@ const server = http.createServer(async (req, res) => {
           board: result.board,
           oop_range_set: typeof spot.oop_range_set === 'string' ? spot.oop_range_set : null,
           ip_range_set: typeof spot.ip_range_set === 'string' ? spot.ip_range_set : null,
+          // Lock state + geometry, copied from the result so the
+          // library list can be built from this sidecar alone (#55).
+          locked: result?.locked === true,
+          starting_pot: typeof result.starting_pot === 'number' ? result.starting_pot : null,
+          effective_stack:
+            typeof result.effective_stack === 'number' ? result.effective_stack : null,
           nash_distance_pct: nash,
           iterations: result.iterations,
           finished_at: nowIso(),
