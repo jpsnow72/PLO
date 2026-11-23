@@ -42,18 +42,16 @@ reproduces the shipped file.
 
 ## Operational note
 
-The binding constraint is the server code: a runner picks up
-`catalogTargetPct` only when its server process restarts on the new
-build, so the override activates per runner at its next restart,
-with the refreshed catalog file staged in place. The catalog data
-itself is not cached — `findCatalogEntry` re-reads CATALOG_PATH on
-every queue-item start — so once a runner is on the new build, a
-later catalog-file refresh lands on subsequently started items
-without another restart. Running jobs are unaffected either way:
-their targets were fixed when their spots were built. The
-coordinator stages the refreshed server + catalog and restarts each
-runner on the normal cadence; no emergency restart is warranted for
-this change.
+The binding constraint is the restart, full stop: on an
+already-running runner, both the code change and any catalog-file
+changes take effect only at that runner's next restart.
+`loadCatalog()` returns the module-level `catalogCache` after its
+first load and never invalidates it, so a running server never sees
+a refreshed catalog file. A fresh runner reads the catalog at first
+lookup. Running jobs are unaffected either way: their targets were
+fixed when their spots were built. The coordinator stages the
+refreshed server + catalog and restarts each runner on the normal
+cadence; no emergency restart is warranted for this change.
 
 ## Tests
 
