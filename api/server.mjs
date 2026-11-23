@@ -1161,6 +1161,34 @@ function queueMaxIterations() {
 }
 
 /**
+ * The accuracy target for a catalog solve (per-entry override,
+ * 2026-11-23). A catalog entry may carry `target_exploitability_pct`,
+ * which wins over the tier rule (balanced -> 0.3, precise -> 0.1). The
+ * override must be a finite number in (0, 5]; anything else is a
+ * catalog authoring error and fails the queue item with a 422 naming
+ * the entry, rather than silently solving to a wrong target.
+ */
+function catalogTargetPct(entry) {
+  const override = entry.target_exploitability_pct;
+  if (override === undefined) {
+    return entry.tier === 'precise' ? 0.1 : 0.3;
+  }
+  if (
+    typeof override !== 'number' ||
+    !Number.isFinite(override) ||
+    override <= 0 ||
+    override > 5
+  ) {
+    throw new HttpError(
+      422,
+      `Catalog spot "${entry.id}" has an invalid target_exploitability_pct ` +
+        `(${JSON.stringify(override)}); it must be a number greater than 0 and at most 5`,
+    );
+  }
+  return override;
+}
+
+/**
  * Translate one catalog entry into an engine spot + job metadata.
  *
  * Mapping (see RUN1-NOTES.md for the table):
@@ -1175,7 +1203,8 @@ function queueMaxIterations() {
  *   `<street>_include_all_in` fields, and the ROOT street's menu also to
  *   the generic bet_sizes / raise_sizes / max_raises defaults the
  *   per-street parsers fall back to.
- * - Tier: balanced -> target 0.3%, precise -> target 0.1%.
+ * - Tier: balanced -> target 0.3%, precise -> target 0.1%; an entry's
+ *   own target_exploitability_pct overrides the tier (catalogTargetPct).
  */
 async function translateCatalogEntry(entry) {
   if (entry.status !== 'ready') {
@@ -1193,7 +1222,7 @@ async function translateCatalogEntry(entry) {
     pot: entry.pot_chips,
     stacks: entry.stacks_chips,
     max_iterations: queueMaxIterations(),
-    target_exploitability_pct: entry.tier === 'precise' ? 0.1 : 0.3,
+    target_exploitability_pct: catalogTargetPct(entry),
   };
   for (const side of ['oop', 'ip']) {
     const setId = entry[`${side}_set`];
