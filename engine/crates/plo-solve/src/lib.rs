@@ -36,7 +36,7 @@ pub use cfr::{solve_river, ComboEv, DcfrConfig, NodeStrategy, SolveResult};
 pub use flop::{
     expand_bucket_strategies, solve_flop, solve_flop_with_threads, BucketConfig, FlopChild,
     FlopDecisionNode, FlopGame, FlopNode, FlopSolveResult, FlopSpot, FlopSubtree,
-    FlopSubtreeGroup, TURN_CARD_DEAL_PROB,
+    FlopSubtreeGroup, STOP_CHECK_EVERY, TURN_CARD_DEAL_PROB,
 };
 pub use game::{
     compute_pot_limit_bounds, legal_bet_sizes, legal_raise_sizes, Action, DecisionNode, Node,

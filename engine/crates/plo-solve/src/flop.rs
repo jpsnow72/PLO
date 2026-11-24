@@ -29,9 +29,15 @@
 //! that number (not any solver-internal estimate) is reported in
 //! [`FlopSolveResult`].
 //!
-//! Early stopping is intentionally not wired into [`solve_flop`]: the checker
-//! is the expensive part at flop scale, so the solver runs the configured
-//! fixed iteration budget and measures once at the end.
+//! Early stopping (issue #56): when the config carries a positive
+//! `target_exploitability_pct`, the solver prices the current average
+//! strategy on a fixed checkpoint cadence ([`STOP_CHECK_EVERY`]
+//! iterations) and stops as soon as the checker's Nash distance is at or
+//! below the target, falling through to the same final extraction and
+//! pricing as a full run. With a target of `0.0` the solver always runs
+//! the configured fixed iteration budget and measures once at the end.
+//! The cadence exists because the checker is the expensive part at flop
+//! scale: one pass prices all 49 turn subtrees exactly.
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -53,6 +59,23 @@ use crate::turn::{TurnGame, TurnKernels, TurnSolverState, TurnSpot};
 
 /// Probability of each individual turn card for a valid combo pair (`1/41`).
 pub const TURN_CARD_DEAL_PROB: f64 = 1.0 / 41.0;
+
+/// Checkpoint cadence (in iterations) for the target early stop in
+/// [`solve_flop_with_threads`] (issue #56): with a positive
+/// `target_exploitability_pct`, the average strategy is priced by the
+/// checker every `STOP_CHECK_EVERY` iterations and the solve stops at
+/// the first checkpoint whose Nash distance is at or below the target.
+///
+/// The value deliberately equals the progress module's default interval
+/// ([`crate::progress::DEFAULT_PROGRESS_EVERY`]) but is this constant,
+/// NOT [`crate::progress::progress_every()`]: the stop cadence must not
+/// follow the `PLO_PROGRESS_EVERY` env var, so stopping behaviour is
+/// identical with progress reporting on, off, or at any interval — and
+/// a disabled reporter can never disable the stop. The cadence is
+/// coarse because a flop checker pass prices all 49 turn subtrees
+/// exactly; at the #48 gate that cost measured negligible when paid
+/// once per 1000 iterations.
+pub const STOP_CHECK_EVERY: usize = crate::progress::DEFAULT_PROGRESS_EVERY;
 
 /// How the flop street is abstracted for a [`FlopGame`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -952,10 +975,15 @@ fn flop_average_strategies(
 }
 
 /// Solves a [`FlopGame`] with vectorised Discounted CFR: bucketed on the flop
-/// street, exact in every turn/river subtree. Runs exactly
-/// `config.max_iterations` iterations (early stopping is disabled — see the
-/// module docs) and measures exploitability once at the end with the
-/// independent checker in the unabstracted game.
+/// street, exact in every turn/river subtree. Runs up to
+/// `config.max_iterations` iterations: with a positive
+/// `config.target_exploitability_pct` the solve stops at the first
+/// [`STOP_CHECK_EVERY`] checkpoint whose checker-measured Nash distance
+/// is at or below the target (see the module docs); with a target of
+/// `0.0` it always runs the full budget. Either way, the result's
+/// exploitability is the final extraction's own measurement by the
+/// independent checker in the unabstracted game, and its `iterations`
+/// field records the iterations actually run.
 ///
 /// Parallelism (Ticket E5a): the per-subtree traversals fork internally at
 /// their chance nodes on [`crate::parallel::solver_threads`] worker threads
@@ -1027,6 +1055,9 @@ pub fn solve_flop_with_threads(
     ];
 
     let progress = ProgressReporter::new();
+    // Iterations actually executed: the full budget, unless the target
+    // early stop (issue #56) breaks the loop at a checkpoint below.
+    let mut iterations_run = config.max_iterations;
 
     for iter in 1..=config.max_iterations {
         let t = iter as f64;
@@ -1068,18 +1099,39 @@ pub fn solve_flop_with_threads(
             );
         }
 
-        // Progress reporting (issue #48): price the current average
+        // Checkpoint (issues #48 + #56): price the current average
         // strategy with the same checker the final number uses, on the
-        // same snapshot extraction. Read-only — see progress.rs. Note
-        // a flop checker pass prices all 49 turn subtrees exactly, so
-        // it costs far more than a river/turn pass relative to one
-        // iteration; the interval default is measured at the gate.
-        if progress.due(iter) {
+        // same snapshot extraction. Read-only — see progress.rs. One
+        // checkpoint serves both consumers, so a flop checker pass
+        // (which prices all 49 turn subtrees exactly) is never paid
+        // twice for the same iteration:
+        // - Progress reporting (#48) is due on the reporter's own
+        //   cadence (`PLO_PROGRESS_EVERY`, default 1000) and only
+        //   prints the reading.
+        // - The target early stop (#56) is due every
+        //   [`STOP_CHECK_EVERY`] iterations whenever a positive target
+        //   is configured — a cadence independent of the reporter's, so
+        //   a checkpoint computed for a progress line is reused for the
+        //   stop decision when both fall on the same iteration, and the
+        //   stop is checked even when reporting is off. On a hit the
+        //   loop breaks and the code below the loop performs the usual
+        //   final extraction + pricing, so a stopped solve reports
+        //   exactly what a full run of the same length would report.
+        let progress_due = progress.due(iter);
+        let stop_due =
+            config.target_exploitability_pct > 0.0 && iter % STOP_CHECK_EVERY == 0;
+        if progress_due || stop_due {
             let (flop_strategies, subtree_strategies) =
                 flop_average_strategies(game, &buffers, &states);
             let report =
                 compute_exploitability_flop(game, &flop_strategies, &subtree_strategies);
-            progress.report(iter, report.nash_distance_pct);
+            if progress_due {
+                progress.report(iter, report.nash_distance_pct);
+            }
+            if stop_due && report.nash_distance_pct <= config.target_exploitability_pct {
+                iterations_run = iter;
+                break;
+            }
         }
     }
 
@@ -1110,7 +1162,7 @@ pub fn solve_flop_with_threads(
         ip_evs,
         oop_game_ev: exploitability.oop_strategy_ev,
         ip_game_ev: exploitability.ip_strategy_ev,
-        iterations: config.max_iterations,
+        iterations: iterations_run,
         exploitability,
         locks: config.locks.clone(),
         action_evs,
