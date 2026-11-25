@@ -70,9 +70,12 @@
 
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { createWriteStream, promises as fs } from 'node:fs';
+import { createReadStream, createWriteStream, promises as fs } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import {
   SESSION_COOKIE,
@@ -92,7 +95,8 @@ import {
   fnv1a32,
   formatWeight,
 } from './ranges-expand.mjs';
-import { attemptUpload, loadRunnerConfig } from './uploader.mjs';
+import { splitFlopResult } from './flop-split.mjs';
+import { attemptSplitUpload, attemptUpload, loadRunnerConfig } from './uploader.mjs';
 import { createStudyApi } from './study.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -396,6 +400,53 @@ async function runJob(job, spot) {
   }
 
   try {
+    // Split ingest (issue #57): a flop result is one JSON document of
+    // 5-9+ GB at library range caps — reading it whole dies over Node's
+    // 2 GiB buffer limit ("File size ... is greater than 2 GiB", Vultr
+    // job 457c60e8). Flops are therefore split streaming at settle: the
+    // header doc + one brotli part per turn card land in the library,
+    // the meta sidecar records the split, and the raw result file is
+    // deleted (the job-dir copy is transient). The kind comes from the
+    // job record (derived from the board at submit); a submission whose
+    // spot names street "flop" is the fallback. Turn/river jobs take
+    // the historical whole-file path below, unchanged.
+    const isFlopJob =
+      job.kind === 'flop' || (job.kind == null && spot?.street === 'flop');
+    if (isFlopJob) {
+      await fs.mkdir(LIBRARY_DIR, { recursive: true });
+      const info = await splitFlopResult(resultPath, LIBRARY_DIR, job.id);
+      job.nash_distance_pct = info.nash_distance_pct;
+      job.iterations = info.iterations;
+      job.status = 'done';
+      job.finished_at = nowIso();
+      await fs.writeFile(
+        path.join(LIBRARY_DIR, `${job.id}.meta.json`),
+        JSON.stringify(
+          {
+            id: job.id,
+            name: job.name,
+            kind: job.kind,
+            street: job.kind,
+            board: job.board,
+            oop_range_set: job.oop_range_set ?? null,
+            ip_range_set: job.ip_range_set ?? null,
+            spot_id: job.spot_id ?? null,
+            range_expansion: job.range_expansion ?? null,
+            locked: job.locked ?? false,
+            starting_pot: info.starting_pot,
+            effective_stack: info.effective_stack,
+            nash_distance_pct: job.nash_distance_pct,
+            iterations: job.iterations,
+            finished_at: job.finished_at,
+            split: true,
+            split_parts_present: info.parts.length,
+          },
+          null,
+          2,
+        ),
+      );
+      await fs.rm(resultPath, { force: true });
+    } else {
     const raw = await fs.readFile(resultPath, 'utf8');
     const result = JSON.parse(raw);
     job.nash_distance_pct = result?.exploitability?.nash_distance_pct ?? null;
@@ -432,6 +483,7 @@ async function runJob(job, spot) {
         2,
       ),
     );
+    }
   } catch (err) {
     job.status = 'error';
     job.error = `Could not read engine result: ${err instanceof Error ? err.message : String(err)}`;
@@ -448,7 +500,14 @@ function publicJob(job) {
 async function listLibrary() {
   await fs.mkdir(LIBRARY_DIR, { recursive: true });
   const files = (await fs.readdir(LIBRARY_DIR)).filter(
-    (f) => f.endsWith('.json') && !f.endsWith('.meta.json'),
+    (f) =>
+      f.endsWith('.json') &&
+      !f.endsWith('.meta.json') &&
+      // Split turn parts (issue #57) are payload files of their header
+      // entry, never library entries in their own right. (The stored
+      // brotli form ends .json.br and never matched; this covers the
+      // uncompressed fixture form.)
+      !/\.turn-[A-Za-z0-9]{2,3}\.json$/.test(f),
   );
   const items = [];
   for (const file of files) {
@@ -541,6 +600,43 @@ async function listLibrary() {
   }
   items.sort((a, b) => String(b.finished_at ?? '').localeCompare(String(a.finished_at ?? '')));
   return items;
+}
+
+// --- Split flop parts (issue #57) -------------------------------------------
+// A split entry's turn subtrees live beside its header doc as
+// <id>.turn-<Card>.json.br (brotli, the stored form) or, in fixtures,
+// <id>.turn-<Card>.json (raw). These helpers are the single place that
+// knows the naming scheme: the part PUT route, the ingest sidecar
+// bookkeeping and the turn GET route all go through them.
+
+const LIBRARY_ID_RE = /^[A-Za-z0-9_-]+$/;
+const PART_CARD_RE = /^[A-Za-z0-9]{2,3}$/;
+
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function partFileName(id, card, encoding) {
+  return encoding === 'brotli' ? `${id}.turn-${card}.json.br` : `${id}.turn-${card}.json`;
+}
+
+/** Turn cards whose parts are stored in the library for `id`, sorted. */
+async function listStoredParts(id) {
+  let files = [];
+  try {
+    files = await fs.readdir(LIBRARY_DIR);
+  } catch {
+    return [];
+  }
+  const re = new RegExp(
+    `^${escapeRegExp(id)}\\.turn-([A-Za-z0-9]{2,3})\\.json(?:\\.br)?$`,
+  );
+  const cards = [];
+  for (const f of files) {
+    const m = re.exec(f);
+    if (m && !cards.includes(m[1])) cards.push(m[1]);
+  }
+  return cards.sort();
 }
 
 // ---------------------------------------------------------------------------
@@ -1352,6 +1448,37 @@ async function attemptItemUpload(item) {
     await saveQueue();
     return;
   }
+  // Split flop entries (issue #57): the local library holds a header
+  // doc + brotli parts and the raw job result was deleted at settle, so
+  // the whole-file upload below cannot apply — upload header + parts
+  // with resume instead.
+  let localMeta = null;
+  try {
+    localMeta = JSON.parse(
+      await fs.readFile(path.join(LIBRARY_DIR, `${item.job_id}.meta.json`), 'utf8'),
+    );
+  } catch {
+    localMeta = null;
+  }
+  if (localMeta && localMeta.split === true) {
+    const outcome = await attemptSplitUpload({
+      config,
+      spot: entry,
+      libraryDir: LIBRARY_DIR,
+      localId: item.job_id,
+    });
+    if (outcome.ok) {
+      item.upload_status = 'uploaded';
+      item.upload_error = null;
+      item.uploaded_at = nowIso();
+      item.upload_detail = outcome.status ?? null;
+    } else {
+      item.upload_status = 'failed';
+      item.upload_error = outcome.error;
+    }
+    await saveQueue();
+    return;
+  }
   let result;
   try {
     result = JSON.parse(
@@ -1926,6 +2053,119 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Split flop part upload (issue #57) [admin]: the stored bytes of
+    // one turn part, kept as-is. The sidecar's split_parts_present is
+    // updated on every arrival and the response lists the parts central
+    // now holds, which is what makes interrupted uploads resumable.
+    if (
+      req.method === 'PUT' &&
+      parts[0] === 'api' &&
+      parts[1] === 'solves' &&
+      parts[2] &&
+      parts[3] === 'parts' &&
+      parts[4]
+    ) {
+      if (!(await requireAdmin(req, res))) return;
+      const id = parts[2];
+      const card = parts[4];
+      if (!LIBRARY_ID_RE.test(id) || !PART_CARD_RE.test(card)) {
+        sendJson(req, res, 400, { error: 'Bad solve id or turn card.' });
+        return;
+      }
+      try {
+        await fs.access(path.join(LIBRARY_DIR, `${id}.json`));
+      } catch {
+        sendJson(req, res, 404, { error: 'Unknown library id' });
+        return;
+      }
+      const encoding = String(req.headers['x-part-encoding'] ?? 'brotli').toLowerCase();
+      if (encoding !== 'brotli' && encoding !== 'identity') {
+        sendJson(req, res, 400, {
+          error: `Unsupported x-part-encoding "${encoding}" (want brotli or identity).`,
+        });
+        return;
+      }
+      const finalName = partFileName(id, card, encoding);
+      const tmpPath = path.join(LIBRARY_DIR, `${finalName}.tmp-${process.pid}`);
+      let received = 0;
+      const counter = new Transform({
+        transform(chunk, _enc, cb) {
+          received += chunk.length;
+          if (received > INGEST_MAX_BYTES) {
+            cb(new Error(`part exceeds the ${INGEST_MAX_BYTES}-byte limit`));
+            return;
+          }
+          cb(null, chunk);
+        },
+      });
+      try {
+        await pipeline(req, counter, createWriteStream(tmpPath));
+        await fs.rename(tmpPath, path.join(LIBRARY_DIR, finalName));
+      } catch {
+        await fs.rm(tmpPath, { force: true }).catch(() => undefined);
+        sendJson(req, res, 413, { error: 'Part upload failed or exceeded the size limit.' });
+        return;
+      }
+      const held = await listStoredParts(id);
+      try {
+        const metaPath = path.join(LIBRARY_DIR, `${id}.meta.json`);
+        const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
+        meta.split = true;
+        meta.split_parts_present = held.length;
+        await fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
+      } catch {
+        // No readable sidecar: the part itself is stored, and the
+        // count is recomputed from disk wherever it is needed.
+      }
+      sendJson(req, res, 200, { id, card, parts: held, split_parts_present: held.length });
+      return;
+    }
+
+    // Split flop part serving (issue #57): stream one turn card's
+    // subtree nodes as JSON, decompressing the stored brotli form on
+    // the fly. The header doc itself is served by GET /api/library/:id
+    // (it is the library file <id>.json), so a split entry reads as:
+    // header from the library route, subtrees from here.
+    if (
+      req.method === 'GET' &&
+      parts[0] === 'api' &&
+      parts[1] === 'solves' &&
+      parts[2] &&
+      parts[3] === 'turn' &&
+      parts[4]
+    ) {
+      const id = parts[2];
+      const card = parts[4];
+      if (!LIBRARY_ID_RE.test(id) || !PART_CARD_RE.test(card)) {
+        sendJson(req, res, 404, { error: 'Unknown solve id or turn card' });
+        return;
+      }
+      const brPath = path.join(LIBRARY_DIR, partFileName(id, card, 'brotli'));
+      const rawPath = path.join(LIBRARY_DIR, partFileName(id, card, 'identity'));
+      const hasBr = await fs.access(brPath).then(() => true).catch(() => false);
+      const hasRaw = hasBr
+        ? false
+        : await fs.access(rawPath).then(() => true).catch(() => false);
+      if (!hasBr && !hasRaw) {
+        sendJson(req, res, 404, { error: `No turn part ${card} for solve ${id}` });
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        ...corsHeaders(req),
+      });
+      try {
+        if (hasBr) {
+          await pipeline(createReadStream(brPath), zlib.createBrotliDecompress(), res);
+        } else {
+          await pipeline(createReadStream(rawPath), res);
+        }
+      } catch {
+        res.destroy();
+      }
+      return;
+    }
+
     if (req.method === 'GET' && parts[0] === 'api' && parts[1] === 'solves' && parts[2]) {
       const job = jobs.get(parts[2]);
       if (!job) {
@@ -2036,6 +2276,15 @@ const server = http.createServer(async (req, res) => {
         const kind = ['river', 'turn', 'flop'].includes(spot.kind)
           ? spot.kind
           : kindForBoard(result.board) ?? 'river';
+        // Split header (issue #57): the result carries a "split"
+        // marker and only flop-street nodes — central stores it as-is
+        // (no subtrees expected) and tracks part arrivals in the
+        // sidecar, starting from whatever parts are already on disk.
+        const isSplitResult =
+          result.split !== null &&
+          typeof result.split === 'object' &&
+          !Array.isArray(result.split);
+        const storedParts = isSplitResult ? await listStoredParts(spot.id) : null;
         const meta = {
           id: spot.id,
           name: typeof spot.name === 'string' && spot.name.length > 0 ? spot.name : `Solve · ${result.board}`,
@@ -2056,6 +2305,9 @@ const server = http.createServer(async (req, res) => {
           source: 'local-runner',
           spot,
           content_hash: contentHash,
+          ...(isSplitResult
+            ? { split: true, split_parts_present: storedParts.length }
+            : {}),
         };
         await fs.writeFile(path.join(LIBRARY_DIR, `${spot.id}.json`), JSON.stringify(result));
         await fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
