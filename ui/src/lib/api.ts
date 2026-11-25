@@ -127,6 +127,18 @@ export async function fetchLibrarySolve(id: string): Promise<unknown> {
   return requestJson(`/api/library/${encodeURIComponent(id)}`);
 }
 
+/**
+ * Fetch one turn card's subtree payload for a split flop solve
+ * (issue #57): `{ turn_card, nodes }` — the card's turn + river
+ * decision nodes. The body is validated by the caller
+ * (solveTree.parseTurnPayload) before anything is grafted.
+ */
+export async function fetchSolveTurn(id: string, card: string): Promise<unknown> {
+  return requestJson(
+    `/api/solves/${encodeURIComponent(id)}/turn/${encodeURIComponent(card)}`,
+  );
+}
+
 /** The preflop range-set index (all sets, with provenance summaries). */
 export async function fetchPreflopIndex(): Promise<PreflopIndex> {
   const body = await requestJson('/api/preflop/index');
