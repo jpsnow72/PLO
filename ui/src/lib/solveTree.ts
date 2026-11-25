@@ -319,7 +319,12 @@ export function resolveStep(data: SolveData, node: SolveNode, actionLabel: strin
     // all-in close emits no subtrees even in a whole solve; there the
     // loaded payload simply has no root for this line and the caller
     // falls back to the terminal message.)
-    if (spec.marker === 't' && data.split && actionLabel !== 'Fold') {
+    if (
+      spec.marker === 't' &&
+      data.split &&
+      node.streetName === 'flop' &&
+      actionLabel !== 'Fold'
+    ) {
       return { type: 'split-runout', baseHistory: child, cards: [...data.split.turnCards] };
     }
   }
