@@ -71,7 +71,7 @@ export function useExplorerHotkeys(): void {
       } else if (/^[1-5]$/.test(e.key)) {
         // A runout is outstanding (the street closed) or the line
         // already ended: there is no action list to pick from.
-        if (st.pendingRunout || st.terminalAction) return;
+        if (st.pendingRunout || st.pendingTurnCards || st.terminalAction) return;
         const node = currentNodeOf(st.solve, st.path);
         const label = node?.actions[Number(e.key) - 1];
         if (!label) return;

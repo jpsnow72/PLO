@@ -10,6 +10,7 @@ import {
   type SolveData,
   type SolveNode,
 } from '../lib/solveTree';
+import { turnCardLoader } from '../lib/splitSolve';
 import type { JobRecord, RangeExpansion } from '../lib/types';
 
 export interface PathStep {
@@ -88,6 +89,20 @@ interface AppState {
   loadError: string | null;
   path: PathStep[];
   pendingRunout: RunoutOption[] | null;
+  /**
+   * Split solves (issue #57): at a flop-close chance node, the turn
+   * cards whose subtrees are NOT loaded yet, offered alongside any
+   * loaded `pendingRunout` options for the same base history. Picking
+   * one fetches + grafts it (chooseSplitRunout) instead of navigating
+   * immediately. Null whenever no split chance node is outstanding.
+   */
+  pendingTurnCards: { baseHistory: string; cards: string[] } | null;
+  /**
+   * The in-flight (or failed) turn-card load for the pending chance
+   * node. The Explorer renders it as an inline banner on the chance
+   * branch — loading text, or a retryable error — never a blank view.
+   */
+  turnCardLoad: { card: string; status: 'loading' | 'error'; error: string | null } | null;
   terminalAction: string | null;
   loadSample: () => Promise<void>;
   loadRawSolve: (
@@ -99,6 +114,22 @@ interface AppState {
   ) => boolean;
   chooseAction: (actionLabel: string) => void;
   chooseRunout: (card: string) => void;
+  /**
+   * Pick an UNLOADED turn card at the pending split chance node:
+   * fetch + graft its subtree (one fetch per card, deduped by the
+   * loader), then advance the line into it. On failure the load state
+   * carries a retryable error and the line does not move.
+   */
+  chooseSplitRunout: (card: string) => Promise<void>;
+  /** Clear a finished/failed turn-card load banner (back to the picker). */
+  dismissTurnCardLoad: () => void;
+  /**
+   * Quietly ensure a turn card is grafted into the loaded solve (no
+   * navigation) — for programmatic callers that are about to point
+   * the path into that card (the Quiz's Open in Explorer). Resolves
+   * false for non-split solves, a missing id, or a failed fetch.
+   */
+  loadTurnCard: (card: string) => Promise<boolean>;
   dismissRunout: () => void;
   goToStep: (index: number) => void;
   resetPath: () => void;
@@ -214,6 +245,8 @@ export const useStore = create<AppState>((set, get) => ({
   loadError: null,
   path: [ROOT_STEP],
   pendingRunout: null,
+  pendingTurnCards: null,
+  turnCardLoad: null,
   terminalAction: null,
 
   loadSample: async () => {
@@ -246,6 +279,8 @@ export const useStore = create<AppState>((set, get) => ({
       loadError: null,
       path: [ROOT_STEP],
       pendingRunout: null,
+      pendingTurnCards: null,
+      turnCardLoad: null,
       terminalAction: null,
       // Annotations annotate one solve's line — a new solve starts clean.
       drawingStrokes: [],
@@ -270,12 +305,39 @@ export const useStore = create<AppState>((set, get) => ({
           },
         ],
         pendingRunout: null,
+        pendingTurnCards: null,
+        turnCardLoad: null,
         terminalAction: null,
       });
     } else if (step.type === 'runout') {
-      set({ pendingRunout: step.options, terminalAction: null });
+      // Split solves: at a turn chance node, cards whose subtrees are
+      // not loaded yet ride alongside the loaded options — picking
+      // one loads it first (chooseSplitRunout).
+      let pendingTurnCards: AppState['pendingTurnCards'] = null;
+      if (step.options[0]?.street === 'turn' && solve.split) {
+        const offered = new Set(step.options.map((o) => o.card));
+        const unloaded = solve.split.turnCards.filter(
+          (c) => !solve.split!.loadedCards.has(c) && !offered.has(c),
+        );
+        if (unloaded.length > 0) {
+          pendingTurnCards = { baseHistory: step.baseHistory, cards: unloaded };
+        }
+      }
+      set({ pendingRunout: step.options, pendingTurnCards, turnCardLoad: null, terminalAction: null });
+    } else if (step.type === 'split-runout') {
+      set({
+        pendingRunout: null,
+        pendingTurnCards: { baseHistory: step.baseHistory, cards: step.cards },
+        turnCardLoad: null,
+        terminalAction: null,
+      });
     } else {
-      set({ terminalAction: step.actionLabel, pendingRunout: null });
+      set({
+        terminalAction: step.actionLabel,
+        pendingRunout: null,
+        pendingTurnCards: null,
+        turnCardLoad: null,
+      });
     }
   },
 
@@ -294,19 +356,89 @@ export const useStore = create<AppState>((set, get) => ({
         },
       ],
       pendingRunout: null,
+      pendingTurnCards: null,
+      turnCardLoad: null,
       terminalAction: null,
     });
   },
 
-  dismissRunout: () => set({ pendingRunout: null }),
+  chooseSplitRunout: async (card) => {
+    const { solve, solveId, pendingTurnCards, path } = get();
+    if (!solve || !solve.split || !pendingTurnCards) return;
+    if (!pendingTurnCards.cards.includes(card)) return;
+    set({ turnCardLoad: { card, status: 'loading', error: null } });
+    const ok = solveId ? await turnCardLoader.ensureCard(solve, solveId, card) : false;
+    // The solve may have been replaced while the fetch was in flight;
+    // a stale completion must not move the new solve's line.
+    if (get().solve !== solve) return;
+    if (!ok) {
+      set({
+        turnCardLoad: {
+          card,
+          status: 'error',
+          error: `The ${card} turn could not be loaded. Check your connection and retry — nothing was changed.`,
+        },
+      });
+      return;
+    }
+    const rootNode = solve.nodesByHistory.get(`${pendingTurnCards.baseHistory}|t:${card}`);
+    if (!rootNode) {
+      // The card's payload loaded, but this line has no subtree under
+      // it (an all-in close deals the card with no decisions left).
+      set({
+        solve: { ...solve },
+        pendingRunout: null,
+        pendingTurnCards: null,
+        turnCardLoad: null,
+        terminalAction: 'All-in runout',
+      });
+      return;
+    }
+    set({
+      solve: { ...solve },
+      path: [
+        ...path,
+        { nodeHistory: rootNode.history, label: `Turn card · ${card}`, kind: 'runout' },
+      ],
+      pendingRunout: null,
+      pendingTurnCards: null,
+      turnCardLoad: null,
+      terminalAction: null,
+    });
+  },
+
+  dismissTurnCardLoad: () => set({ turnCardLoad: null }),
+
+  loadTurnCard: async (card) => {
+    const { solve, solveId } = get();
+    if (!solve || !solve.split || !solveId) return false;
+    const ok = await turnCardLoader.ensureCard(solve, solveId, card);
+    if (ok && get().solve === solve) set({ solve: { ...solve } });
+    return ok;
+  },
+
+  dismissRunout: () => set({ pendingRunout: null, pendingTurnCards: null }),
 
   goToStep: (index) => {
     const { path } = get();
     if (index < 0 || index >= path.length) return;
-    set({ path: path.slice(0, index + 1), pendingRunout: null, terminalAction: null });
+    set({
+      path: path.slice(0, index + 1),
+      pendingRunout: null,
+      pendingTurnCards: null,
+      turnCardLoad: null,
+      terminalAction: null,
+    });
   },
 
-  resetPath: () => set({ path: [ROOT_STEP], pendingRunout: null, terminalAction: null }),
+  resetPath: () =>
+    set({
+      path: [ROOT_STEP],
+      pendingRunout: null,
+      pendingTurnCards: null,
+      turnCardLoad: null,
+      terminalAction: null,
+    }),
 
   setPath: (steps) => {
     if (steps.length === 0 || steps[0]?.nodeHistory !== 'root') return;
@@ -314,7 +446,13 @@ export const useStore = create<AppState>((set, get) => ({
     if (!solve) return;
     // Refuse a path whose steps do not resolve in the loaded solve.
     if (steps.some((s) => !solve.nodesByHistory.has(s.nodeHistory))) return;
-    set({ path: steps, pendingRunout: null, terminalAction: null });
+    set({
+      path: steps,
+      pendingRunout: null,
+      pendingTurnCards: null,
+      turnCardLoad: null,
+      terminalAction: null,
+    });
   },
 
   sessionJobs: [],
