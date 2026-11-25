@@ -50,9 +50,13 @@ export function ExplorerPage() {
   const loadSample = useStore((s) => s.loadSample);
   const path = useStore((s) => s.path);
   const pendingRunout = useStore((s) => s.pendingRunout);
+  const pendingTurnCards = useStore((s) => s.pendingTurnCards);
+  const turnCardLoad = useStore((s) => s.turnCardLoad);
   const terminalAction = useStore((s) => s.terminalAction);
   const chooseAction = useStore((s) => s.chooseAction);
   const chooseRunout = useStore((s) => s.chooseRunout);
+  const chooseSplitRunout = useStore((s) => s.chooseSplitRunout);
+  const dismissTurnCardLoad = useStore((s) => s.dismissTurnCardLoad);
   const goToStep = useStore((s) => s.goToStep);
   const resetPath = useStore((s) => s.resetPath);
   const setTrainerFocus = useStore((s) => s.setTrainerFocus);
@@ -96,8 +100,8 @@ export function ExplorerPage() {
   // A fresh runout choice reopens the card picker (it may have been
   // dismissed at the previous chance node).
   useEffect(() => {
-    if (pendingRunout) setPickerDismissed(false);
-  }, [pendingRunout]);
+    if (pendingRunout || pendingTurnCards) setPickerDismissed(false);
+  }, [pendingRunout, pendingTurnCards]);
 
   const aggregates = useMemo(
     () => (solve && node ? aggregateFrequencies(solve, node) : []),
@@ -189,7 +193,13 @@ export function ExplorerPage() {
     });
     navigate('/solver');
   };
-  const pendingStreet = pendingRunout?.[0]?.street ?? null;
+  const pendingStreet =
+    pendingRunout?.[0]?.street ?? (pendingTurnCards ? ('turn' as const) : null);
+  // A chance node is outstanding when loaded runout options exist OR
+  // a split solve still has unloaded turn cards to offer for it.
+  const atChanceNode = pendingRunout !== null || pendingTurnCards !== null;
+  const loadErrorText =
+    turnCardLoad && turnCardLoad.status === 'error' ? turnCardLoad.error : null;
   const potOddsPct = node.to_call > 0 ? (node.to_call / (node.pot + node.to_call)) * 100 : null;
 
   // Cards that can never be dealt at the pending chance node.
@@ -304,7 +314,7 @@ export function ExplorerPage() {
               <span className="text-ink-dim">Use the node strip above to step back.</span>
             </p>
           ) : null}
-          {pendingRunout && pickerDismissed ? (
+          {atChanceNode && pickerDismissed && !turnCardLoad ? (
             <p className="rounded-lg border border-accent/60 bg-navy-850 px-3 py-2.5 text-sm text-ink">
               The street closed — a {pendingStreet} card comes next.{' '}
               <button
@@ -313,6 +323,35 @@ export function ExplorerPage() {
                 className="font-semibold text-table-light underline"
               >
                 Pick the {pendingStreet} card
+              </button>
+            </p>
+          ) : null}
+          {turnCardLoad?.status === 'loading' ? (
+            <p className="rounded-lg border border-navy-700 bg-navy-850 px-3 py-2.5 text-sm text-ink">
+              Loading the {turnCardLoad.card} turn — fetching that part of the tree…
+            </p>
+          ) : null}
+          {loadErrorText ? (
+            <p
+              className="rounded-lg border border-accent/60 bg-navy-850 px-3 py-2.5 text-sm text-ink"
+              role="alert"
+            >
+              {loadErrorText}{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  if (turnCardLoad) void chooseSplitRunout(turnCardLoad.card);
+                }}
+                className="font-semibold text-table-light underline"
+              >
+                Retry
+              </button>{' '}
+              <button
+                type="button"
+                onClick={dismissTurnCardLoad}
+                className="font-semibold text-table-light underline"
+              >
+                Pick a different card
               </button>
             </p>
           ) : null}
@@ -605,18 +644,36 @@ export function ExplorerPage() {
         </div>
       </div>
 
-      {/* Runout card picker (chance node) */}
-      {pendingRunout && !pickerDismissed ? (
+      {/* Runout card picker (chance node). For split solves the
+          unloaded turn cards are offered alongside the loaded ones;
+          picking an unloaded card fetches its subtree first. */}
+      {atChanceNode && !pickerDismissed && !turnCardLoad ? (
         <CardPicker
           title={`Deal the ${pendingStreet ?? 'next'} card`}
-          caption="Only runouts present in this solve can be picked. Each was solved exactly — pick any card to keep walking the tree."
+          caption={
+            pendingTurnCards
+              ? 'This flop solve loads one turn card at a time — picking a card fetches that part of the tree, then the walk continues. Each was solved exactly.'
+              : 'Only runouts present in this solve can be picked. Each was solved exactly — pick any card to keep walking the tree.'
+          }
           deadCards={pickerDeadCards}
-          enabledCards={pendingRunout.map((o) => o.card)}
-          onPick={chooseRunout}
+          enabledCards={[
+            ...(pendingRunout ?? []).map((o) => o.card),
+            ...(pendingTurnCards?.cards ?? []),
+          ]}
+          onPick={(card) => {
+            if (pendingRunout?.some((o) => o.card === card)) chooseRunout(card);
+            else void chooseSplitRunout(card);
+          }}
           onClear={() => setPickerDismissed(true)}
           onRandom={() => {
-            const opt = pendingRunout[Math.floor(Math.random() * pendingRunout.length)];
-            if (opt) chooseRunout(opt.card);
+            const cards = [
+              ...(pendingRunout ?? []).map((o) => o.card),
+              ...(pendingTurnCards?.cards ?? []),
+            ];
+            const card = cards[Math.floor(Math.random() * cards.length)];
+            if (!card) return;
+            if (pendingRunout?.some((o) => o.card === card)) chooseRunout(card);
+            else void chooseSplitRunout(card);
           }}
           onClose={() => setPickerDismissed(true)}
         />

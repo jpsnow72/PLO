@@ -51,7 +51,8 @@ import {
   type QuizTopicStats,
   type SpotQuestion,
 } from '../lib/quiz';
-import { parseSolve } from '../lib/solveTree';
+import { historyTurnCard, parseSolve } from '../lib/solveTree';
+import { prepareSplitForQuiz } from '../lib/splitSolve';
 import { useStore } from '../store/useStore';
 
 type SyncState = 'checking' | 'synced' | 'locked' | 'offline';
@@ -93,6 +94,10 @@ async function questionsForSolve(
         : await fetchSampleSolve();
   const data = parseSolve(raw);
   if (!data) return [];
+  // Split flop: load ONE random turn card first, so questions come
+  // from the flop street plus that card only (issue #57). A failed
+  // fetch still leaves the flop-street questions.
+  if (data.split) await prepareSplitForQuiz(data, solveId);
   return collectSpotQuestions({ id: solveId, name: solveName, source, data });
 }
 
@@ -391,8 +396,16 @@ export function QuizPage() {
           setOpenError('That solve could not be loaded into the Explorer.');
           return;
         }
-        const data = useStore.getState().solve;
+        let data = useStore.getState().solve;
         const history = nodeHistoryOf(q);
+        // Split flop: the question may live under a turn card the
+        // freshly loaded header doc has not grafted yet — load that
+        // card first, then rebuild the path (issue #57).
+        const card = historyTurnCard(history);
+        if (data?.split && card && !data.split.loadedCards.has(card)) {
+          await useStore.getState().loadTurnCard(card);
+          data = useStore.getState().solve;
+        }
         if (data && history !== 'root') {
           const steps = explorerPathFor(data, history);
           if (steps) useStore.getState().setPath(steps);
@@ -439,6 +452,9 @@ export function QuizPage() {
             const raw = await fetchLibrarySolve(item.id);
             const data = parseSolve(raw);
             if (!data) continue;
+            // Split flop: one random turn card is loaded before
+            // questions are generated from it (issue #57).
+            if (data.split) await prepareSplitForQuiz(data, item.id);
             anySource = true;
             names.push(item.name);
             questions.push(

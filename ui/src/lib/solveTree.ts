@@ -24,6 +24,21 @@ export interface SolveNode extends RawSolveNode {
   streetName: 'flop' | 'turn' | 'river';
 }
 
+/**
+ * Split-solve state (issue #57): a flop solve stored in pieces. The
+ * header doc indexes only the flop street; each turn card's subtree
+ * is grafted into `nodesByHistory` on first use (see graftTurnNodes
+ * and lib/splitSolve.ts). `loadedCards` is the session cache — a card
+ * in it never needs fetching again for this solve.
+ */
+export interface SplitInfo {
+  format: 1;
+  /** Every turn card the full solve has a subtree for. */
+  turnCards: string[];
+  /** Cards whose nodes are already grafted into the index. */
+  loadedCards: Set<string>;
+}
+
 export interface SolveData {
   raw: RawSolve;
   kind: 'river' | 'turn' | 'flop';
@@ -32,6 +47,8 @@ export interface SolveData {
   nodesByHistory: Map<string, SolveNode>;
   weights: Record<Player, Map<string, number>>;
   evs: Record<Player, Map<string, number>>;
+  /** Split-solve state, or null for ordinary (whole-tree) solves. */
+  split: SplitInfo | null;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -53,6 +70,30 @@ function isRawSolve(v: unknown): v is RawSolve {
   );
 }
 
+/** Normalise one raw node: attach the street name every surface reads. */
+function toSolveNode(n: RawSolveNode, kind: SolveData['kind']): SolveNode {
+  const streetName: SolveNode['streetName'] =
+    n.street === 'flop' || n.street === 'turn' || n.street === 'river'
+      ? n.street
+      : n.river_card
+        ? 'river'
+        : kind === 'flop'
+          ? 'flop'
+          : kind === 'turn'
+            ? 'turn'
+            : 'river';
+  return { ...n, streetName };
+}
+
+/** Defensive read of the split marker on a raw solve doc. */
+function parseSplit(raw: RawSolve): SplitInfo | null {
+  const s = raw.split;
+  if (!isRecord(s) || s.format !== 1 || !Array.isArray(s.turn_cards)) return null;
+  const turnCards = s.turn_cards.filter((c): c is string => typeof c === 'string');
+  if (turnCards.length === 0) return null;
+  return { format: 1, turnCards, loadedCards: new Set() };
+}
+
 /** Parse + index a raw solve JSON value. Returns null if the shape is wrong. */
 export function parseSolve(value: unknown): SolveData | null {
   if (!isRawSolve(value)) return null;
@@ -72,17 +113,7 @@ export function parseSolve(value: unknown): SolveData | null {
   const nodesByHistory = new Map<string, SolveNode>();
   let root: SolveNode | null = null;
   for (const n of raw.nodes) {
-    const streetName: SolveNode['streetName'] =
-      n.street === 'flop' || n.street === 'turn' || n.street === 'river'
-        ? n.street
-        : n.river_card
-          ? 'river'
-          : kind === 'flop'
-            ? 'flop'
-            : kind === 'turn'
-              ? 'turn'
-              : 'river';
-    const node: SolveNode = { ...n, streetName };
+    const node = toSolveNode(n, kind);
     nodesByHistory.set(node.history, node);
     if (node.history === 'root') root = node;
   }
@@ -99,9 +130,88 @@ export function parseSolve(value: unknown): SolveData | null {
     evs.IP.set(ce.combo, ce.ev);
   }
 
-  const data: SolveData = { raw, kind, boardCards, root, nodesByHistory, weights, evs };
+  const data: SolveData = {
+    raw,
+    kind,
+    boardCards,
+    root,
+    nodesByHistory,
+    weights,
+    evs,
+    split: parseSplit(raw),
+  };
   if (import.meta.env.DEV) devCheckFrequencySums(data);
   return data;
+}
+
+// ---------- Split solves: lookup states + lazy graft (issue #57) ------------
+
+/** The turn card a history lives under (`...|t:As/...`), or null. */
+export function historyTurnCard(history: string): string | null {
+  const m = /\|t:([^/|]+)/.exec(history);
+  return m ? (m[1] ?? null) : null;
+}
+
+export type NodeLookupState = 'present' | 'unloaded-card' | 'absent';
+
+/**
+ * Where a history stands in the loaded model:
+ *  - 'present':       the node is indexed and can be rendered now;
+ *  - 'unloaded-card': the history belongs to a split solve's turn
+ *                     subtree for a card that has not been fetched
+ *                     yet — navigation must load that card first;
+ *  - 'absent':        the solve has no such node at all.
+ * Non-split solves only ever answer 'present' or 'absent'.
+ */
+export function nodeLookupState(data: SolveData, history: string): NodeLookupState {
+  if (data.nodesByHistory.has(history)) return 'present';
+  if (data.split) {
+    const card = historyTurnCard(history);
+    if (card && data.split.turnCards.includes(card) && !data.split.loadedCards.has(card)) {
+      return 'unloaded-card';
+    }
+  }
+  return 'absent';
+}
+
+/**
+ * Validate a GET /api/solves/:id/turn/<card> body. Returns its nodes,
+ * or null when the body is not the payload the contract promises
+ * (wrong card echoed, no nodes array, a node without the fields the
+ * tree walker reads). Nothing is partially applied on null.
+ */
+export function parseTurnPayload(value: unknown, card: string): RawSolveNode[] | null {
+  if (!isRecord(value) || value.turn_card !== card || !Array.isArray(value.nodes)) return null;
+  if (value.nodes.length === 0) return null;
+  for (const n of value.nodes) {
+    if (!isRecord(n)) return null;
+    if (typeof n.history !== 'string' || typeof n.player !== 'string') return null;
+    if (!Array.isArray(n.actions) || !isRecord(n.strategy)) return null;
+    // A per-card payload must stay inside its own card: a node naming
+    // a different turn card would graft one card's fetch into
+    // another's subtree.
+    if (historyTurnCard(n.history) !== card) return null;
+  }
+  return value.nodes as RawSolveNode[];
+}
+
+/**
+ * Graft one turn card's payload into the index. Idempotent (a card
+ * already loaded is a no-op success). Returns false — and changes
+ * nothing — for non-split data or a malformed payload, so callers can
+ * surface a retry instead of a half-loaded tree.
+ */
+export function graftTurnNodes(data: SolveData, card: string, payload: unknown): boolean {
+  if (!data.split || !data.split.turnCards.includes(card)) return false;
+  if (data.split.loadedCards.has(card)) return true;
+  const nodes = parseTurnPayload(payload, card);
+  if (!nodes) return false;
+  for (const n of nodes) {
+    const node = toSolveNode(n, data.kind);
+    data.nodesByHistory.set(node.history, node);
+  }
+  data.split.loadedCards.add(card);
+  return true;
 }
 
 /** Dev-only sanity check: every live combo row should sum to ~1. */
@@ -150,6 +260,14 @@ export interface RunoutOption {
 export type StepResult =
   | { type: 'node'; node: SolveNode }
   | { type: 'runout'; baseHistory: string; options: RunoutOption[] }
+  /**
+   * Split solves only: the action closes the flop street, but no turn
+   * card's subtree is loaded yet, so there are no subtree roots to
+   * offer as options. `cards` are the solve's available turn cards;
+   * picking one triggers its fetch + graft (lib/splitSolve.ts), after
+   * which the same step resolves as a normal 'runout'.
+   */
+  | { type: 'split-runout'; baseHistory: string; cards: string[] }
   | { type: 'terminal'; actionLabel: string };
 
 /**
@@ -192,6 +310,22 @@ export function resolveStep(data: SolveData, node: SolveNode, actionLabel: strin
         return byRank !== 0 ? byRank : a.card.localeCompare(b.card);
       });
       return { type: 'runout', baseHistory: child, options };
+    }
+    // Split solves: no turn subtree is loaded yet, so no subtree root
+    // could be found — but the header doc names every available turn
+    // card. Any non-fold action whose child is absent at a flop node
+    // closed the street (flop-street children are all in the header);
+    // the caller offers the cards and loads the picked one. (An
+    // all-in close emits no subtrees even in a whole solve; there the
+    // loaded payload simply has no root for this line and the caller
+    // falls back to the terminal message.)
+    if (
+      spec.marker === 't' &&
+      data.split &&
+      node.streetName === 'flop' &&
+      actionLabel !== 'Fold'
+    ) {
+      return { type: 'split-runout', baseHistory: child, cards: [...data.split.turnCards] };
     }
   }
   return { type: 'terminal', actionLabel };
