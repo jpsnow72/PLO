@@ -246,7 +246,12 @@ export async function splitFlopResult(resultPath, libraryDir, id) {
     }
     for (const w of partWriters.values()) {
       await writeChunk(w.brotli, '\n]}\n');
-      await endStream(w.brotli);
+      // Wait for the FILE stream's finish, not just the compressor's:
+      // the pipe ends the file only once the brotli readable side has
+      // fully drained, and 'finish' means every byte is flushed.
+      const fileFinished = once(w.file, 'finish');
+      w.brotli.end();
+      await fileFinished;
     }
     await writeChunk(
       headerStream,
