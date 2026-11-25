@@ -30,7 +30,7 @@ const FAKE_ENGINE = `#!/usr/bin/env node
 const fs = require('node:fs');
 fs.writeFileSync(
   process.argv[3],
-  JSON.stringify({ iterations: 25, exploitability: { nash_distance_pct: 0.25 } }),
+  JSON.stringify({ board: 'As Kd 7c', iterations: 25, exploitability: { nash_distance_pct: 0.25 }, nodes: [] }),
 );
 process.exit(0);
 `;

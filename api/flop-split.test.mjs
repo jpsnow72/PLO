@@ -127,6 +127,11 @@ function decompressPart(file) {
   return zlib.brotliDecompressSync(fs.readFileSync(file)).toString('utf8');
 }
 
+// The fixture node texts carry the builder's 4-space indentation before the
+// opening brace; that indentation is array formatting, not part of the node
+// object. Byte-verbatim comparisons use the object slice itself.
+const objText = (t) => t.slice(t.indexOf('{'));
+
 // --- scratch server ----------------------------------------------------------
 
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'plo-split-'));
@@ -228,7 +233,7 @@ test('splitter: header keeps flop nodes verbatim + split marker; parts hold thei
   );
   assert.deepEqual(header.nodes, expectedFlop);
   for (const t of [FLOP_NODES[0], FLOP_NODES[1], TRAILING_FLOP_NODE]) {
-    assert.ok(headerText.includes(t), 'header must embed flop node objects byte-verbatim');
+    assert.ok(headerText.includes(objText(t)), 'header must embed flop node objects byte-verbatim');
   }
 
   const part9 = decompressPart(path.join(lib, 'solvea.turn-9s.json.br'));
@@ -236,7 +241,7 @@ test('splitter: header keeps flop nodes verbatim + split marker; parts hold thei
   assert.equal(part9Doc.turn_card, '9s');
   assert.deepEqual(part9Doc.nodes, TURN_9S_NODES.map((t) => JSON.parse(t)));
   for (const t of TURN_9S_NODES) {
-    assert.ok(part9.includes(t), 'part must embed its node objects byte-verbatim');
+    assert.ok(part9.includes(objText(t)), 'part must embed its node objects byte-verbatim');
   }
   const partAs = JSON.parse(decompressPart(path.join(lib, 'solvea.turn-As.json.br')));
   assert.deepEqual(partAs.nodes, TURN_AS_NODES.map((t) => JSON.parse(t)));
@@ -300,8 +305,8 @@ test('splitter: a ~45 MB doc splits correctly through the streaming path', async
     const text = decompressPart(path.join(lib, `solvebig.turn-${card}.json.br`));
     const parsed = JSON.parse(text);
     assert.equal(parsed.nodes.length, 1100);
-    assert.ok(text.includes(perCard.get(card)[0]), 'first node byte-verbatim');
-    assert.ok(text.includes(perCard.get(card)[1099]), 'last node byte-verbatim');
+    assert.ok(text.includes(objText(perCard.get(card)[0])), 'first node byte-verbatim');
+    assert.ok(text.includes(objText(perCard.get(card)[1099])), 'last node byte-verbatim');
   }
 });
 
