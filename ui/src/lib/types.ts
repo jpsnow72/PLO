@@ -73,6 +73,15 @@ export interface RawSolve {
   oop_evs: ComboEv[];
   ip_evs: ComboEv[];
   nodes: RawSolveNode[];
+  /**
+   * Split-solve marker (issue #57): present when this doc is only the
+   * header of a flop solve stored in pieces — `nodes` then carries
+   * ONLY the flop-street nodes, and each turn card's subtree (that
+   * card's turn + river decision nodes) is fetched separately from
+   * GET /api/solves/:id/turn/<card>. Absent on ordinary solves, whose
+   * `nodes` are the whole tree. See lib/splitSolve.ts.
+   */
+  split?: { format: number; turn_cards: string[] };
 }
 
 // ---------- Job service API shapes (see api/README.md) ----------
