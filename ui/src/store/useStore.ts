@@ -368,9 +368,13 @@ export const useStore = create<AppState>((set, get) => ({
     if (!pendingTurnCards.cards.includes(card)) return;
     set({ turnCardLoad: { card, status: 'loading', error: null } });
     const ok = solveId ? await turnCardLoader.ensureCard(solve, solveId, card) : false;
-    // The solve may have been replaced while the fetch was in flight;
-    // a stale completion must not move the new solve's line.
-    if (get().solve !== solve) return;
+    // The solve may have been replaced — or the user may have walked
+    // elsewhere, clearing this load — while the fetch was in flight.
+    // A stale completion must not move the line; the grafted card
+    // simply stays cached in the model for next time.
+    const now = get();
+    if (now.solve !== solve) return;
+    if (now.turnCardLoad?.card !== card || now.turnCardLoad.status !== 'loading') return;
     if (!ok) {
       set({
         turnCardLoad: {
